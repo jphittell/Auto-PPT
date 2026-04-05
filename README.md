@@ -18,12 +18,12 @@ The main remaining gaps are:
 - no stock-image or external asset sourcing yet
 - deterministic planning fallback is intentionally simple and conservative
 
-The planning stage now supports a real Anthropic-backed structured client when
-`ANTHROPIC_API_KEY` is available. Without that key, the repo falls back to its
-deterministic schema-valid planner.
+The planning stage supports a structured OpenAI client when `OPENAI_API_KEY` is available,
+with Anthropic fallback when only `ANTHROPIC_API_KEY` is set. Without either key, the repo
+falls back to its deterministic schema-valid planner.
 
-If `ANTHROPIC_API_KEY` is set, the pipeline will prefer the Anthropic client automatically.
-To force deterministic planning, unset `ANTHROPIC_API_KEY` before running the generator.
+To force deterministic planning, unset both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`
+before running the generator.
 
 ## Installation
 
@@ -73,12 +73,13 @@ Optional flags:
 To enable model-authored planning content, set:
 
 ```powershell
-$env:ANTHROPIC_API_KEY="your-key"
+$env:OPENAI_API_KEY="your-key"
 ```
 
-Optional model override:
+Optional model overrides:
 
 ```powershell
+$env:PPTX_GEN_OPENAI_MODEL="gpt-4o"
 $env:PPTX_GEN_ANTHROPIC_MODEL="claude-opus-4-6"
 ```
 
@@ -126,3 +127,26 @@ Useful targeted runs:
 ## Skills
 
 Repo skills are centralized under `Skills/`, not inside each service directory.
+
+## UI Development
+
+Start the FastAPI backend:
+
+```powershell
+pip install -e ".[web]"
+pptx-gen serve
+```
+
+Start the React frontend:
+
+```powershell
+cd ui
+npm install
+npm run dev
+```
+
+Notes:
+
+- ingest in the UI is real and calls the current `ingest_and_index()` pipeline
+- generation in the UI is mocked so the full user flow is navigable while backend planning remains isolated
+- PDF export returns a stub preview and PPTX export is intentionally upgrade-gated in the UI

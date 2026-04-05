@@ -3,9 +3,17 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.coverage
+htmlcov/
 .env
 .env.*
 !.env.example
+/web/
+/ui/node_modules/
+/ui/.vite/
+/ui/*.tsbuildinfo
+/ui/vite.config.js
+/ui/vite.config.d.ts
 
 pptx_gen.zip
 Skills.zip

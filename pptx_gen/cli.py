@@ -63,3 +63,20 @@ def generate_command(
         raise click.ClickException(str(exc)) from exc
 
     click.echo(result.model_dump_json(indent=2, ensure_ascii=True))
+
+
+@cli.command("serve")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind host.")
+@click.option("--port", default=8000, show_default=True, type=int, help="Bind port.")
+@click.option("--reload/--no-reload", default=True, show_default=True, help="Enable auto-reload.")
+def serve_command(host: str, port: int, reload: bool) -> None:
+    """Run the local FastAPI development server."""
+
+    try:
+        import uvicorn
+    except ImportError as exc:  # pragma: no cover - environment specific
+        raise click.ClickException(
+            "FastAPI web dependencies are not installed. Run: pip install -e \".[web]\""
+        ) from exc
+
+    uvicorn.run("pptx_gen.api:app", host=host, port=port, reload=reload)
