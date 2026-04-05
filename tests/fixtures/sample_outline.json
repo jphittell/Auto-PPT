@@ -1,0 +1,85 @@
+{
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "headline": "Q1 2026 Business Review",
+      "message": "This deck covers Q1 2026 financial results, operational highlights, key risks, and the H1 hiring plan for executive review.",
+      "evidence_queries": []
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "agenda",
+      "headline": "Agenda",
+      "message": "We will cover revenue performance, margin expansion, segment highlights, operational risks, and the hiring plan.",
+      "evidence_queries": []
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "headline": "Revenue Hit $29.3M, Up 18% YoY",
+      "message": "Q1 total revenue of $29.3M exceeded plan by 4% and accelerated growth from 14% YoY in Q4 2025.",
+      "evidence_queries": [
+        "Q1 2026 total revenue figure",
+        "revenue growth year over year Q1 2026 vs Q1 2025",
+        "revenue versus plan Q1 2026 variance",
+        "Q4 2025 revenue growth rate for comparison"
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "headline": "Gross Margin Expanded 210bps to 64.4%",
+      "message": "Infrastructure optimizations in NA and EMEA drove margin improvement, partially offset by APAC investment spend.",
+      "evidence_queries": [
+        "gross margin Q1 2026 percentage",
+        "gross margin Q4 2025 for basis point comparison",
+        "infrastructure cost reduction NA EMEA Q1 2026",
+        "APAC investment spend impact on gross margin"
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "headline": "APAC Is Now Our Fastest-Growing Segment",
+      "message": "APAC pipeline grew 31% QoQ, the second consecutive quarter of segment leadership, driven by three new enterprise logos.",
+      "evidence_queries": [
+        "APAC revenue or pipeline Q1 2026",
+        "APAC quarter over quarter growth rate Q1 2026",
+        "APAC new enterprise customer logos Q1 2026",
+        "APAC growth rate comparison to NA and EMEA Q1 2026"
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "headline": "Two Risks Require Board Attention",
+      "message": "Supplier concentration in the data pipeline and rising CAC in EMEA are the two operational risks flagged for escalation.",
+      "evidence_queries": [
+        "supplier concentration risk data pipeline Q1 2026",
+        "customer acquisition cost EMEA Q1 2026 trend",
+        "CAC increase EMEA root cause analysis",
+        "data pipeline vendor dependency risk mitigation"
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "headline": "H1 Hiring Plan: 18 Roles Across Three Teams",
+      "message": "Engineering, data science, and APAC sales headcount expansions are required to sustain current growth trajectory into H2.",
+      "evidence_queries": [
+        "H1 2026 hiring plan headcount by department",
+        "engineering headcount requirements H1 2026",
+        "APAC sales team expansion plan 2026",
+        "data science hiring rationale revenue per headcount"
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "headline": "Q1 Strong — Two Actions Needed Now",
+      "message": "Q1 exceeded revenue and margin targets; board should approve the H1 hiring plan and mandate a supplier diversification review.",
+      "evidence_queries": []
+    }
+  ]
+}

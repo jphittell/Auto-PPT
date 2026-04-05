@@ -1,0 +1,4 @@
+interface:
+  display_name: "PPTX Indexing"
+  short_description: "Guide embeddings and vector-store updates"
+  default_prompt: "Use $pptx-indexing to update embedding, vector-store, or retrieval-metadata behavior for this AI PPTX pipeline."

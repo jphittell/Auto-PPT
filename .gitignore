@@ -1,0 +1,11 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+pptx_gen.zip
+Skills.zip
+
+.DS_Store
+Thumbs.db

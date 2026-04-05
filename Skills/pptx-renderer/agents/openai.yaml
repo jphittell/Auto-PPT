@@ -1,0 +1,5 @@
+interface:
+  display_name: "PPTX Renderer"
+  short_description: "Guide PPTX export, assets, and QA work"
+  default_prompt: "Use $pptx-renderer to update PPTX export, asset validation, or QA behavior for this AI PPTX pipeline."
+

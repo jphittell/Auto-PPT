@@ -1,0 +1,4 @@
+interface:
+  display_name: "PPTX Tests"
+  short_description: "Guide schema and service-boundary test work"
+  default_prompt: "Use $pptx-tests to add or refine schema, ingestion, layout, renderer, or pipeline tests for this AI PPTX project."

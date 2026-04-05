@@ -1,0 +1,5 @@
+interface:
+  display_name: "PPTX Ingestion"
+  short_description: "Guide parsing, chunking, and provenance updates"
+  default_prompt: "Use $pptx-ingestion to update parsing, chunking, provenance, or ingestion validation for this AI PPTX pipeline."
+

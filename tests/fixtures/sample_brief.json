@@ -1,0 +1,19 @@
+{
+  "one_sentence_thesis": "Q1 2026 results demonstrate accelerating revenue growth and improving unit economics across all three geographic segments, positioning the company for a strong H1.",
+  "key_takeaways": [
+    "Total revenue reached $29.3M in Q1 2026, up 18% year-over-year and 6% quarter-over-quarter.",
+    "Gross margin expanded 210 basis points to 64.4%, driven by infrastructure cost reductions in NA and EMEA.",
+    "Customer acquisition cost fell 14% as the redesigned onboarding flow lifted 90-day retention by 9 points.",
+    "APAC pipeline grew 31% quarter-over-quarter, making it the fastest-growing segment for the second consecutive quarter."
+  ],
+  "slide_count_target": 8,
+  "tone": "executive",
+  "audience": "Executive leadership team and board observers",
+  "goal": "Align leadership on Q1 performance, surface two operational risks, and secure approval for the H1 hiring plan.",
+  "source_ids": [
+    "doc_q1_pdf",
+    "doc_finance_model_xlsx",
+    "doc_apac_pipeline_report"
+  ],
+  "open_questions": []
+}

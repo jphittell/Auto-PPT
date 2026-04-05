@@ -1,0 +1,5 @@
+interface:
+  display_name: "PPTX Planning"
+  short_description: "Guide outline, RAG, and SlideSpec workflows"
+  default_prompt: "Use $pptx-planning to update the five-step prompt chain, planning schemas, citations, or prompt files for this AI PPTX pipeline."
+

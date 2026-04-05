@@ -1,0 +1,258 @@
+"""Schema contracts for planning and SlideSpec generation."""
+
+from __future__ import annotations
+
+import datetime as dt
+import re
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from pptx_gen.layout.schemas import StyleTokens
+
+
+SCHEMA_VERSION_PATTERN = r"^\d+\.\d+\.\d+$"
+
+
+class SlidePurpose(str, Enum):
+    TITLE = "title"
+    AGENDA = "agenda"
+    SECTION = "section"
+    CONTENT = "content"
+    SUMMARY = "summary"
+    APPENDIX = "appendix"
+
+
+class PresentationBlockKind(str, Enum):
+    TEXT = "text"
+    BULLETS = "bullets"
+    IMAGE = "image"
+    TABLE = "table"
+    CHART = "chart"
+    KPI_CARDS = "kpi_cards"
+    QUOTE = "quote"
+    CALLOUT = "callout"
+
+
+class PIIFlag(str, Enum):
+    NAME = "name"
+    EMAIL = "email"
+    PHONE = "phone"
+    ADDRESS = "address"
+    ID_NUMBER = "id_number"
+    HEALTH = "health"
+    FINANCIAL = "financial"
+
+
+class SourceCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str = Field(min_length=1)
+    locator: str = Field(min_length=1)
+    quote: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class BlockSecurity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pii_flags: list[PIIFlag] = Field(default_factory=list)
+    allowed_audiences: list[str] = Field(default_factory=list)
+
+
+class LayoutIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    template_key: str = Field(min_length=1)
+    strict_template: bool = True
+
+
+class PresentationBlock(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    block_id: str = Field(min_length=1)
+    kind: PresentationBlockKind
+    content: dict[str, Any]
+    source_citations: list[SourceCitation] = Field(default_factory=list)
+    style_overrides: dict[str, Any] | None = None
+    asset_refs: list[str] = Field(default_factory=list)
+    x_security: BlockSecurity | None = None
+    extensions: dict[str, Any] | None = None
+
+
+class SlideSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slide_id: str = Field(min_length=1)
+    purpose: SlidePurpose
+    layout_intent: LayoutIntent
+    headline: str = Field(min_length=1)
+    speaker_notes: str = ""
+    blocks: list[PresentationBlock] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_block_ids(self) -> "SlideSpec":
+        seen: set[str] = set()
+        for block in self.blocks:
+            if block.block_id in seen:
+                raise ValueError(f"duplicate block_id within slide: {block.block_id}")
+            seen.add(block.block_id)
+        return self
+
+
+class DeckTheme(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    style_tokens: StyleTokens
+
+
+class DeckBrief(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(default="1.0.0", pattern=SCHEMA_VERSION_PATTERN)
+    audience: str = Field(min_length=1)
+    goal: str = Field(min_length=1)
+    tone: str = Field(min_length=1)
+    slide_count_target: int = Field(ge=1)
+    source_corpus_ids: list[str] = Field(min_length=1)
+    questions_for_user: list[str] = Field(default_factory=list)
+    extensions: dict[str, Any] | None = None
+
+
+class OutlineItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slide_id: str = Field(min_length=1)
+    purpose: SlidePurpose
+    headline: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    evidence_queries: list[str] = Field(default_factory=list)
+    template_key: str | None = None
+
+
+class OutlineSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(default="1.0.0", pattern=SCHEMA_VERSION_PATTERN)
+    outline: list[OutlineItem] = Field(min_length=1)
+    questions_for_user: list[str] = Field(default_factory=list)
+    extensions: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_unique_slide_ids(self) -> "OutlineSpec":
+        seen: set[str] = set()
+        for item in self.outline:
+            if item.slide_id in seen:
+                raise ValueError(f"duplicate slide_id in outline: {item.slide_id}")
+            seen.add(item.slide_id)
+        return self
+
+
+class RetrievalQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1)
+    doc_ids: list[str] = Field(default_factory=list)
+    min_date: dt.date | None = None
+
+
+class RetrievalPlanItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slide_id: str = Field(min_length=1)
+    queries: list[RetrievalQuery] = Field(min_length=1, max_length=5)
+
+
+class RetrievalPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(default="1.0.0", pattern=SCHEMA_VERSION_PATTERN)
+    retrieval_plan: list[RetrievalPlanItem] = Field(min_length=1)
+    questions_for_user: list[str] = Field(default_factory=list)
+    extensions: dict[str, Any] | None = None
+
+
+class RetrievedChunk(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    locator: str = Field(min_length=1)
+    score: float | None = Field(default=None, ge=0, le=1)
+    metadata: dict[str, Any] | None = None
+
+
+class PresentationSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(default="1.0.0", pattern=SCHEMA_VERSION_PATTERN)
+    title: str = Field(min_length=1)
+    audience: str = Field(min_length=1)
+    language: str = Field(default="en-US", min_length=2)
+    theme: DeckTheme
+    slides: list[SlideSpec] = Field(min_length=1)
+    questions_for_user: list[str] = Field(default_factory=list)
+    extensions: dict[str, Any] | None = None
+
+    @field_validator("questions_for_user", mode="before")
+    @classmethod
+    def default_questions(cls, value: list[str] | None) -> list[str]:
+        if value is None:
+            return []
+        return value
+
+    @model_validator(mode="after")
+    def validate_slides(self) -> "PresentationSpec":
+        seen_slide_ids: set[str] = set()
+        citation_required_kinds = {
+            PresentationBlockKind.TEXT,
+            PresentationBlockKind.BULLETS,
+            PresentationBlockKind.TABLE,
+            PresentationBlockKind.CHART,
+            PresentationBlockKind.KPI_CARDS,
+            PresentationBlockKind.QUOTE,
+            PresentationBlockKind.CALLOUT,
+        }
+        citation_required_purposes = {
+            SlidePurpose.CONTENT,
+            SlidePurpose.SUMMARY,
+            SlidePurpose.APPENDIX,
+        }
+
+        for slide in self.slides:
+            if slide.slide_id in seen_slide_ids:
+                raise ValueError(f"duplicate slide_id in presentation: {slide.slide_id}")
+            seen_slide_ids.add(slide.slide_id)
+
+            if slide.purpose is not SlidePurpose.APPENDIX:
+                word_count = 0
+                for block in slide.blocks:
+                    word_count += _count_words(block.content)
+                if word_count > 40:
+                    raise ValueError(
+                        f"slide {slide.slide_id} exceeds 40-word content cap with {word_count} words"
+                    )
+
+            if slide.purpose in citation_required_purposes:
+                for block in slide.blocks:
+                    if block.kind in citation_required_kinds and not block.source_citations:
+                        raise ValueError(
+                            f"slide {slide.slide_id} block {block.block_id} requires source_citations"
+                        )
+        return self
+
+
+def _count_words(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return len(re.findall(r"\b\w+\b", value))
+    if isinstance(value, list):
+        return sum(_count_words(item) for item in value)
+    if isinstance(value, dict):
+        return sum(_count_words(item) for item in value.values())
+    return len(re.findall(r"\b\w+\b", str(value)))
+

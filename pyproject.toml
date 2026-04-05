@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pptx-gen"
+version = "0.1.0"
+description = "AI-assisted PPTX generation pipeline scaffold."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "OpenAI Codex" }
+]
+dependencies = [
+  "click>=8.1.7",
+  "chromadb>=0.5.5",
+  "litellm>=1.51.0",
+  "matplotlib>=3.9.0",
+  "pdfminer.six>=20240706",
+  "pydantic>=2.8.0",
+  "python-pptx>=1.0.2",
+  "sentence-transformers>=3.0.1",
+  "unstructured>=0.15.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.2",
+]
+pdf = [
+  "unstructured[pdf]>=0.15.0",
+]
+full = [
+  "unstructured[pdf,local-inference]>=0.15.0",
+]
+
+[project.scripts]
+pptx-gen = "pptx_gen.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pptx_gen"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+

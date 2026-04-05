@@ -1,0 +1,5 @@
+interface:
+  display_name: "PPTX Layout"
+  short_description: "Guide deterministic slide layout resolution"
+  default_prompt: "Use $pptx-layout to update template resolution, geometry rules, aliases, or layout validation for this AI PPTX pipeline."
+
