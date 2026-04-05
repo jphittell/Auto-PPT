@@ -1,25 +1,558 @@
-"""Named template registry and alias normalization."""
+"""Deterministic slide template registry and alias normalization."""
 
 from __future__ import annotations
 
-from typing import Final
+from dataclasses import dataclass
+from typing import Final, Literal
+
+from pptx_gen.layout.schemas import ResolvedElementKind
 
 
-TEMPLATE_CATALOG: Final[dict[str, str]] = {
-    "title.hero": "Hero title slide with subtitle metadata.",
-    "agenda.list": "Single-column agenda bullets.",
-    "section.header": "Section divider slide.",
-    "content.1col": "Single-column content layout.",
-    "content.2col.text_image": "Two-column layout with text and image.",
-    "content.3col.cards": "Three-column comparison or card layout.",
-    "kpi.3up": "Three-up KPI card layout.",
-    "chart.full": "Full-width chart layout.",
-    "table.full": "Full-width table layout.",
-    "appendix.details": "Dense appendix/details layout.",
+SLIDE_WIDTH_IN: Final[float] = 13.333
+SLIDE_HEIGHT_IN: Final[float] = 7.5
+NORMAL_MARGIN_IN: Final[float] = 0.75
+THIN_MARGIN_IN: Final[float] = 0.50
+COLUMN_GUTTER_IN: Final[float] = 0.20
+ROW_GUTTER_IN: Final[float] = 0.25
+CONTENT_WIDTH_NORMAL_IN: Final[float] = 11.833
+CONTENT_HEIGHT_NORMAL_IN: Final[float] = 6.0
+CONTENT_WIDTH_THIN_IN: Final[float] = 12.333
+TWO_COL_WIDTH_IN: Final[float] = (CONTENT_WIDTH_NORMAL_IN - COLUMN_GUTTER_IN) / 2
+THREE_COL_WIDTH_IN: Final[float] = (CONTENT_WIDTH_NORMAL_IN - (2 * COLUMN_GUTTER_IN)) / 3
+
+
+BindingSource = Literal["headline", "block", "block_field", "block_items", "static"]
+
+
+@dataclass(frozen=True, slots=True)
+class SlotBinding:
+    source: BindingSource
+    block_index: int | None = None
+    field: str | None = None
+    item_index: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateSlot:
+    slot_id: str
+    kind: ResolvedElementKind
+    x: float
+    y: float
+    w: float
+    h: float
+    z: int
+    style_ref: str
+    binding: SlotBinding
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateDefinition:
+    template_key: str
+    description: str
+    allowed_purposes: tuple[str, ...]
+    strict_default: bool
+    slots: tuple[TemplateSlot, ...]
+
+
+def _slot(
+    slot_id: str,
+    kind: ResolvedElementKind,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    z: int,
+    style_ref: str,
+    binding: SlotBinding,
+) -> TemplateSlot:
+    return TemplateSlot(
+        slot_id=slot_id,
+        kind=kind,
+        x=x,
+        y=y,
+        w=w,
+        h=h,
+        z=z,
+        style_ref=style_ref,
+        binding=binding,
+    )
+
+
+TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
+    "title.hero": TemplateDefinition(
+        template_key="title.hero",
+        description="Hero title slide with supporting metadata and optional logo.",
+        allowed_purposes=("title",),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                1.50,
+                2.50,
+                10.33,
+                1.25,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "subtitle",
+                ResolvedElementKind.TEXTBOX,
+                2.00,
+                4.00,
+                9.33,
+                0.75,
+                0,
+                "subtitle",
+                SlotBinding(source="block_field", block_index=0, field="subtitle"),
+            ),
+            _slot(
+                "presenter",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                6.50,
+                5.00,
+                0.40,
+                0,
+                "meta",
+                SlotBinding(source="block_field", block_index=0, field="presenter"),
+            ),
+            _slot(
+                "date",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                6.90,
+                5.00,
+                0.40,
+                0,
+                "meta",
+                SlotBinding(source="block_field", block_index=0, field="date"),
+            ),
+            _slot(
+                "logo",
+                ResolvedElementKind.IMAGE,
+                11.50,
+                6.50,
+                1.08,
+                0.50,
+                1,
+                "logo",
+                SlotBinding(source="block_field", block_index=0, field="logo"),
+            ),
+        ),
+    ),
+    "agenda.list": TemplateDefinition(
+        template_key="agenda.list",
+        description="Agenda layout with a headline, list body, and footer progress bar.",
+        allowed_purposes=("agenda",),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                0.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.75,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "agenda_body",
+                ResolvedElementKind.TEXTBOX,
+                1.50,
+                1.80,
+                10.33,
+                4.80,
+                0,
+                "body",
+                SlotBinding(source="block", block_index=0),
+            ),
+            _slot(
+                "progress_bar",
+                ResolvedElementKind.SHAPE,
+                0.00,
+                7.35,
+                SLIDE_WIDTH_IN,
+                0.15,
+                1,
+                "accent_bar",
+                SlotBinding(source="static"),
+            ),
+        ),
+    ),
+    "section.header": TemplateDefinition(
+        template_key="section.header",
+        description="Section divider with large headline and supporting tagline.",
+        allowed_purposes=("section",),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                1.00,
+                3.00,
+                11.33,
+                1.25,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "tagline",
+                ResolvedElementKind.TEXTBOX,
+                1.00,
+                4.30,
+                11.33,
+                0.60,
+                0,
+                "subtitle",
+                SlotBinding(source="block_field", block_index=0, field="tagline"),
+            ),
+            _slot(
+                "footer_info",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                6.80,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.30,
+                0,
+                "footer",
+                SlotBinding(source="block_field", block_index=0, field="footer_info"),
+            ),
+        ),
+    ),
+    "content.1col": TemplateDefinition(
+        template_key="content.1col",
+        description="Single-column content slide with body and takeaway area.",
+        allowed_purposes=("content", "summary"),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                0.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.75,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "body_text",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                1.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                4.50,
+                0,
+                "body",
+                SlotBinding(source="block", block_index=0),
+            ),
+            _slot(
+                "takeaway",
+                ResolvedElementKind.SHAPE,
+                0.75,
+                6.40,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.80,
+                1,
+                "takeaway",
+                SlotBinding(source="block", block_index=1),
+            ),
+        ),
+    ),
+    "content.2col.text_image": TemplateDefinition(
+        template_key="content.2col.text_image",
+        description="Two-column content slide with text at left and image or chart at right.",
+        allowed_purposes=("content",),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                0.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.75,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "text_col",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                1.75,
+                TWO_COL_WIDTH_IN,
+                5.00,
+                0,
+                "body",
+                SlotBinding(source="block", block_index=0),
+            ),
+            _slot(
+                "image_col",
+                ResolvedElementKind.IMAGE,
+                0.75 + TWO_COL_WIDTH_IN + COLUMN_GUTTER_IN,
+                1.75,
+                TWO_COL_WIDTH_IN,
+                5.00,
+                0,
+                "image",
+                SlotBinding(source="block", block_index=1),
+            ),
+        ),
+    ),
+    "content.3col.cards": TemplateDefinition(
+        template_key="content.3col.cards",
+        description="Three-card comparison layout.",
+        allowed_purposes=("content",),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                0.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.75,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "card_left",
+                ResolvedElementKind.SHAPE,
+                0.75,
+                1.75,
+                THREE_COL_WIDTH_IN,
+                5.00,
+                0,
+                "card",
+                SlotBinding(source="block_items", block_index=0, field="cards", item_index=0),
+            ),
+            _slot(
+                "card_mid",
+                ResolvedElementKind.SHAPE,
+                0.75 + THREE_COL_WIDTH_IN + COLUMN_GUTTER_IN,
+                1.75,
+                THREE_COL_WIDTH_IN,
+                5.00,
+                0,
+                "card",
+                SlotBinding(source="block_items", block_index=0, field="cards", item_index=1),
+            ),
+            _slot(
+                "card_right",
+                ResolvedElementKind.SHAPE,
+                0.75 + (2 * THREE_COL_WIDTH_IN) + (2 * COLUMN_GUTTER_IN),
+                1.75,
+                THREE_COL_WIDTH_IN,
+                5.00,
+                0,
+                "card",
+                SlotBinding(source="block_items", block_index=0, field="cards", item_index=2),
+            ),
+        ),
+    ),
+    "kpi.3up": TemplateDefinition(
+        template_key="kpi.3up",
+        description="Three-up KPI layout.",
+        allowed_purposes=("content", "summary"),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                0.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.75,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "kpi_1",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                2.50,
+                THREE_COL_WIDTH_IN,
+                2.50,
+                0,
+                "kpi",
+                SlotBinding(source="block", block_index=0),
+            ),
+            _slot(
+                "kpi_2",
+                ResolvedElementKind.TEXTBOX,
+                0.75 + THREE_COL_WIDTH_IN + COLUMN_GUTTER_IN,
+                2.50,
+                THREE_COL_WIDTH_IN,
+                2.50,
+                0,
+                "kpi",
+                SlotBinding(source="block", block_index=1),
+            ),
+            _slot(
+                "kpi_3",
+                ResolvedElementKind.TEXTBOX,
+                0.75 + (2 * THREE_COL_WIDTH_IN) + (2 * COLUMN_GUTTER_IN),
+                2.50,
+                THREE_COL_WIDTH_IN,
+                2.50,
+                0,
+                "kpi",
+                SlotBinding(source="block", block_index=2),
+            ),
+        ),
+    ),
+    "chart.full": TemplateDefinition(
+        template_key="chart.full",
+        description="Full-width chart slide with supporting citation footer.",
+        allowed_purposes=("content", "summary"),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                0.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.75,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "chart_container",
+                ResolvedElementKind.CHART,
+                0.75,
+                1.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                5.00,
+                0,
+                "chart",
+                SlotBinding(source="block", block_index=0),
+            ),
+            _slot(
+                "cite_footer",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                6.80,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.30,
+                0,
+                "citation",
+                SlotBinding(source="block_field", block_index=0, field="source_citations"),
+            ),
+        ),
+    ),
+    "table.full": TemplateDefinition(
+        template_key="table.full",
+        description="Full-width table slide.",
+        allowed_purposes=("content", "appendix"),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.75,
+                0.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                0.75,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "table_area",
+                ResolvedElementKind.TABLE,
+                0.75,
+                1.75,
+                CONTENT_WIDTH_NORMAL_IN,
+                5.00,
+                0,
+                "table",
+                SlotBinding(source="block", block_index=0),
+            ),
+        ),
+    ),
+    "appendix.details": TemplateDefinition(
+        template_key="appendix.details",
+        description="Dense appendix layout with thin margins.",
+        allowed_purposes=("appendix",),
+        strict_default=True,
+        slots=(
+            _slot(
+                "headline",
+                ResolvedElementKind.TEXTBOX,
+                0.50,
+                0.50,
+                CONTENT_WIDTH_THIN_IN,
+                0.60,
+                0,
+                "headline",
+                SlotBinding(source="headline"),
+            ),
+            _slot(
+                "dense_content",
+                ResolvedElementKind.TEXTBOX,
+                0.50,
+                1.20,
+                CONTENT_WIDTH_THIN_IN,
+                5.80,
+                0,
+                "dense_body",
+                SlotBinding(source="block", block_index=0),
+            ),
+        ),
+    ),
 }
+
 
 TEMPLATE_ALIASES: Final[dict[str, str]] = {
-    "2col.text_image": "content.2col.text_image",
-    "3col.cards": "content.3col.cards",
     "title": "title.hero",
+    "hero": "title.hero",
+    "title_slide": "title.hero",
+    "agenda": "agenda.list",
+    "section": "section.header",
+    "section.divider": "section.header",
+    "content": "content.1col",
+    "1col": "content.1col",
+    "single_col": "content.1col",
+    "2col.text_image": "content.2col.text_image",
+    "content.2col": "content.2col.text_image",
+    "text_image": "content.2col.text_image",
+    "3col.cards": "content.3col.cards",
+    "cards.3up": "content.3col.cards",
+    "compare.3up": "content.3col.cards",
+    "kpi": "kpi.3up",
+    "kpi_cards": "kpi.3up",
+    "chart": "chart.full",
+    "chart_focus": "chart.full",
+    "table": "table.full",
+    "appendix": "appendix.details",
+    "details": "appendix.details",
+    "backup": "appendix.details",
 }
+
+
+def canonical_template_key(template_key: str) -> str:
+    normalized = template_key.strip()
+    return TEMPLATE_ALIASES.get(normalized, normalized)
+
+
+def get_template_definition(template_key: str) -> TemplateDefinition:
+    canonical_key = canonical_template_key(template_key)
+    try:
+        return TEMPLATE_REGISTRY[canonical_key]
+    except KeyError as exc:
+        raise ValueError(f"unknown template_key: {template_key}") from exc
+
+
+def list_template_keys() -> tuple[str, ...]:
+    return tuple(TEMPLATE_REGISTRY.keys())

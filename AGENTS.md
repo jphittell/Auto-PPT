@@ -1,127 +1,161 @@
-# AGENTS.md — AI PPTX Generation System
+# AGENTS.md - AI PPTX Generation System
 
 ## Project overview
 
-This repo implements a six-stage, schema-driven pipeline for generating visually polished `.pptx`
-presentations from raw source material (PDFs, text, URLs, structured data). It is modeled after
-the hybrid architectures used by production AI presentation tools (Gamma, Beautiful.ai, Microsoft
-Copilot in PowerPoint).
+This repo is building a six-stage, schema-driven pipeline for generating `.pptx` presentations
+from raw source material such as PDFs, text, URLs, and structured data.
 
-The pipeline is **not** a single LLM call that emits slide content. It is a sequence of discrete
-services, each with strict JSON input/output contracts defined as Pydantic v2 models.
+Treat this file as:
 
----
+- the policy layer for how the repo should evolve
+- the target architecture for the full system
 
-## Pipeline stages (in order)
+Do not treat it as proof that every described module already exists.
 
-| # | Service | Input | Output |
-|---|---------|-------|--------|
-| 1 | **Ingestion** | Raw files / URLs / records | `IngestionRequest` + `ContentObject[]` |
-| 2 | **Indexing** | `ContentObject[]` | Vector index + metadata store |
-| 3 | **Planning** | User brief + vector index | `PresentationSpec` (SlideSpec JSON) |
-| 4 | **Layout** | `PresentationSpec` | `ResolvedDeckLayout` |
-| 5 | **Assets** | Block `data_ref` fields | Cached local image/chart paths |
-| 6 | **Renderer** | `ResolvedDeckLayout` + assets | `.pptx` file + `QAReport` |
+## Ground truth first
 
-Each stage reads the previous stage's schema output. **No stage may reach into another stage's
-internal logic or bypass its schema boundary.**
+Before editing:
 
----
+1. Inspect the real repository tree.
+2. Align your work to the files that actually exist today.
+3. Only create missing modules when the task clearly requires them.
 
-## Absolute rules — always follow these
+Current implementation is partial and scaffolded. Some files described below are planned targets,
+not guaranteed present.
 
-1. **Schema-first.** Every inter-service boundary uses a Pydantic v2 model defined in that
-   service's `schemas.py`. All models use `model_config = ConfigDict(extra='forbid')`. Do not
-   pass raw dicts between services.
+## Centralized skills
 
-2. **No remote URLs in the PPTX.** All external image assets must be downloaded and cached
-   locally by the Asset service before the Renderer runs. Image URLs expire; embedding them
-   directly causes broken presentations.
+Repo skills are centralized under the repo `Skills/` directory, not inside each service folder.
 
-3. **JSON mode for all LLM calls.** Every call to the LLM in the Planning service must use
-   structured output / JSON mode. The LLM must never return free-form text where a schema is
-   expected.
+Current centralized skills:
 
-4. **Citations are immutable after Step 4.** The Step 5 design revision prompt may add citations
-   but must never remove them. Citation coverage is a QA gate.
+- `Skills/pptx-ingestion`
+- `Skills/pptx-indexing`
+- `Skills/pptx-planning`
+- `Skills/pptx-layout`
+- `Skills/pptx-renderer`
+- `Skills/pptx-tests`
 
-5. **QA before artifact delivery.** `renderer/qa.py` validators (overflow, overlap, alignment,
-   contrast, citation coverage, asset accessibility) must all pass before the `.pptx` is returned.
-   A failing QA check raises, it does not warn.
+Before changing ingestion, indexing, planning, layout, renderer, or tests:
 
-6. **Outline-first, always.** The Planning service runs the full five-step chain in order. Do not
-   skip or merge steps. Step 2 (outline) must complete and be validated before Step 3 (retrieval
-   planning) begins.
+1. Read the matching centralized skill in `Skills/`.
+2. Follow that skill's repo-specific guidance.
+3. Do not assume a `SKILL.md` exists inside the code directory you are editing.
 
----
+Keep repo-wide policy here in `AGENTS.md`. Do not duplicate broad global rules across skills
+unless the repetition is necessary for correct triggering.
 
-## Project structure
+## Architecture target
 
+The intended pipeline is:
+
+1. Ingestion
+2. Indexing
+3. Planning
+4. Layout
+5. Assets
+6. Renderer
+
+Each stage should consume validated output from the previous stage. No stage should bypass another
+stage's schema boundary.
+
+## Absolute rules
+
+1. Schema-first.
+   Every inter-service boundary should use a Pydantic v2 model with `ConfigDict(extra="forbid")`.
+   Do not silently pass raw dicts between services once a typed model exists.
+
+2. No remote URLs in the PPTX.
+   External image assets must be downloaded and cached locally before rendering.
+
+3. JSON-only planning boundaries.
+   Planning-stage model calls must return structured JSON matching the declared contracts.
+
+4. Citations are preserved.
+   Design-revision steps may add citations but must not remove valid existing citations.
+
+5. Renderer is deterministic.
+   Layout decisions belong in layout resolution, not in export.
+
+## Current repo shape
+
+The current repo already contains a working subset, including:
+
+- `pptx_gen/ingestion/`
+- `pptx_gen/indexing/`
+- `pptx_gen/planning/`
+- `pptx_gen/layout/`
+- `pptx_gen/assets/`
+- `pptx_gen/renderer/`
+- `pptx_gen/pipeline.py`
+- `pptx_gen/cli.py`
+- `tests/conftest.py`
+- `tests/test_ingestion.py`
+- `tests/test_schemas.py`
+- `.venv/`
+- `pyproject.toml`
+
+Some architecture documents may mention files not yet implemented, such as broader schema modules
+or fuller service test coverage. Create those only when the task actually needs them.
+
+## Working conventions by area
+
+- Ingestion:
+  Preserve provenance, deterministic chunk ids, PII redaction defaults, and the lightweight PDF
+  fallback unless deliberately replacing it.
+
+- Indexing:
+  Preserve metadata round-trips for retrieval and keep vector-store concerns separate from parsing
+  and citation logic.
+
+- Planning:
+  Keep the five-step chain explicit, schema-first, and JSON-only.
+
+- Layout:
+  Keep template resolution deterministic and geometry expressed in inches.
+
+- Renderer:
+  Export from resolved layouts and local assets only. Do not "fix" layout mistakes during render.
+
+- Tests:
+  Keep tests local, deterministic, and focused on public contracts and service boundaries.
+
+## Verification requirements
+
+After any code change, run the repo's real verification commands before concluding work.
+
+Use the project virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
 ```
-pptx_gen/
-  ingestion/
-    parser.py          # structure-first parsing via unstructured
-    chunker.py         # element chunking + PII redaction
-    schemas.py         # IngestionRequest, ContentObject
-  indexing/
-    embedder.py        # SBERT encoding
-    vector_store.py    # faiss/chromadb wrapper
-    schemas.py         # ChunkRecord, RetrievalResult
-  planning/
-    prompt_chain.py    # five-step orchestration loop
-    prompts/           # one .txt or .py file per step
-    schemas.py         # DeckBrief, Outline, RetrievalPlan, PresentationSpec
-  layout/
-    resolver.py        # template_key → geometry → ResolvedDeckLayout
-    templates.py       # named template registry
-    schemas.py         # ResolvedDeckLayout, LayoutElement, StyleTokens
-  assets/
-    resolver.py        # image/chart download + local caching
-    chart_renderer.py  # matplotlib/plotly → PNG
-  renderer/
-    pptx_exporter.py   # python-pptx render loop
-    qa.py              # QAReport validators
-    schemas.py         # QAReport, QAIssue
-  pipeline.py          # orchestrates all six services end-to-end
-  cli.py               # Click CLI: `ingest` and `generate` commands
-tests/
-  test_ingestion.py
-  test_indexing.py
-  test_planning.py
-  test_layout.py
-  test_renderer.py
-  test_pipeline.py     # only end-to-end tests live here
+
+When the change is scoped, also run the most relevant targeted tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_ingestion.py -q
+.\.venv\Scripts\python.exe -m pytest tests\test_schemas.py -q
 ```
 
----
+When touching CLI-facing ingestion behavior, run a smoke command if the change warrants it:
 
-## Tech stack
+```powershell
+.\.venv\Scripts\python.exe -m pptx_gen.cli ingest tests\fixtures\sample_ingestion.pdf
+```
 
-| Purpose | Library |
-|---------|---------|
-| Schema validation | `pydantic` v2 |
-| Document parsing | `unstructured` |
-| Embeddings | `sentence-transformers` (SBERT bi-encoder) |
-| Vector index | `faiss-cpu` or `chromadb` |
-| LLM calls | `openai` with JSON mode, or `litellm` for model-agnostic use |
-| PPTX generation | `python-pptx` |
-| Chart rendering | `matplotlib` or `plotly` |
-| CLI | `click` |
-| Tests | `pytest` |
+Do not mark work complete until:
 
----
+- the affected tests pass, or
+- you clearly state which command failed, why it failed, and what remains blocked
 
-## Key schema files (read these before editing any service)
+If you changed code but did not run verification, say so explicitly and explain why.
 
-- `ingestion/schemas.py` — `IngestionRequest`, `ContentObject`, `IngestionOptions`
-- `planning/schemas.py` — `DeckBrief`, `SlideOutline`, `RetrievalPlan`, `PresentationSpec`,
-  `SlideSpec`, `Block`, `SourceCitation`, `StyleTokens`
-- `layout/schemas.py` — `ResolvedDeckLayout`, `ResolvedSlide`, `LayoutElement`, `StyleTokens`
-- `renderer/schemas.py` — `QAReport`, `QAIssue`
+## Practical editing rule
 
----
+Prefer small, verified changes over aspirational scaffolding.
 
-## Service-specific instructions
+If `AGENTS.md` and the real repo disagree:
 
-Each service directory contains a `SKILL.md` with rules specific to that service. Read the
-relevant `SKILL.md` before making changes inside that directory.
+1. trust the real repo for what exists now
+2. use `AGENTS.md` to guide the intended direction
+3. avoid creating speculative modules unless they are needed for the task at hand

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import base64
 from pathlib import Path
 
 import pytest
@@ -183,3 +184,10 @@ def make_presentation_spec(style_tokens_payload: dict, make_slide: Callable[...,
         }
 
     return factory
+
+
+@pytest.fixture()
+def tiny_png_bytes() -> bytes:
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wn0N0sAAAAASUVORK5CYII="
+    )

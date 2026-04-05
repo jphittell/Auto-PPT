@@ -256,3 +256,11 @@ def _count_words(value: Any) -> int:
         return sum(_count_words(item) for item in value.values())
     return len(re.findall(r"\b\w+\b", str(value)))
 
+
+class DesignRefinement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(default="1.0.0", pattern=SCHEMA_VERSION_PATTERN)
+    applied: bool = True
+    rationale: list[str] = Field(default_factory=list)
+    presentation_spec: PresentationSpec
