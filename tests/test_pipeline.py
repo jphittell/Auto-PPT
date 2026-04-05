@@ -45,6 +45,38 @@ def test_generate_deck_without_refinement_writes_pptx(
     assert Path(result.output_path).exists()
     assert result.export_job.status is ExportStatus.SUCCESS
     assert result.refinement_applied is False
+    assert result.resolved_layout.slides
+
+
+def test_generate_deck_from_source_runs_end_to_end(
+    tmp_path: Path,
+    deterministic_embedder,
+) -> None:
+    source_path = tmp_path / "source.txt"
+    source_path.write_text(
+        "Quarterly review. Revenue improved materially. Margin expanded after infrastructure changes. "
+        "Leadership should approve the hiring plan.",
+        encoding="utf-8",
+    )
+
+    result = generate_deck(
+        source_path=source_path,
+        output_path=tmp_path / "generated.pptx",
+        audience="Leadership team",
+        goal="Summarize quarterly performance",
+        slide_count_target=5,
+        embedder=deterministic_embedder,
+    )
+
+    assert Path(result.output_path).exists()
+    assert Path(result.artifacts_dir, "brief.json").exists()
+    assert Path(result.artifacts_dir, "presentation_spec.json").exists()
+    assert result.brief is not None
+    assert result.outline is not None
+    assert result.retrieval_plan is not None
+    assert result.ingestion_result is not None
+    assert result.export_job.status is ExportStatus.SUCCESS
+    assert result.resolved_layout.slides
 
 
 def test_revise_for_design_quality_validates_structured_output(

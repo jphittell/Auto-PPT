@@ -1,81 +1,54 @@
-## Step 3 — Retrieval Planning
+## Step 3 - Retrieval Plan
 
-Your task is to generate a structured retrieval plan: for each slide in the outline that
-requires evidence, produce up to 5 search queries and any metadata filters that should
-be applied when querying the vector index.
-
-This step makes retrieval auditable and controllable. Good queries are specific, varied,
-and target different facets of the evidence a slide needs. Poor queries are vague or
-redundant with each other.
+Produce a schema-valid `RetrievalPlan` JSON object.
 
 ## Input
 
-Slide outline (JSON):
+Outline:
 {outline_json}
 
-Available source document IDs:
+Source IDs:
 {source_ids}
 
-Active date filter (ISO date string or null):
+Minimum date:
 {min_date}
 
 ## Instructions
 
-1. Only generate retrieval entries for slides with purpose "content" or "appendix".
-   Skip title, agenda, section, and summary slides — leave them out of the output entirely.
+- Return only valid JSON for the `RetrievalPlan` schema.
+- Include entries only for `content` or `appendix` slides.
+- Each retrieval entry must include 2 to 5 `RetrievalQuery` objects.
+- Each `RetrievalQuery` object has three fields:
+    - `query`: specific natural-language search string (not a restatement of the headline)
+    - `doc_ids`: list of source IDs to restrict search to; use the full source_ids list
+      if no preference is stated
+    - `min_date`: the {min_date} value if provided, otherwise null
+- Use only the provided source ids in `doc_ids`.
+- Preserve query specificity and avoid near-duplicate queries within the same slide.
+- Include `schema_version` and `questions_for_user` at the top level.
 
-2. For each content/appendix slide, generate up to 5 queries. Each query should target a
-   different piece of evidence the slide needs:
-   - If a slide needs a statistic, write one query targeting that number
-   - If a slide needs a comparison, write queries for each side of the comparison
-   - If a slide needs a trend, write queries targeting the trend data and its time period
-   - Avoid restating the headline as a query — queries should be more specific
+## Output shape
 
-3. Populate filters.doc_ids when the brief or user request specifies that a particular
-   document should be prioritized for a slide. If no preference was stated, use the full
-   source_ids list.
-
-4. Set filters.min_date to the {min_date} value if provided, otherwise null. This filters
-   out chunks from documents older than the cutoff.
-
-## Output schema
-
-Return exactly this JSON object and nothing else:
-
+```json
 {
+  "schema_version": "1.0.0",
   "retrieval_plan": [
     {
-      "slide_id": "<string: matches slide_id from outline>",
+      "slide_id": "s3",
       "queries": [
-        "<string: specific retrieval query 1>",
-        "<string: specific retrieval query 2>"
-      ],
-      "filters": {
-        "doc_ids": ["<string: source doc id>"],
-        "min_date": "<ISO date string or null>"
-      }
+        {
+          "query": "Q1 2026 revenue growth percentage year over year",
+          "doc_ids": ["doc_q1_pdf"],
+          "min_date": null
+        },
+        {
+          "query": "Q1 revenue versus annual plan target",
+          "doc_ids": ["doc_q1_pdf", "doc_finance_model_xlsx"],
+          "min_date": null
+        }
+      ]
     }
-  ]
+  ],
+  "questions_for_user": []
 }
-
-## Query writing guidelines
-
-GOOD queries (specific, targeted):
-- "Q1 2026 revenue growth percentage year over year"
-- "customer churn rate enterprise segment 2025"
-- "infrastructure cost reduction after platform migration"
-- "NPS score improvement following onboarding redesign"
-
-BAD queries (vague, redundant, or just the headline restated):
-- "revenue"
-- "Q1 business review highlights"
-- "key metrics"
-- "what happened in Q1"
-
-## Quality checklist (verify before returning)
-
-- [ ] Only slides with purpose "content" or "appendix" appear in retrieval_plan
-- [ ] Each slide has between 2 and 5 queries
-- [ ] No two queries for the same slide are near-duplicates of each other
-- [ ] All slide_id values match exactly the slide_ids in the outline
-- [ ] filters.doc_ids contains only IDs from the provided source_ids list
+```

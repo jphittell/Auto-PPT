@@ -1,10 +1,11 @@
 {
+  "schema_version": "1.0.0",
   "title": "Q1 2026 Business Review",
   "audience": "Executive leadership team and board observers",
   "language": "en-US",
   "theme": {
     "name": "Corporate 2026",
-    "tokens": {
+    "style_tokens": {
       "fonts": {
         "heading": "Aptos Display",
         "body": "Aptos",
@@ -17,12 +18,12 @@
         "muted": "#6B7280"
       },
       "spacing": {
-        "margin_in": 0.5,
-        "gutter_in": 0.2
+        "margin_in": 0.75,
+        "gutter_in": 0.20
       },
       "images": {
         "source_policy": "provided_only",
-        "style_prompt": null
+        "style_prompt": ""
       }
     }
   },
@@ -30,357 +31,210 @@
     {
       "slide_id": "s1",
       "purpose": "title",
-      "layout_intent": {
-        "template_key": "title.hero",
-        "strict_template": true
-      },
+      "layout_intent": { "template_key": "title.hero", "strict_template": true },
       "headline": "Q1 2026 Business Review",
-      "speaker_notes": "Welcome the leadership team. Set context: this deck covers Q1 financials, three segment highlights, two escalation items, and the H1 hiring plan. Expect 25 minutes for the deck plus 10 for discussion.",
+      "speaker_notes": "Welcome the leadership team. This deck covers Q1 financials, segment highlights, two escalation items, and the H1 hiring plan.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "text",
-          "content": {
-            "text": "Financial Results and Strategic Actions — April 2026"
-          },
+          "content": { "text": "Financial Results — April 2026" },
           "source_citations": [],
-          "style_overrides": {
-            "emphasis": "low",
-            "color_role": "muted"
-          }
+          "asset_refs": []
         }
       ]
     },
     {
       "slide_id": "s2",
       "purpose": "agenda",
-      "layout_intent": {
-        "template_key": "agenda",
-        "strict_template": true
-      },
+      "layout_intent": { "template_key": "agenda.list", "strict_template": true },
       "headline": "Agenda",
-      "speaker_notes": "Walk through the four sections briefly. Flag that slides 6 and 7 are the action items that require board input before the meeting closes.",
+      "speaker_notes": "Four sections: revenue and margin, segment highlights, two operational risks, and the H1 hiring plan approval.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "bullets",
           "content": {
             "items": [
-              "Q1 Revenue and margin performance",
-              "Segment highlights: NA, EMEA, APAC",
-              "Two operational risks for escalation",
-              "H1 2026 hiring plan approval request"
+              "Q1 revenue and margin performance",
+              "APAC segment highlight",
+              "Two operational risks",
+              "H1 hiring plan approval"
             ]
           },
           "source_citations": [],
-          "style_overrides": {
-            "emphasis": "none",
-            "color_role": "primary"
-          }
+          "asset_refs": []
         }
       ]
     },
     {
       "slide_id": "s3",
       "purpose": "content",
-      "layout_intent": {
-        "template_key": "kpi.3up",
-        "strict_template": true
-      },
+      "layout_intent": { "template_key": "kpi.3up", "strict_template": true },
       "headline": "Revenue Hit $29.3M, Up 18% YoY",
-      "speaker_notes": "Emphasize that this is the fourth consecutive quarter of accelerating growth. The 4% beat vs. plan is meaningful given the plan was already raised at the start of the year. NA remains the largest segment but APAC is closing the gap.",
+      "speaker_notes": "Fourth consecutive quarter of accelerating growth. The 4% beat vs plan is significant given the plan was raised at the year start.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "callout",
-          "content": {
-            "label": "Total Revenue",
-            "value": "$29.3M",
-            "delta": "+18% YoY",
-            "sub_label": "Q1 2026"
-          },
+          "content": { "label": "Revenue", "value": "$29.3M", "delta": "+18% YoY" },
           "source_citations": [
-            {
-              "source_id": "doc_q1_pdf",
-              "locator": "doc_q1_pdf:page2",
-              "quote": "Total Q1 2026 revenue of $29.3M"
-            }
+            { "source_id": "doc_q1_pdf", "locator": "doc_q1_pdf:page2", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "high",
-            "color_role": "accent"
-          }
+          "asset_refs": []
         },
         {
           "block_id": "b2",
           "kind": "callout",
-          "content": {
-            "label": "vs. Plan",
-            "value": "+4%",
-            "delta": null,
-            "sub_label": "Beat"
-          },
+          "content": { "label": "vs Plan", "value": "+4%", "delta": null },
           "source_citations": [
-            {
-              "source_id": "doc_finance_model_xlsx",
-              "locator": "doc_finance_model_xlsx:page1",
-              "quote": null
-            }
+            { "source_id": "doc_finance_model_xlsx", "locator": "doc_finance_model_xlsx:page1", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "high",
-            "color_role": "accent"
-          }
+          "asset_refs": []
         },
         {
           "block_id": "b3",
           "kind": "callout",
-          "content": {
-            "label": "QoQ Growth",
-            "value": "+6%",
-            "delta": "vs. +4% in Q4",
-            "sub_label": "Accelerating"
-          },
+          "content": { "label": "QoQ Growth", "value": "+6%", "delta": "vs +4% Q4" },
           "source_citations": [
-            {
-              "source_id": "doc_q1_pdf",
-              "locator": "doc_q1_pdf:page2",
-              "quote": null
-            }
+            { "source_id": "doc_q1_pdf", "locator": "doc_q1_pdf:page2", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "high",
-            "color_role": "accent"
-          }
+          "asset_refs": []
         }
       ]
     },
     {
       "slide_id": "s4",
       "purpose": "content",
-      "layout_intent": {
-        "template_key": "2col.text_image",
-        "strict_template": true
-      },
+      "layout_intent": { "template_key": "content.2col.text_image", "strict_template": true },
       "headline": "Gross Margin Expanded 210bps to 64.4%",
-      "speaker_notes": "The margin story is infrastructure-led. The NA Kubernetes migration completed in February and cut compute costs by 22%. EMEA followed a similar playbook. APAC margin is still negative on an infrastructure basis due to the new Seoul data center, but that normalizes in Q3.",
+      "speaker_notes": "NA Kubernetes migration cut compute costs 22%. EMEA followed the same playbook. APAC drag from Seoul data center normalizes in Q3.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "bullets",
           "content": {
             "items": [
-              "NA compute costs fell 22% after Kubernetes migration completed in February",
-              "EMEA infrastructure replication of NA playbook delivered 180bps alone",
-              "APAC margin drag from Seoul data center normalizes in Q3 2026"
+              "NA compute costs fell 22% post-migration",
+              "EMEA replication delivered 180bps of margin",
+              "APAC drag normalizes in Q3 2026"
             ]
           },
           "source_citations": [
-            {
-              "source_id": "doc_q1_pdf",
-              "locator": "doc_q1_pdf:page4",
-              "quote": "gross margin of 64.4%, up 210 basis points quarter-over-quarter"
-            },
-            {
-              "source_id": "doc_finance_model_xlsx",
-              "locator": "doc_finance_model_xlsx:page3",
-              "quote": null
-            }
+            { "source_id": "doc_q1_pdf", "locator": "doc_q1_pdf:page4", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "none",
-            "color_role": "primary"
-          }
+          "asset_refs": []
         },
         {
           "block_id": "b2",
-          "kind": "chart",
-          "content": {
-            "chart_type": "bar",
-            "data": [
-              {"label": "Q1 2025", "value": 62.3},
-              {"label": "Q2 2025", "value": 62.8},
-              {"label": "Q3 2025", "value": 63.1},
-              {"label": "Q4 2025", "value": 62.2},
-              {"label": "Q1 2026", "value": 64.4}
-            ],
-            "x_label": "Quarter",
-            "y_label": "Gross Margin %"
-          },
+          "kind": "image",
+          "content": { "alt_text": "Gross margin trend Q1 2025 to Q1 2026" },
           "source_citations": [
-            {
-              "source_id": "doc_finance_model_xlsx",
-              "locator": "doc_finance_model_xlsx:page2",
-              "quote": null
-            }
+            { "source_id": "doc_finance_model_xlsx", "locator": "doc_finance_model_xlsx:page2", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "medium",
-            "color_role": "accent"
-          }
+          "asset_refs": []
         }
       ]
     },
     {
       "slide_id": "s5",
       "purpose": "content",
-      "layout_intent": {
-        "template_key": "bullets.5",
-        "strict_template": true
-      },
-      "headline": "APAC Is Now Our Fastest-Growing Segment",
-      "speaker_notes": "APAC pipeline growth of 31% QoQ is being driven by three new enterprise logos signed in February and March. The Singapore and Tokyo offices are now fully staffed. The risk is that we are pipeline-heavy but conversion lag is still 90+ days, so Q2 recognized revenue from APAC may disappoint before recovering in Q3.",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "APAC Is Our Fastest-Growing Segment",
+      "speaker_notes": "Pipeline growth of 31% QoQ driven by three new enterprise logos in Singapore and Tokyo. CAC fell 14% as referral channel scaled.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "bullets",
           "content": {
             "items": [
-              "Pipeline grew 31% QoQ — second consecutive quarter of segment leadership",
-              "Three new enterprise logos signed: two in Singapore, one in Tokyo",
-              "90-day retention for APAC cohort up 9 points after onboarding redesign",
-              "CAC fell 14% QoQ as referral channel scaled to 28% of new bookings"
+              "Pipeline grew 31% QoQ — second consecutive quarter of leadership",
+              "Three enterprise logos signed in Singapore and Tokyo",
+              "CAC fell 14% as referral reached 28% of bookings"
             ]
           },
           "source_citations": [
-            {
-              "source_id": "doc_apac_pipeline_report",
-              "locator": "doc_apac_pipeline_report:page1",
-              "quote": "APAC pipeline grew 31% quarter-over-quarter"
-            },
-            {
-              "source_id": "doc_apac_pipeline_report",
-              "locator": "doc_apac_pipeline_report:page3",
-              "quote": null
-            }
+            { "source_id": "doc_apac_pipeline_report", "locator": "doc_apac_pipeline_report:page1", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "none",
-            "color_role": "primary"
-          }
+          "asset_refs": []
         }
       ]
     },
     {
       "slide_id": "s6",
       "purpose": "content",
-      "layout_intent": {
-        "template_key": "2col.text_text",
-        "strict_template": true
-      },
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
       "headline": "Two Risks Require Board Attention",
-      "speaker_notes": "Both risks are flagged as amber. The supplier concentration issue is structural — 71% of our data pipeline volume flows through a single vendor whose contract is up for renewal in August. The EMEA CAC increase is likely cyclical but the data is only two months old so we are not yet confident in the root cause.",
+      "speaker_notes": "Risk 1 is structural — 71% of data pipeline through one vendor renewing in August. Risk 2 EMEA CAC is only two months old.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "bullets",
           "content": {
             "items": [
-              "Risk 1: Supplier concentration — 71% of data pipeline volume through one vendor",
-              "Contract renewal due August 2026; no backup vendor currently qualified",
-              "Recommended action: begin dual-vendor qualification by May 1"
+              "Supplier: 71% pipeline via one vendor, contract renews August 2026",
+              "EMEA CAC up 23% over two months, root cause unconfirmed",
+              "Actions: dual-vendor by May 1, EMEA GTM review by April 30"
             ]
           },
           "source_citations": [
-            {
-              "source_id": "doc_q1_pdf",
-              "locator": "doc_q1_pdf:page8",
-              "quote": null
-            }
+            { "source_id": "doc_q1_pdf", "locator": "doc_q1_pdf:page8", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "medium",
-            "color_role": "primary"
-          }
-        },
-        {
-          "block_id": "b2",
-          "kind": "bullets",
-          "content": {
-            "items": [
-              "Risk 2: EMEA CAC up 23% over two months — root cause not yet confirmed",
-              "Hypothesis: competitive pressure from new entrant in DACH market",
-              "Recommended action: EMEA GTM review by end of April"
-            ]
-          },
-          "source_citations": [
-            {
-              "source_id": "doc_q1_pdf",
-              "locator": "doc_q1_pdf:page9",
-              "quote": null
-            }
-          ],
-          "style_overrides": {
-            "emphasis": "medium",
-            "color_role": "primary"
-          }
+          "asset_refs": []
         }
       ]
     },
     {
       "slide_id": "s7",
       "purpose": "content",
-      "layout_intent": {
-        "template_key": "table.full",
-        "strict_template": true
-      },
-      "headline": "H1 Hiring Plan: 18 Roles, $2.4M Investment",
-      "speaker_notes": "The 18 roles break down as 9 engineering, 4 data science, and 5 APAC sales. All are backfilled or net-new based on the H2 revenue model. The $2.4M total cost is within the approved opex envelope. We are asking for board ratification today so recruiting can begin in the first week of May.",
+      "layout_intent": { "template_key": "table.full", "strict_template": true },
+      "headline": "H1 Hiring Plan: 18 Roles, $2.4M",
+      "speaker_notes": "Nine engineering, four data science, five APAC sales. Within approved opex. Board ratification today allows recruiting to begin May 1.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "table",
           "content": {
-            "columns": ["Team", "Roles", "Start Quarter", "Fully Loaded Cost"],
+            "columns": ["Team", "Roles", "Quarter", "Cost"],
             "rows": [
-              ["Engineering", "9", "Q2 2026", "$1.35M"],
-              ["Data Science", "4", "Q2 2026", "$0.62M"],
-              ["APAC Sales", "5", "Q2–Q3 2026", "$0.43M"],
+              ["Engineering", "9", "Q2", "$1.35M"],
+              ["Data Science", "4", "Q2", "$0.62M"],
+              ["APAC Sales", "5", "Q2-Q3", "$0.43M"],
               ["Total", "18", "—", "$2.40M"]
             ]
           },
           "source_citations": [
-            {
-              "source_id": "doc_finance_model_xlsx",
-              "locator": "doc_finance_model_xlsx:page5",
-              "quote": null
-            }
+            { "source_id": "doc_finance_model_xlsx", "locator": "doc_finance_model_xlsx:page5", "quote": null }
           ],
-          "style_overrides": {
-            "emphasis": "none",
-            "color_role": "primary"
-          }
+          "asset_refs": []
         }
       ]
     },
     {
       "slide_id": "s8",
       "purpose": "summary",
-      "layout_intent": {
-        "template_key": "summary",
-        "strict_template": true
-      },
-      "headline": "Q1 Strong — Two Actions Needed Now",
-      "speaker_notes": "Close with a call to action. The board needs to do two things today: approve the 18-role hiring plan and mandate the supplier diversification review with a May 1 deadline. Everything else is informational.",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Q1 Strong — Two Actions Needed",
+      "speaker_notes": "Close with two board actions: approve the hiring plan and mandate the supplier review. Everything else is informational.",
       "blocks": [
         {
           "block_id": "b1",
           "kind": "bullets",
           "content": {
             "items": [
-              "Q1 revenue of $29.3M beat plan by 4% with accelerating YoY growth",
-              "Margin expansion and APAC momentum confirm the operating model is working",
-              "Action 1: Approve 18-role H1 hiring plan ($2.4M within opex envelope)",
-              "Action 2: Mandate supplier diversification review — deadline May 1"
+              "Revenue beat plan 4%, margin up 210bps — model confirmed",
+              "Approve 18-role H1 plan, $2.4M within opex envelope",
+              "Mandate supplier diversification review, deadline May 1"
             ]
           },
-          "source_citations": [],
-          "style_overrides": {
-            "emphasis": "none",
-            "color_role": "primary"
-          }
+          "source_citations": [
+            { "source_id": "doc_q1_pdf", "locator": "doc_q1_pdf:page2", "quote": null },
+            { "source_id": "doc_finance_model_xlsx", "locator": "doc_finance_model_xlsx:page5", "quote": null }
+          ],
+          "asset_refs": []
         }
       ]
     }
-  ]
+  ],
+  "questions_for_user": []
 }

@@ -1,26 +1,41 @@
-"""Top-level orchestration for ingestion, indexing, and deterministic deck export."""
+"""Top-level orchestration for the schema-first PPTX generation pipeline."""
 
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pptx_gen.assets.resolver import AssetManifest, ResolvedAssetBundle, resolve_assets
 from pptx_gen.ingestion.chunker import chunk_document
 from pptx_gen.ingestion.parser import parse_source
 from pptx_gen.ingestion.schemas import ChunkRecord, IngestionOptions, IngestionRequest
 from pptx_gen.indexing.embedder import SentenceTransformerEmbedder, SupportsEmbedding
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.layout.resolver import resolve_deck_layout
-from pptx_gen.layout.schemas import ResolvedDeckLayout
-from pptx_gen.planning.prompt_chain import StructuredLLMClient, revise_for_design_quality
-from pptx_gen.planning.schemas import PresentationSpec
+from pptx_gen.layout.schemas import ResolvedDeckLayout, StyleTokens
+from pptx_gen.planning.prompt_chain import (
+    StructuredLLMClient,
+    build_retrieval_plan,
+    collect_deck_brief,
+    execute_retrieval_plan,
+    generate_outline,
+    generate_presentation_spec,
+    revise_for_design_quality,
+)
+from pptx_gen.planning.schemas import DeckBrief, OutlineSpec, PresentationSpec, RetrievalPlan
 from pptx_gen.renderer.pptx_exporter import export_pptx
 from pptx_gen.renderer.qa import QAReport, validate_export, validate_layout
+
+
+DEFAULT_STYLE_TOKENS = {
+    "fonts": {"heading": "Aptos Display", "body": "Aptos", "mono": "Cascadia Code"},
+    "colors": {"bg": "#FFFFFF", "text": "#111111", "accent": "#0A84FF", "muted": "#6B7280"},
+    "spacing": {"margin_in": 0.5, "gutter_in": 0.25},
+    "images": {"source_policy": "provided_only", "style_prompt": "clean editorial visuals"},
+}
 
 
 class ExportStatus(str, Enum):
@@ -90,8 +105,14 @@ class DeckGenerationResult(BaseModel):
     export_report: QAReport
     export_job: ExportJob
     output_path: str
+    artifacts_dir: str
+    asset_manifest: AssetManifest
     refinement_applied: bool = False
     refinement_status: str = Field(min_length=1)
+    brief: DeckBrief | None = None
+    outline: OutlineSpec | None = None
+    retrieval_plan: RetrievalPlan | None = None
+    ingestion_result: IngestionIndexResult | None = None
 
 
 def ingest_and_index(
@@ -124,25 +145,99 @@ def ingest_and_index(
 
 def generate_deck(
     *,
-    presentation_spec: PresentationSpec,
     output_path: str | Path,
+    source_path: str | Path | None = None,
+    presentation_spec: PresentationSpec | None = None,
+    audience: str | None = None,
+    goal: str | None = None,
+    tone: str = "executive",
+    slide_count_target: int = 6,
+    title: str | None = None,
     template_path: str | Path | None = None,
     enable_refinement: bool = False,
     llm_client: StructuredLLMClient | None = None,
     user_brief: str | None = None,
+    language: str = "en-US",
+    style_tokens: StyleTokens | None = None,
+    theme_name: str = "Auto PPT",
+    ingest_options: IngestionOptions | None = None,
+    embedder: SupportsEmbedding | None = None,
+    vector_store: InMemoryVectorStore | None = None,
 ) -> DeckGenerationResult:
-    """Resolve, validate, render, and optionally refine a deck once before delivery."""
-
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    first_pass_path = output_path if not enable_refinement else output_path.with_name(f"{output_path.stem}.first-pass{output_path.suffix}")
+    artifacts_dir = output_path.parent / f"{output_path.stem}_artifacts"
+    assets_dir = artifacts_dir / "assets"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    first_layout = resolve_deck_layout(presentation_spec)
-    first_layout_report = validate_layout(first_layout, style_tokens=presentation_spec.theme.style_tokens)
+    style_tokens = style_tokens or StyleTokens(**DEFAULT_STYLE_TOKENS)
+    embedder = embedder or SentenceTransformerEmbedder()
+    vector_store = vector_store or InMemoryVectorStore()
+
+    brief: DeckBrief | None = None
+    outline: OutlineSpec | None = None
+    retrieval_plan: RetrievalPlan | None = None
+    ingestion_result: IngestionIndexResult | None = None
+
+    if presentation_spec is None:
+        if source_path is None:
+            raise ValueError("generate_deck requires source_path when presentation_spec is not provided")
+        if not audience:
+            raise ValueError("generate_deck requires audience when generating from source content")
+        if not goal:
+            raise ValueError("generate_deck requires goal when generating from source content")
+
+        ingestion_result = ingest_and_index(
+            source_path,
+            title=title,
+            language=language,
+            options=ingest_options,
+            embedder=embedder,
+            vector_store=vector_store,
+        )
+        brief = collect_deck_brief(
+            user_request=user_brief or goal,
+            audience=audience,
+            goal=goal,
+            tone=tone,
+            slide_count_target=slide_count_target,
+            source_corpus_ids=[ingestion_result.source_id],
+            document_title=title or ingestion_result.ingestion_request.document.title,
+            source_texts=[chunk.text for chunk in ingestion_result.chunks],
+            llm_client=llm_client,
+        )
+        outline = generate_outline(brief, llm_client=llm_client)
+        retrieval_plan = build_retrieval_plan(brief, outline, llm_client=llm_client)
+        retrieved_chunks = execute_retrieval_plan(retrieval_plan, vector_store=vector_store, embedder=embedder)
+        presentation_spec = generate_presentation_spec(
+            brief,
+            outline,
+            retrieved_chunks,
+            deck_title=title or ingestion_result.ingestion_request.document.title or "Untitled Presentation",
+            style_tokens=style_tokens,
+            theme_name=theme_name,
+            language=language,
+            llm_client=llm_client,
+        )
+        _persist_json(artifacts_dir / "brief.json", brief)
+        _persist_json(artifacts_dir / "outline.json", outline)
+        _persist_json(artifacts_dir / "retrieval_plan.json", retrieval_plan)
+    else:
+        if not isinstance(presentation_spec, PresentationSpec):
+            presentation_spec = PresentationSpec.model_validate(presentation_spec)
+
+    _persist_json(artifacts_dir / "presentation_spec.json", presentation_spec)
+
+    first_pass_path = output_path if not enable_refinement else output_path.with_name(f"{output_path.stem}.first-pass{output_path.suffix}")
+    first_bundle = _resolve_and_validate_assets(presentation_spec, assets_dir)
+    layout_report = validate_layout(first_bundle.resolved_layout, style_tokens=presentation_spec.theme.style_tokens)
+    _persist_json(artifacts_dir / "layout_report.json", layout_report)
+    _persist_json(artifacts_dir / "asset_manifest.json", first_bundle.manifest)
+
     first_render_error: Exception | None = None
     try:
         export_pptx(
-            layout=first_layout,
+            layout=first_bundle.resolved_layout,
             style_tokens=presentation_spec.theme.style_tokens,
             output_path=first_pass_path,
             template_path=template_path,
@@ -150,41 +245,41 @@ def generate_deck(
     except Exception as exc:
         first_render_error = exc
 
-    first_export_report = validate_export(
+    export_report = validate_export(
         first_pass_path,
-        layout=first_layout,
+        layout=first_bundle.resolved_layout,
         style_tokens=presentation_spec.theme.style_tokens,
         render_error=first_render_error,
     )
+    _persist_json(artifacts_dir / "export_report.json", export_report)
     if first_render_error is not None:
-        return DeckGenerationResult(
+        return _failed_result(
             presentation_spec=presentation_spec,
-            resolved_layout=first_layout,
-            layout_report=first_layout_report,
-            export_report=first_export_report,
-            export_job=ExportJob(
-                id=_job_id_from_path(output_path),
-                kind=ExportKind.RENDER_PPTX,
-                status=ExportStatus.FAILED,
-                error=ExportError(code="render_failed", message=str(first_render_error)),
-            ),
-            output_path=str(first_pass_path),
-            refinement_applied=False,
+            resolved_layout=first_bundle.resolved_layout,
+            layout_report=layout_report,
+            export_report=export_report,
+            output_path=first_pass_path,
+            artifacts_dir=artifacts_dir,
+            asset_manifest=first_bundle.manifest,
+            brief=brief,
+            outline=outline,
+            retrieval_plan=retrieval_plan,
+            ingestion_result=ingestion_result,
+            message=str(first_render_error),
             refinement_status="render failed before refinement",
+            refinement_applied=False,
         )
 
-    refinement_status = "refinement disabled"
-    resolved_layout = first_layout
-    layout_report = first_layout_report
-    export_report = first_export_report
-    final_spec = presentation_spec
     refinement_applied = False
+    refinement_status = "refinement disabled"
+    final_bundle = first_bundle
+    final_spec = presentation_spec
 
     if enable_refinement:
         try:
             revised_spec, refinement_status, refinement_applied = revise_for_design_quality(
                 presentation_spec,
-                qa_report_json=first_export_report.model_dump_json(indent=2),
+                qa_report_json=export_report.model_dump_json(indent=2),
                 render_artifact_path=first_pass_path,
                 llm_client=llm_client,
                 user_brief=user_brief,
@@ -197,12 +292,15 @@ def generate_deck(
 
         if refinement_applied:
             final_spec = revised_spec
-            resolved_layout = resolve_deck_layout(final_spec)
-            layout_report = validate_layout(resolved_layout, style_tokens=final_spec.theme.style_tokens)
+            _persist_json(artifacts_dir / "presentation_spec.refined.json", final_spec)
+            final_bundle = _resolve_and_validate_assets(final_spec, assets_dir)
+            layout_report = validate_layout(final_bundle.resolved_layout, style_tokens=final_spec.theme.style_tokens)
+            _persist_json(artifacts_dir / "layout_report.json", layout_report)
+            _persist_json(artifacts_dir / "asset_manifest.json", final_bundle.manifest)
             final_render_error: Exception | None = None
             try:
                 export_pptx(
-                    layout=resolved_layout,
+                    layout=final_bundle.resolved_layout,
                     style_tokens=final_spec.theme.style_tokens,
                     output_path=output_path,
                     template_path=template_path,
@@ -211,54 +309,113 @@ def generate_deck(
                 final_render_error = exc
             export_report = validate_export(
                 output_path,
-                layout=resolved_layout,
+                layout=final_bundle.resolved_layout,
                 style_tokens=final_spec.theme.style_tokens,
                 render_error=final_render_error,
             )
+            _persist_json(artifacts_dir / "export_report.json", export_report)
             if final_render_error is not None:
-                return DeckGenerationResult(
+                return _failed_result(
                     presentation_spec=final_spec,
-                    resolved_layout=resolved_layout,
+                    resolved_layout=final_bundle.resolved_layout,
                     layout_report=layout_report,
                     export_report=export_report,
-                    export_job=ExportJob(
-                        id=_job_id_from_path(output_path),
-                        kind=ExportKind.RENDER_PPTX,
-                        status=ExportStatus.FAILED,
-                        error=ExportError(code="render_failed", message=str(final_render_error)),
-                    ),
-                    output_path=str(output_path),
-                    refinement_applied=True,
+                    output_path=output_path,
+                    artifacts_dir=artifacts_dir,
+                    asset_manifest=final_bundle.manifest,
+                    brief=brief,
+                    outline=outline,
+                    retrieval_plan=retrieval_plan,
+                    ingestion_result=ingestion_result,
+                    message=str(final_render_error),
                     refinement_status=refinement_status,
+                    refinement_applied=True,
                 )
         else:
             shutil.copyfile(first_pass_path, output_path)
             export_report = validate_export(
                 output_path,
-                layout=resolved_layout,
+                layout=first_bundle.resolved_layout,
                 style_tokens=final_spec.theme.style_tokens,
             )
+            _persist_json(artifacts_dir / "export_report.json", export_report)
     else:
-        export_report = first_export_report
+        pass
 
-    export_status = ExportStatus.SUCCESS if export_report.passed else ExportStatus.FAILED
-    artifact_urls = [str(output_path)] if output_path.exists() else None
+    status = ExportStatus.SUCCESS if export_report.passed else ExportStatus.FAILED
+    artifact_urls = [str(output_path)] if output_path.exists() and status is ExportStatus.SUCCESS else None
     return DeckGenerationResult(
         presentation_spec=final_spec,
+        resolved_layout=final_bundle.resolved_layout,
+        layout_report=layout_report,
+        export_report=export_report,
+        export_job=ExportJob(
+            id=_job_id_from_path(output_path),
+            kind=ExportKind.RENDER_PPTX,
+            status=status,
+            artifact_urls=artifact_urls,
+            error=None if status is ExportStatus.SUCCESS else ExportError(code="qa_failed", message=export_report.design_summary),
+        ),
+        output_path=str(output_path),
+        artifacts_dir=str(artifacts_dir),
+        asset_manifest=final_bundle.manifest,
+        refinement_applied=refinement_applied,
+        refinement_status=refinement_status,
+        brief=brief,
+        outline=outline,
+        retrieval_plan=retrieval_plan,
+        ingestion_result=ingestion_result,
+    )
+
+
+def _resolve_and_validate_assets(spec: PresentationSpec, assets_dir: Path) -> ResolvedAssetBundle:
+    layout = resolve_deck_layout(spec)
+    return resolve_assets(layout, cache_dir=assets_dir)
+
+
+def _failed_result(
+    *,
+    presentation_spec: PresentationSpec,
+    resolved_layout: ResolvedDeckLayout,
+    layout_report: QAReport,
+    export_report: QAReport,
+    output_path: Path,
+    artifacts_dir: Path,
+    asset_manifest: AssetManifest,
+    brief: DeckBrief | None,
+    outline: OutlineSpec | None,
+    retrieval_plan: RetrievalPlan | None,
+    ingestion_result: IngestionIndexResult | None,
+    message: str,
+    refinement_status: str,
+    refinement_applied: bool,
+) -> DeckGenerationResult:
+    return DeckGenerationResult(
+        presentation_spec=presentation_spec,
         resolved_layout=resolved_layout,
         layout_report=layout_report,
         export_report=export_report,
         export_job=ExportJob(
             id=_job_id_from_path(output_path),
             kind=ExportKind.RENDER_PPTX,
-            status=export_status,
-            artifact_urls=artifact_urls if export_status is ExportStatus.SUCCESS else None,
-            error=None if export_status is ExportStatus.SUCCESS else ExportError(code="qa_failed", message=export_report.design_summary),
+            status=ExportStatus.FAILED,
+            error=ExportError(code="render_failed", message=message),
         ),
         output_path=str(output_path),
+        artifacts_dir=str(artifacts_dir),
+        asset_manifest=asset_manifest,
         refinement_applied=refinement_applied,
         refinement_status=refinement_status,
+        brief=brief,
+        outline=outline,
+        retrieval_plan=retrieval_plan,
+        ingestion_result=ingestion_result,
     )
+
+
+def _persist_json(path: Path, model: BaseModel) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(model.model_dump_json(indent=2), encoding="utf-8")
 
 
 def _job_id_from_path(output_path: Path) -> str:

@@ -20,8 +20,8 @@ Before editing:
 2. Align your work to the files that actually exist today.
 3. Only create missing modules when the task clearly requires them.
 
-Current implementation is partial and scaffolded. Some files described below are planned targets,
-not guaranteed present.
+Current implementation is partial but no longer just scaffolded. Some files described below are
+planned targets, not guaranteed present.
 
 ## Centralized skills
 
@@ -98,6 +98,16 @@ The current repo already contains a working subset, including:
 Some architecture documents may mention files not yet implemented, such as broader schema modules
 or fuller service test coverage. Create those only when the task actually needs them.
 
+Current local implementation reality:
+
+- ingestion and indexing are real
+- planning has a working schema-validated deterministic fallback plus a structured LLM boundary
+- layout has a deterministic template registry and resolver
+- assets resolve local images and render chart specs to local PNG files
+- renderer exports `.pptx` from resolved layouts and local assets
+- QA runs structured deterministic checks before final delivery
+- CLI `generate` exists, but always inspect the current local file before assuming behavior
+
 ## Working conventions by area
 
 - Ingestion:
@@ -141,6 +151,7 @@ When touching CLI-facing ingestion behavior, run a smoke command if the change w
 
 ```powershell
 .\.venv\Scripts\python.exe -m pptx_gen.cli ingest tests\fixtures\sample_ingestion.pdf
+.\.venv\Scripts\python.exe -m pptx_gen.cli generate tests\fixtures\sample_ingestion.pdf --output out\sample.pptx --audience "Executive leadership" --goal "Summarize the source"
 ```
 
 Do not mark work complete until:
