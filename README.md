@@ -1,4 +1,4 @@
-# AI PPTX Generator
+# Auto-PPT
 
 Phase 1 bootstrap for an AI presentation generation pipeline that:
 
@@ -49,4 +49,3 @@ pptx-gen ingest path/to/document.pdf
 ```
 
 The `generate` command is intentionally stubbed in Phase 1.
-
