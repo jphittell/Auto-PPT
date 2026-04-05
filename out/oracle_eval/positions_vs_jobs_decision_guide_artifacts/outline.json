@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "headline": "Purpose",
+      "message": "Create a decision-support deck on positions versus jobs in Oracle HCM",
+      "evidence_queries": [],
+      "template_key": "title.hero"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "agenda",
+      "headline": "Agenda",
+      "message": "Review goals, evidence, and next actions.",
+      "evidence_queries": [],
+      "template_key": "agenda.list"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "headline": "Positions vs",
+      "message": "Positions vs",
+      "evidence_queries": [
+        "Positions vs",
+        "Positions vs evidence",
+        "Positions vs source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "headline": "Purpose",
+      "message": "Purpose",
+      "evidence_queries": [
+        "Purpose",
+        "Purpose evidence",
+        "Purpose source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "headline": "This document supports the design decision between Position",
+      "message": "This document supports the design decision between Position",
+      "evidence_queries": [
+        "This document supports the design decision between Position",
+        "This document supports the design decision between Position evidence",
+        "This document supports the design decision between Position source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "summary",
+      "headline": "Key Takeaways",
+      "message": "Summarize the strongest supported points and actions.",
+      "evidence_queries": [],
+      "template_key": "content.1col"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

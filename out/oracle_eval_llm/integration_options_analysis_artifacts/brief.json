@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0.0",
+  "audience": "Executive Steering Committee",
+  "goal": "Create an options analysis deck recommending an Oracle HCM integration approach",
+  "tone": "executive",
+  "slide_count_target": 8,
+  "source_corpus_ids": [
+    "src-oracle_hcm_integration_approach_options_analysis"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "Oracle HCM Cloud Integration Approach Options Analysis: Connecting HR to Downstream Systems",
+    "one_sentence_thesis": "Oracle HCM Cloud Integration Approach Options Analysis: Connecting HR to Downstream Systems",
+    "key_takeaways": [
+      "Oracle HCM Cloud Integration Approach Options Analysis: Connecting",
+      "Executive Summary",
+      "This document presents three architectural options for integrating",
+      "The three options under consideration are a Native"
+    ],
+    "user_request": "Create an options analysis deck recommending an Oracle HCM integration approach",
+    "deck_archetype": "options_analysis",
+    "source_preview": "- Oracle HCM Cloud Integration Approach Options Analysis: Connecting\n- Executive Summary\n- This document presents three architectural options for integrating\n- The three options under consideration are a Native"
+  }
+}

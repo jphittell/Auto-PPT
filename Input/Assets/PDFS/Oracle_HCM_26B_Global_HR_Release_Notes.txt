@@ -1,0 +1,64 @@
+Oracle HCM Cloud 26B Release Notes
+Global Human Resources
+
+Release Date: June 2026
+Document Type: Feature Summary and Implementation Guidance
+
+Overview
+
+Oracle HCM Cloud 26B delivers targeted enhancements to Global Human Resources with a focus on workforce structure flexibility, employment model accuracy, and compliance-driven reporting. This release addresses long-standing customer requests around position management, legislative data group assignments, and person record governance. Customers on Revision 1 or later of the 26A patch are eligible to adopt all features described below.
+
+New Features
+
+Workforce Structures
+
+Position Synchronization with Job Profile
+Positions can now inherit job profile attributes automatically when the associated job is updated. Previously, customers managing large position inventories had to manually realign position titles, grades, and competency requirements after job catalog changes. The new synchronization rule can be configured at the business unit level and supports selective inheritance, meaning administrators can choose which attributes flow down from job to position without overwriting position-specific overrides.
+
+Default Hire Date Offset by Location
+A new location-level configuration option allows HR administrators to define a standard hire date offset for positions in specific countries or legal employers. This supports organizations where regulatory requirements mandate a waiting period between offer acceptance and the official employment start date. The offset applies automatically during the hire transaction and generates a pending worker record for the intervening period.
+
+Grade Ladder Enforcement at Position Level
+Grade ladders can now be enforced directly on positions rather than solely at the job level. This provides finer control in organizations that allow the same job to span multiple grade ladders depending on the business unit or department. Validation occurs at the point of assignment creation and produces an actionable error message when a proposed grade falls outside the position-assigned ladder.
+
+Person Management
+
+Preferred Name Display in Workforce Directory
+Employees can now designate a preferred first name that displays throughout the HCM interface, including Workforce Directory, My Team, and manager self-service pages. Legal name continues to be used in payroll, benefits, and compliance reporting. Administrators can restrict preferred name use by legal employer if local regulations require legal name display in employee-facing systems.
+
+National Identifier Masking by Role
+National identifier values such as national ID numbers and social security numbers can now be masked at the role level rather than requiring a custom security profile for each use case. The masking configuration is managed in the Security Console and supports partial masking, full masking, or clear text display based on the user's assigned data role. Audit logging captures each unmasked view event.
+
+Corrective Action on Historical Work Relationships
+A new corrective action flow allows HR specialists to amend historical assignment records without triggering a full rehire or termination sequence. The correction is date-effective and supports changes to employment type, legal employer, and business unit for closed work relationships. All corrections are recorded in the worker audit trail and visible in the Employment History report.
+
+Global Compliance and Reporting
+
+Legislative Data Group Assignment Validation
+26B introduces a pre-submission validation step in the legislative data group assignment flow. When an HR administrator assigns a worker to a new LDG, the system now checks for active payroll relationships, outstanding expense reports, and pending benefit elections tied to the current LDG before completing the transfer. A summary of blocking and warning conditions is presented before the administrator confirms the action.
+
+Work Permit and Visa Tracking Enhancements
+The Document Records feature has been extended with two new document categories specific to work authorization: Permit to Work and Right to Work Verification. Each category includes configurable expiration alerting, document owner assignment, and a review workflow that notifies the HR specialist thirty, sixty, and ninety days before expiration. The tracking records are visible in the worker's Employment Info page and in the Workforce Compliance Dashboard.
+
+Country-Specific Absence Accrual Reporting
+New country-level absence accrual reports are available for Australia, Germany, Netherlands, and the United Kingdom. Each report reflects the legislative accrual model for that country and can be run as a point-in-time snapshot or as a period summary. The reports are accessible from the Absence Administration work area and support export to CSV and PDF.
+
+Known Issues and Workarounds
+
+Position Synchronization with Job Profile does not propagate changes to positions that have an active open requisition. Customers using Recruiting must manually update position attributes after closing or canceling the linked requisition. Oracle is tracking this as a known issue with a targeted fix in 26C.
+
+Preferred Name Display is not yet available in the HCM Mobile application. Mobile will display legal first name until the 26C mobile release, which is targeted for September 2026.
+
+Grade Ladder Enforcement at Position Level does not apply retroactively to existing assignments. Customers who wish to validate historical assignments against the new position-level grade ladder must run the Validate Assignment Grade Ladder concurrent process after enabling the feature.
+
+Upgrade Considerations
+
+Customers upgrading from 25B or earlier should review the Position Synchronization configuration before enabling automatic inheritance. Organizations with highly customized position structures or extensive use of position-specific grade overrides should conduct a test run in a non-production environment before activating synchronization in production.
+
+The National Identifier Masking by Role feature replaces the legacy masking configuration available under Manage Person Security Profiles. Customers using the legacy configuration should migrate their masking rules to the Security Console before the 27A release, when legacy masking support will be removed.
+
+Support and Resources
+
+Oracle Support Note 3198447.1 contains the full list of bug fixes included in 26B.
+The HCM Cloud Customer Connect community hosts a 26B readiness webinar series beginning in May 2026.
+Implementation guidance for the Work Permit and Visa Tracking Enhancements is available in the Oracle Help Center under Global Human Resources, Document Records.

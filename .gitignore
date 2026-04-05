@@ -3,6 +3,9 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.env
+.env.*
+!.env.example
 
 pptx_gen.zip
 Skills.zip

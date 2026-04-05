@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "headline": "How AI Presentation Systems Ingest Data and",
+      "message": "Summarize the source clearly",
+      "evidence_queries": [],
+      "template_key": "title.hero"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "agenda",
+      "headline": "Agenda",
+      "message": "Review goals, evidence, and next actions.",
+      "evidence_queries": [],
+      "template_key": "agenda.list"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "headline": "How AI Presentation Systems Ingest Data and",
+      "message": "How AI Presentation Systems Ingest Data and",
+      "evidence_queries": [
+        "How AI Presentation Systems Ingest Data and",
+        "How AI Presentation Systems Ingest Data and evidence",
+        "How AI Presentation Systems Ingest Data and source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "headline": "Generate Visually Polished PPTX Decks Executive summary AI",
+      "message": "Generate Visually Polished PPTX Decks Executive summary AI",
+      "evidence_queries": [
+        "Generate Visually Polished PPTX Decks Executive summary AI",
+        "Generate Visually Polished PPTX Decks Executive summary AI evidence",
+        "Generate Visually Polished PPTX Decks Executive summary AI source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "summary",
+      "headline": "Key Takeaways",
+      "message": "Summarize the strongest supported points and actions.",
+      "evidence_queries": [],
+      "template_key": "content.1col"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 from typing import Protocol
@@ -48,6 +49,8 @@ def collect_deck_brief(
     source_texts: list[str] | None = None,
     llm_client: StructuredLLMClient | None = None,
 ) -> DeckBrief:
+    source_texts = source_texts or []
+    source_preview = _source_preview(source_texts)
     if llm_client is not None:
         result = llm_client.generate_json(
             system_prompt=_load_prompt("step0_system.md"),
@@ -60,27 +63,35 @@ def collect_deck_brief(
                     "{talk_length_minutes}": str(max(5, slide_count_target * 2)),
                     "{style_tokens_summary}": tone,
                     "{source_ids}": ", ".join(source_corpus_ids),
+                    "{document_title}": document_title or "",
+                    "{source_preview}": source_preview,
                 },
             ),
             schema_name="DeckBrief",
         )
-        return DeckBrief.model_validate(result)
+        brief = DeckBrief.model_validate(result)
+        return _augment_brief(
+            brief,
+            document_title=document_title,
+            source_texts=source_texts,
+            user_request=user_request,
+            goal=goal,
+        )
 
-    takeaways = _derive_takeaways(source_texts or [], goal)
-    thesis = _trim_words(document_title or goal or user_request, 12)
-    return DeckBrief(
+    brief = DeckBrief(
         audience=audience,
         goal=goal,
         tone=tone,
         slide_count_target=max(3, min(12, slide_count_target)),
         source_corpus_ids=source_corpus_ids,
         questions_for_user=[],
-        extensions={
-            "document_title": document_title or "Generated Presentation",
-            "one_sentence_thesis": thesis,
-            "key_takeaways": takeaways,
-            "user_request": user_request,
-        },
+    )
+    return _augment_brief(
+        brief,
+        document_title=document_title,
+        source_texts=source_texts,
+        user_request=user_request,
+        goal=goal,
     )
 
 
@@ -255,7 +266,8 @@ def generate_presentation_spec(
             ),
             schema_name="PresentationSpec",
         )
-        return PresentationSpec.model_validate(result)
+        spec = PresentationSpec.model_validate(result)
+        return _upgrade_visual_templates(spec, retrieved_chunks_by_slide)
 
     slides: list[SlideSpec] = []
     summary_citations: list[SourceCitation] = []
@@ -366,7 +378,7 @@ def generate_presentation_spec(
             )
         )
 
-    return PresentationSpec(
+    spec = PresentationSpec(
         title=deck_title,
         audience=brief.audience,
         language=language,
@@ -374,6 +386,7 @@ def generate_presentation_spec(
         slides=slides,
         questions_for_user=[],
     )
+    return _upgrade_visual_templates(spec, retrieved_chunks_by_slide)
 
 
 def revise_for_design_quality(
@@ -459,6 +472,47 @@ def _derive_takeaways(source_texts: list[str], goal: str) -> list[str]:
     return takeaways
 
 
+def _augment_brief(
+    brief: DeckBrief,
+    *,
+    document_title: str | None,
+    source_texts: list[str],
+    user_request: str,
+    goal: str,
+) -> DeckBrief:
+    takeaways = _derive_takeaways(source_texts, goal)
+    thesis = _trim_words(document_title or goal or user_request, 12)
+    extensions = dict(brief.extensions or {})
+    extensions.setdefault("document_title", document_title or "Generated Presentation")
+    extensions.setdefault("one_sentence_thesis", thesis)
+    extensions.setdefault("key_takeaways", takeaways)
+    extensions.setdefault("user_request", user_request)
+    extensions.setdefault("deck_archetype", _infer_deck_archetype(document_title, goal, user_request, source_texts))
+    extensions.setdefault("source_preview", _source_preview(source_texts))
+    return brief.model_copy(update={"extensions": extensions})
+
+
+def _infer_deck_archetype(
+    document_title: str | None,
+    goal: str,
+    user_request: str,
+    source_texts: list[str],
+) -> str:
+    haystack = " ".join([document_title or "", goal, user_request, *source_texts[:5]]).lower()
+    if any(term in haystack for term in ("release notes", "known issues", "upgrade considerations", "readiness")):
+        return "release_readiness"
+    if any(term in haystack for term in ("options analysis", "option 1", "option 2", "pros", "cons")):
+        return "options_analysis"
+    if any(term in haystack for term in ("positions vs", "versus", "decision guide", "when to choose")):
+        return "decision_guide"
+    return "executive_summary"
+
+
+def _source_preview(source_texts: list[str]) -> str:
+    preview_items = _derive_takeaways(source_texts, goal="summarize source")
+    return "\n".join(f"- {item}" for item in preview_items[:4])
+
+
 def _expand_content_messages(takeaways: list[str], goal: str, count: int) -> list[str]:
     base = takeaways or [_trim_words(goal, 10)]
     messages: list[str] = []
@@ -469,6 +523,150 @@ def _expand_content_messages(takeaways: list[str], goal: str, count: int) -> lis
         else:
             messages.append(f"{source} evidence")
     return messages
+
+
+def _upgrade_visual_templates(
+    spec: PresentationSpec,
+    retrieved_chunks_by_slide: dict[str, list[RetrievedChunk]],
+) -> PresentationSpec:
+    updated_slides: list[SlideSpec] = []
+    changed = False
+
+    for slide in spec.slides:
+        upgraded = _maybe_upgrade_slide_to_table(slide, retrieved_chunks_by_slide.get(slide.slide_id, []))
+        if upgraded is not slide:
+            changed = True
+        updated_slides.append(upgraded)
+
+    if not changed:
+        return spec
+    return PresentationSpec.model_validate(spec.model_copy(update={"slides": updated_slides}).model_dump())
+
+
+def _maybe_upgrade_slide_to_table(slide: SlideSpec, chunks: list[RetrievedChunk]) -> SlideSpec:
+    if slide.purpose not in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY}:
+        return slide
+    if any(block.kind in {PresentationBlockKind.IMAGE, PresentationBlockKind.TABLE, PresentationBlockKind.CHART, PresentationBlockKind.KPI_CARDS} for block in slide.blocks):
+        return slide
+
+    trigger_text = " ".join([slide.headline, slide.speaker_notes, *[chunk.text for chunk in chunks]]).lower()
+    if not any(term in trigger_text for term in ("option", "compare", "comparison", "approach", "tradeoff", "pros", "cons", "criteria")):
+        return slide
+
+    table_content = _extract_comparison_table(chunks)
+    if table_content is None:
+        return slide
+
+    citations = []
+    for block in slide.blocks:
+        citations.extend(block.source_citations)
+    if not citations:
+        citations = _citations_from_chunks(chunks)[:2]
+    if not citations:
+        return slide
+
+    table_block = PresentationBlock(
+        block_id=slide.blocks[0].block_id,
+        kind=PresentationBlockKind.TABLE,
+        content=table_content,
+        source_citations=citations,
+    )
+    return slide.model_copy(
+        update={
+            "layout_intent": LayoutIntent(template_key="table.full", strict_template=True),
+            "blocks": [table_block],
+        }
+    )
+
+
+def _extract_comparison_table(chunks: list[RetrievedChunk]) -> dict[str, list[list[str]] | list[str]] | None:
+    current_metric: str | None = None
+    option_labels: list[str] = []
+    rows: list[list[str]] = []
+    metric_to_values: dict[str, dict[str, str]] = {}
+    option_pattern = re.compile(r"^Option\s+\d+(?:\s+\(([^)]+)\))?:\s*(.+)$", re.IGNORECASE)
+
+    for chunk in chunks:
+        for raw_line in chunk.text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            option_match = option_pattern.match(line)
+            if option_match and current_metric:
+                option_label = option_match.group(1) or f"Option {len(option_labels) + 1}"
+                option_label = _trim_words(option_label, 2) or "Option"
+                if option_label not in option_labels:
+                    option_labels.append(option_label)
+                value = _compress_comparison_value(option_match.group(2))
+                metric_to_values.setdefault(current_metric, {})[option_label] = value
+                continue
+
+            if line.endswith(":"):
+                current_metric = None
+                continue
+
+            if ":" not in line and len(line.split()) <= 6:
+                current_metric = line
+
+    if len(option_labels) < 2 or not metric_to_values:
+        return None
+
+    columns = ["Criterion", *option_labels[:3]]
+    for metric, values in list(metric_to_values.items())[:4]:
+        row = [metric]
+        populated = 0
+        for option_label in option_labels[:3]:
+            cell = values.get(option_label, "")
+            if cell:
+                populated += 1
+            row.append(cell)
+        if populated >= 2:
+            rows.append(row)
+
+    if len(rows) < 2:
+        return None
+
+    word_count = _count_words_in_value({"columns": columns, "rows": rows})
+    if word_count > 40:
+        return None
+    return {"columns": columns, "rows": rows}
+
+
+def _compress_comparison_value(value: str) -> str:
+    lowered = value.lower()
+    if "not supported" in lowered or "batch only" in lowered:
+        return "Batch only"
+    if "event-driven" in lowered and "polling" in lowered:
+        return "Event or poll"
+    if "event-driven" in lowered:
+        return "Real-time"
+    if "low to medium" in lowered:
+        return "Low-Med"
+    if "medium to high" in lowered:
+        return "Med-High"
+    if "moderate ongoing cost" in lowered or "moderate" in lowered:
+        return "Moderate"
+    if "lowest initial cost" in lowered or "lowest" in lowered:
+        return "Lowest"
+    if "low" in lowered and "medium" not in lowered:
+        return "Low"
+    if "medium" in lowered and "high" not in lowered:
+        return "Medium"
+    if "high" in lowered:
+        return "High"
+    return _trim_words(value.replace(".", ""), 2)
+
+
+def _count_words_in_value(value: object) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return len(re.findall(r"\b\w+\b", value))
+    if isinstance(value, list):
+        return sum(_count_words_in_value(item) for item in value)
+    if isinstance(value, dict):
+        return sum(_count_words_in_value(item) for item in value.values())
+    return len(re.findall(r"\b\w+\b", str(value)))
 
 
 def _evidence_queries_for_message(message: str) -> list[str]:

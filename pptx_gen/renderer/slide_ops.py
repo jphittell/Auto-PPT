@@ -66,7 +66,7 @@ def add_text(
     paragraph.text = text
     paragraph.alignment = PP_ALIGN.LEFT
     profile = style_profile(style_tokens, style_ref or "body", ResolvedElementKind.TEXTBOX)
-    run = paragraph.runs[0]
+    run = _ensure_first_run(paragraph)
     run.font.name = profile["font_name"]
     run.font.size = Pt(profile["font_size_pt"])
     run.font.bold = profile["bold"]
@@ -102,7 +102,8 @@ def add_bullets(
         paragraph.text = item
         paragraph.level = 0
         paragraph.alignment = PP_ALIGN.LEFT
-        for run in paragraph.runs:
+        runs = paragraph.runs or (_ensure_first_run(paragraph),)
+        for run in runs:
             run.font.name = profile["font_name"]
             run.font.size = Pt(profile["font_size_pt"])
             run.font.bold = profile["bold"]
@@ -181,7 +182,7 @@ def add_shape(
         text_frame.word_wrap = True
         paragraph = text_frame.paragraphs[0]
         paragraph.text = text
-        run = paragraph.runs[0]
+        run = _ensure_first_run(paragraph)
         run.font.name = profile["font_name"]
         run.font.size = Pt(profile["font_size_pt"])
         run.font.bold = profile["bold"]
@@ -311,8 +312,14 @@ def _style_cell(cell: Any, profile: dict[str, Any], *, bold: bool) -> None:
     paragraph = cell.text_frame.paragraphs[0]
     if not paragraph.runs:
         paragraph.text = cell.text
-    run = paragraph.runs[0]
+    run = _ensure_first_run(paragraph)
     run.font.name = profile["font_name"]
     run.font.size = Pt(profile["font_size_pt"])
     run.font.bold = bold
     run.font.color.rgb = rgb_from_hex(profile["text_color"])
+
+
+def _ensure_first_run(paragraph: Any) -> Any:
+    if paragraph.runs:
+        return paragraph.runs[0]
+    return paragraph.add_run()

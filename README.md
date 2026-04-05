@@ -16,8 +16,14 @@ The local repo currently supports a real end-to-end path:
 The main remaining gaps are:
 
 - no stock-image or external asset sourcing yet
-- no production LLM client implementation in-repo yet
 - deterministic planning fallback is intentionally simple and conservative
+
+The planning stage now supports a real Anthropic-backed structured client when
+`ANTHROPIC_API_KEY` is available. Without that key, the repo falls back to its
+deterministic schema-valid planner.
+
+If `ANTHROPIC_API_KEY` is set, the pipeline will prefer the Anthropic client automatically.
+To force deterministic planning, unset `ANTHROPIC_API_KEY` before running the generator.
 
 ## Installation
 
@@ -63,6 +69,22 @@ Optional flags:
 - `--title "Custom Deck Title"`
 - `--theme-name "Auto PPT"`
 - `--refine`
+
+To enable model-authored planning content, set:
+
+```powershell
+$env:ANTHROPIC_API_KEY="your-key"
+```
+
+Optional model override:
+
+```powershell
+$env:PPTX_GEN_ANTHROPIC_MODEL="claude-opus-4-6"
+```
+
+You can also place these in a local repo `.env` file instead of exporting them in the shell.
+Start from [`.env.example`](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/.env.example), copy it to `.env`,
+and fill in your real values. `.env` is gitignored.
 
 Generation writes:
 

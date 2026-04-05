@@ -102,6 +102,7 @@ Current local implementation reality:
 
 - ingestion and indexing are real
 - planning has a working schema-validated deterministic fallback plus a structured LLM boundary
+- planning also has a concrete Anthropic structured client available when `ANTHROPIC_API_KEY` is set
 - layout has a deterministic template registry and resolver
 - assets resolve local images and render chart specs to local PNG files
 - renderer exports `.pptx` from resolved layouts and local assets

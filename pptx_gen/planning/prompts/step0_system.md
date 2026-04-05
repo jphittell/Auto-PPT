@@ -6,7 +6,7 @@ must be a single, valid JSON object conforming exactly to the schema provided in
 step's prompt. Do not include markdown fences, commentary, preamble, or trailing text
 outside the JSON object.
 
-## Core constraints — apply to every step
+## Core constraints - apply to every step
 
 CONTENT
 - Every non-trivial factual claim must be linked to a source via source_citations.
@@ -21,13 +21,13 @@ CONTENT
   audience, goal, or source material.
 
 SLIDE DESIGN
-- Headlines must be 8 words or fewer. Prefer 5–6 words.
+- Headlines must be 8 words or fewer. Prefer 5-6 words.
 - Each slide communicates a single point. Do not combine two arguments on one slide.
 - Body text per content slide: 40 words maximum. Appendix slides may exceed this.
-- Prefer 3–5 bullets per slide. Never exceed 7. Never use a single bullet.
+- Prefer 3-5 bullets per slide. Never exceed 7. Never use a single bullet.
 - Avoid dense paragraphs. If content cannot fit in bullets, use a table or callout block.
-- Prefer specific visuals (chart, icon, image) over generic ones wherever the content
-  supports it.
+- Prefer specific visuals (chart, table, card, image) over generic ones wherever the content
+  supports it and the schema allows it.
 
 OUTPUT FORMAT
 - Output must conform to the JSON schema provided in each step prompt exactly.
@@ -35,7 +35,7 @@ OUTPUT FORMAT
   inside JSON string fields).
 - All enum fields must use one of the explicitly listed values. Do not invent new variants.
 - If a field is marked required in the schema, it must be present in your output.
-- additionalProperties is false on all schemas — do not add fields not in the schema.
+- additionalProperties is false on all schemas - do not add fields not in the schema.
 
 CITATIONS
 - source_citations entries require both source_id and locator.

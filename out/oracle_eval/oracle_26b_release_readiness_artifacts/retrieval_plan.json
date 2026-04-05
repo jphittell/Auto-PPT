@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s3",
+      "queries": [
+        {
+          "query": "Oracle HCM Cloud 26B Release Notes Global Human",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Oracle HCM Cloud 26B Release Notes Global Human evidence",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Oracle HCM Cloud 26B Release Notes Global Human source data",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        {
+          "query": "Release Date: June 2026 Document Type: Feature Summary",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Release Date: June 2026 Document Type: Feature Summary evidence",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Release Date: June 2026 Document Type: Feature Summary source data",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "queries": [
+        {
+          "query": "Overview",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Overview evidence",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Overview source data",
+          "doc_ids": [
+            "src-oracle_hcm_26b_global_hr_release_notes"
+          ],
+          "min_date": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

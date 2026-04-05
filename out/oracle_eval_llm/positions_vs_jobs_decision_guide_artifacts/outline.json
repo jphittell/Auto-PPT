@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "headline": "Positions vs Jobs in Oracle HCM",
+      "message": "Decision-support deck for Executive Steering Committee",
+      "evidence_queries": [],
+      "template_key": "title.standard"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "headline": "Overview of Positions and Jobs",
+      "message": "Define positions and jobs within Oracle HCM and their roles.",
+      "evidence_queries": [
+        "Define positions in Oracle HCM.",
+        "Define jobs in Oracle HCM."
+      ],
+      "template_key": "content.2col"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "headline": "Key Differences Between Positions and Jobs",
+      "message": "Highlight the main differences between positions and jobs in Oracle HCM.",
+      "evidence_queries": [
+        "What are the differences between positions and jobs in Oracle HCM?"
+      ],
+      "template_key": "content.3col.cards"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "headline": "Tradeoffs of Using Positions vs Jobs",
+      "message": "Discuss the tradeoffs involved in choosing positions over jobs and vice versa.",
+      "evidence_queries": [
+        "What are the tradeoffs between using positions and jobs in Oracle HCM?"
+      ],
+      "template_key": "content.2col"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "headline": "Implementation Guidance for Positions",
+      "message": "Provide guidance on implementing positions in Oracle HCM.",
+      "evidence_queries": [
+        "How to implement positions in Oracle HCM?"
+      ],
+      "template_key": "content.2col"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "headline": "Implementation Guidance for Jobs",
+      "message": "Provide guidance on implementing jobs in Oracle HCM.",
+      "evidence_queries": [
+        "How to implement jobs in Oracle HCM?"
+      ],
+      "template_key": "content.2col"
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "headline": "Recommendation for Oracle HCM Design",
+      "message": "Offer a recommendation for choosing between positions and jobs.",
+      "evidence_queries": [
+        "What is the recommended choice between positions and jobs in Oracle HCM?"
+      ],
+      "template_key": "content.recommendation"
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "headline": "Summary and Next Steps",
+      "message": "Summarize key points and outline next steps for decision-making.",
+      "evidence_queries": [],
+      "template_key": "summary.nextsteps"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

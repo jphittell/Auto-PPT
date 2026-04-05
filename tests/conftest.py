@@ -5,6 +5,8 @@ import base64
 from pathlib import Path
 
 import pytest
+from pptx import Presentation
+from pptx.util import Inches
 
 from pptx_gen.ingestion.schemas import (
     ContentElementType,
@@ -191,3 +193,134 @@ def tiny_png_bytes() -> bytes:
     return base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wn0N0sAAAAASUVORK5CYII="
     )
+
+
+@pytest.fixture()
+def make_docx_file(tmp_path: Path) -> Callable[[], Path]:
+    def factory() -> Path:
+        from docx import Document
+
+        path = tmp_path / "sample.docx"
+        document = Document()
+        document.add_heading("Sample Document", level=0)
+        document.add_heading("Overview", level=1)
+        document.add_paragraph("This document explains the new operating model.")
+        document.add_paragraph("First bullet", style="List Bullet")
+        table = document.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = "Option"
+        table.cell(0, 1).text = "Fit"
+        table.cell(1, 0).text = "A"
+        table.cell(1, 1).text = "High"
+        document.save(path)
+        return path
+
+    return factory
+
+
+@pytest.fixture()
+def make_csv_file(tmp_path: Path) -> Callable[[], Path]:
+    def factory() -> Path:
+        path = tmp_path / "sample.csv"
+        path.write_text("Option,Fit\nA,High\nB,Medium\n", encoding="utf-8")
+        return path
+
+    return factory
+
+
+@pytest.fixture()
+def make_markdown_file(tmp_path: Path) -> Callable[[], Path]:
+    def factory() -> Path:
+        path = tmp_path / "sample.md"
+        path.write_text("# Overview\n\nThis is a concise markdown brief.\n\n- First point\n- Second point\n", encoding="utf-8")
+        return path
+
+    return factory
+
+
+@pytest.fixture()
+def make_xlsx_file(tmp_path: Path) -> Callable[[], Path]:
+    def factory() -> Path:
+        from openpyxl import Workbook
+
+        path = tmp_path / "sample.xlsx"
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Decision Matrix"
+        sheet.append(["Option", "Cost", "Effort"])
+        sheet.append(["A", "Low", "Medium"])
+        sheet.append(["B", "Medium", "Low"])
+        workbook.save(path)
+        workbook.close()
+        return path
+
+    return factory
+
+
+@pytest.fixture()
+def make_pptx_file(tmp_path: Path) -> Callable[[], Path]:
+    def factory() -> Path:
+        path = tmp_path / "sample.pptx"
+        presentation = Presentation()
+
+        title_slide = presentation.slides.add_slide(presentation.slide_layouts[0])
+        title_slide.shapes.title.text = "Sample Deck"
+        title_slide.placeholders[1].text = "Executive overview"
+
+        content_slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+        title_box = content_slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(6), Inches(0.6))
+        title_box.text = "Decision Summary"
+        body_box = content_slide.shapes.add_textbox(Inches(0.75), Inches(1.2), Inches(5.5), Inches(2.5))
+        body_box.text_frame.text = "Primary recommendation"
+        bullet = body_box.text_frame.add_paragraph()
+        bullet.text = "First point"
+        bullet.level = 1
+        table_shape = content_slide.shapes.add_table(2, 2, Inches(6.5), Inches(1.2), Inches(4.5), Inches(1.5))
+        table = table_shape.table
+        table.cell(0, 0).text = "Metric"
+        table.cell(0, 1).text = "Value"
+        table.cell(1, 0).text = "Cost"
+        table.cell(1, 1).text = "Low"
+
+        presentation.save(path)
+        return path
+
+    return factory
+
+
+@pytest.fixture()
+def make_json_file(tmp_path: Path) -> Callable[[], Path]:
+    def factory() -> Path:
+        path = tmp_path / "sample.json"
+        path.write_text(
+            '{\n'
+            '  "title": "Chart Spec Catalog",\n'
+            '  "owner": "Analytics",\n'
+            '  "charts": [\n'
+            '    {"name": "Revenue", "chart_type": "bar", "priority": 1},\n'
+            '    {"name": "Pipeline", "chart_type": "line", "priority": 2}\n'
+            '  ],\n'
+            '  "tags": ["finance", "forecast"]\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        return path
+
+    return factory
+
+
+@pytest.fixture()
+def make_image_file(tmp_path: Path, tiny_png_bytes: bytes) -> Callable[[str], Path]:
+    def factory(extension: str = ".png") -> Path:
+        extension = extension.lower()
+        path = tmp_path / f"sample{extension}"
+        if extension == ".png":
+            path.write_bytes(tiny_png_bytes)
+            return path
+
+        from PIL import Image
+
+        image = Image.new("RGB", (4, 3), color=(12, 34, 56))
+        image.save(path)
+        return path
+
+    return factory

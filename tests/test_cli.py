@@ -15,6 +15,7 @@ def test_cli_generate_happy_path(monkeypatch, tmp_path: Path, deterministic_embe
         encoding="utf-8",
     )
     monkeypatch.setattr(pipeline_module, "SentenceTransformerEmbedder", lambda: deterministic_embedder)
+    monkeypatch.setattr(pipeline_module, "build_default_structured_llm_client", lambda: None)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -68,3 +69,34 @@ def test_cli_generate_requires_goal(tmp_path: Path) -> None:
 
     assert result.exit_code != 0
     assert "--goal" in result.output
+
+
+def test_cli_generate_uses_ascii_safe_json_output(monkeypatch, tmp_path: Path) -> None:
+    source_path = tmp_path / "source.txt"
+    source_path.write_text("Short content.", encoding="utf-8")
+
+    class FakeResult:
+        def model_dump_json(self, **kwargs) -> str:
+            assert kwargs["ensure_ascii"] is True
+            assert kwargs["indent"] == 2
+            return '{"note":"Revenue \\u2192 margin"}'
+
+    monkeypatch.setattr("pptx_gen.cli.generate_deck", lambda **_: FakeResult())
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "generate",
+            str(source_path),
+            "--output",
+            str(tmp_path / "deck.pptx"),
+            "--audience",
+            "Leadership",
+            "--goal",
+            "Summarize the quarter",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "\\u2192" in result.output

@@ -16,3 +16,9 @@ Deck brief:
 - End on `summary` unless a clearly justified `appendix` is needed.
 - Keep headlines short and scannable.
 - Use `template_key` values that match the repo's canonical layout registry.
+- If `extensions.deck_archetype` indicates a release-readiness document, favor a flow like:
+  what changed -> impact/risk -> known issues -> required actions.
+- If `extensions.deck_archetype` indicates a decision guide, favor a flow like:
+  model overview -> tradeoffs -> implementation guidance -> recommendation.
+- If `extensions.deck_archetype` indicates an options analysis, include at least one comparison-oriented slide
+  that can use `content.3col.cards` or `table.full`, plus a recommendation slide.

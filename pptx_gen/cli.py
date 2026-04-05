@@ -20,7 +20,7 @@ def ingest_command(source_path: Path) -> None:
     """Parse, chunk, and index a local file."""
 
     result = ingest_and_index(source_path)
-    click.echo(result.model_dump_json(indent=2))
+    click.echo(result.model_dump_json(indent=2, ensure_ascii=True))
 
 
 @cli.command("generate")
@@ -62,4 +62,4 @@ def generate_command(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    click.echo(result.model_dump_json(indent=2))
+    click.echo(result.model_dump_json(indent=2, ensure_ascii=True))

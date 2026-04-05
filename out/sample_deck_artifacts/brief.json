@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "audience": "Executive leadership",
+  "goal": "Summarize the source clearly",
+  "tone": "executive",
+  "slide_count_target": 5,
+  "source_corpus_ids": [
+    "src-sample_ingestion"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "How AI Presentation Systems Ingest Data and",
+    "one_sentence_thesis": "How AI Presentation Systems Ingest Data and",
+    "key_takeaways": [
+      "How AI Presentation Systems Ingest Data and",
+      "Generate Visually Polished PPTX Decks Executive summary AI",
+      "Free-form layout generation with constraint checks: Let the",
+      "Landscape of AI presentation tools Representative tools and"
+    ],
+    "user_request": "Summarize the source clearly"
+  }
+}

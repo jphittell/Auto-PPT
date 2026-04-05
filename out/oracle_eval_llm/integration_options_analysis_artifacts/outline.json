@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "headline": "Oracle HCM Integration Options",
+      "message": "Connecting HR to Downstream Systems",
+      "evidence_queries": [],
+      "template_key": "title.basic"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "headline": "Executive Summary",
+      "message": "Overview of integration options and recommendation for Oracle HCM Cloud.",
+      "evidence_queries": [
+        "What are the key points of the executive summary in the source document?"
+      ],
+      "template_key": "content.basic"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "headline": "Integration Options Overview",
+      "message": "Three architectural options for Oracle HCM integration: Native, Middleware, Hybrid.",
+      "evidence_queries": [
+        "What are the three architectural options for Oracle HCM integration?"
+      ],
+      "template_key": "content.3col.cards"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "headline": "Option 1: Native Integration",
+      "message": "Details and benefits of using Oracle's native integration capabilities.",
+      "evidence_queries": [
+        "What are the details and benefits of the native integration option?"
+      ],
+      "template_key": "content.basic"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "headline": "Option 2: Middleware Integration",
+      "message": "Details and benefits of using middleware for integration.",
+      "evidence_queries": [
+        "What are the details and benefits of the middleware integration option?"
+      ],
+      "template_key": "content.basic"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "headline": "Option 3: Hybrid Integration",
+      "message": "Details and benefits of a hybrid integration approach.",
+      "evidence_queries": [
+        "What are the details and benefits of the hybrid integration option?"
+      ],
+      "template_key": "content.basic"
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "headline": "Comparison of Integration Options",
+      "message": "Compare the trade-offs and suitability of each integration option.",
+      "evidence_queries": [
+        "How do the integration options compare in terms of trade-offs and suitability?"
+      ],
+      "template_key": "table.full"
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "headline": "Recommended Integration Approach",
+      "message": "Final recommendation for the best integration approach for Oracle HCM Cloud.",
+      "evidence_queries": [
+        "What is the recommended integration approach for Oracle HCM Cloud?"
+      ],
+      "template_key": "content.recommendation"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

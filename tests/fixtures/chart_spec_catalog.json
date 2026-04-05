@@ -1,0 +1,483 @@
+{
+  "$schema_doc": "Chart Spec Catalog — Auto PPT v1",
+  "$description": "Canonical collection of chart payloads for the asset stage. Each entry is a complete chart_spec dict that can be passed directly to render_chart_to_png() (supported specs) or used as a contract target for renderer expansion (planned specs). See $field_reference for the full intended schema.",
+
+  "$field_reference": {
+    "chart_type":              "string — one of the values listed in $supported_chart_types or $planned_chart_types",
+    "title":                   "string — slide-level chart title rendered above the plot",
+    "x_label":                 "string | null — axis label for the x-axis (omit for pie/donut/kpi_tile)",
+    "y_label":                 "string | null — axis label for the y-axis (omit for pie/donut/kpi_tile)",
+    "accent_color":            "hex string — primary series color; default #0A84FF",
+    "palette":                 "list[hex] — ordered color list for multi-series or segmented charts",
+    "data":                    "list[{label, value}] — flat data shape consumed by current renderer for single-series charts",
+    "series":                  "list[{name, data: list[{label, value}]}] — multi-series shape for stacked/grouped/multi-line/combo charts",
+    "categories":              "list[string] — explicit x-axis category order; inferred from data[].label when absent",
+    "show_data_labels":        "bool — render value labels directly on bars/points/segments",
+    "show_legend":             "bool — render a legend; always false for single-series charts",
+    "aspect_ratio":            "float — target width/height for the output PNG; used by asset resolver for slot fit/fill",
+    "intended_template_keys":  "list[string] — template registry keys this chart is designed to fill",
+    "renderer_status":         "supported | planned — whether chart_renderer.py currently handles this chart_type"
+  },
+
+  "$supported_chart_types":  ["bar", "line", "pie", "scatter"],
+  "$planned_chart_types":    ["stacked_bar", "grouped_bar", "area", "multi_line", "donut", "waterfall", "horizontal_bar", "kpi_tile", "combo_bar_line"],
+
+  "catalog": [
+
+    {
+      "id": "cs-001",
+      "chart_type": "bar",
+      "title": "Quarterly Revenue Performance",
+      "x_label": "Quarter",
+      "y_label": "Revenue ($M)",
+      "accent_color": "#0A84FF",
+      "palette": null,
+      "data": [
+        { "label": "Q1 2024", "value": 3.2 },
+        { "label": "Q2 2024", "value": 4.1 },
+        { "label": "Q3 2024", "value": 3.8 },
+        { "label": "Q4 2024", "value": 5.6 },
+        { "label": "Q1 2025", "value": 4.9 }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": true,
+      "show_legend": false,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full"],
+      "renderer_status": "supported",
+      "$notes": "Core single-series bar. Vertical orientation. Data labels above bars."
+    },
+
+    {
+      "id": "cs-002",
+      "chart_type": "stacked_bar",
+      "title": "ARR by Segment",
+      "x_label": "Quarter",
+      "y_label": "ARR ($M)",
+      "accent_color": "#0A84FF",
+      "palette": ["#0A84FF", "#0060CC", "#66B3FF", "#CCE4FF"],
+      "data": null,
+      "series": [
+        {
+          "name": "Enterprise",
+          "data": [
+            { "label": "Q1 2024", "value": 12.1 },
+            { "label": "Q2 2024", "value": 13.4 },
+            { "label": "Q3 2024", "value": 14.2 },
+            { "label": "Q4 2024", "value": 16.0 },
+            { "label": "Q1 2025", "value": 17.5 }
+          ]
+        },
+        {
+          "name": "Mid-Market",
+          "data": [
+            { "label": "Q1 2024", "value": 8.4 },
+            { "label": "Q2 2024", "value": 9.1 },
+            { "label": "Q3 2024", "value": 9.6 },
+            { "label": "Q4 2024", "value": 10.8 },
+            { "label": "Q1 2025", "value": 11.2 }
+          ]
+        },
+        {
+          "name": "SMB",
+          "data": [
+            { "label": "Q1 2024", "value": 5.2 },
+            { "label": "Q2 2024", "value": 5.5 },
+            { "label": "Q3 2024", "value": 5.8 },
+            { "label": "Q4 2024", "value": 6.2 },
+            { "label": "Q1 2025", "value": 6.4 }
+          ]
+        },
+        {
+          "name": "Self-Serve",
+          "data": [
+            { "label": "Q1 2024", "value": 2.1 },
+            { "label": "Q2 2024", "value": 2.3 },
+            { "label": "Q3 2024", "value": 2.5 },
+            { "label": "Q4 2024", "value": 2.8 },
+            { "label": "Q1 2025", "value": 3.1 }
+          ]
+        }
+      ],
+      "categories": ["Q1 2024", "Q2 2024", "Q3 2024", "Q4 2024", "Q1 2025"],
+      "show_data_labels": false,
+      "show_legend": true,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "renderer_status": "planned",
+      "$notes": "Multi-series stacked bar. Total bar height = sum of all series. Legend required to identify segments. Data labels off to reduce clutter on stacked layout."
+    },
+
+    {
+      "id": "cs-003",
+      "chart_type": "grouped_bar",
+      "title": "Budget vs Actuals by Department",
+      "x_label": "Department",
+      "y_label": "Spend ($k)",
+      "accent_color": "#0A84FF",
+      "palette": ["#0A84FF", "#CCE4FF"],
+      "data": null,
+      "series": [
+        {
+          "name": "Budget",
+          "data": [
+            { "label": "Engineering", "value": 1850 },
+            { "label": "Sales",       "value": 1200 },
+            { "label": "Marketing",   "value": 740  },
+            { "label": "CS",          "value": 460  },
+            { "label": "G&A",         "value": 380  }
+          ]
+        },
+        {
+          "name": "Actuals",
+          "data": [
+            { "label": "Engineering", "value": 1760 },
+            { "label": "Sales",       "value": 1310 },
+            { "label": "Marketing",   "value": 695  },
+            { "label": "CS",          "value": 440  },
+            { "label": "G&A",         "value": 362  }
+          ]
+        }
+      ],
+      "categories": ["Engineering", "Sales", "Marketing", "CS", "G&A"],
+      "show_data_labels": false,
+      "show_legend": true,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full"],
+      "renderer_status": "planned",
+      "$notes": "Two-series side-by-side grouped bars. Budget always rendered first (darker blue). Pairs well with a callout block showing total variance."
+    },
+
+    {
+      "id": "cs-004",
+      "chart_type": "line",
+      "title": "Monthly Recurring Revenue Trend",
+      "x_label": "Month",
+      "y_label": "MRR ($M)",
+      "accent_color": "#0A84FF",
+      "palette": null,
+      "data": [
+        { "label": "Apr",  "value": 2.90 },
+        { "label": "May",  "value": 3.00 },
+        { "label": "Jun",  "value": 3.10 },
+        { "label": "Jul",  "value": 3.10 },
+        { "label": "Aug",  "value": 3.20 },
+        { "label": "Sep",  "value": 3.18 },
+        { "label": "Oct",  "value": 3.25 },
+        { "label": "Nov",  "value": 3.32 },
+        { "label": "Dec",  "value": 3.18 },
+        { "label": "Jan",  "value": 3.45 },
+        { "label": "Feb",  "value": 3.60 },
+        { "label": "Mar",  "value": 3.73 }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": false,
+      "show_legend": false,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "renderer_status": "supported",
+      "$notes": "Single-series line with markers. 12-month rolling window. Data labels off to keep the trend line readable at small sizes."
+    },
+
+    {
+      "id": "cs-005",
+      "chart_type": "multi_line",
+      "title": "Year-over-Year Account Growth",
+      "x_label": "Month",
+      "y_label": "Active Accounts (thousands)",
+      "accent_color": "#0A84FF",
+      "palette": ["#0A84FF", "#6B7280"],
+      "data": null,
+      "series": [
+        {
+          "name": "FY 2025",
+          "data": [
+            { "label": "Jan", "value": 65 }, { "label": "Feb", "value": 68 },
+            { "label": "Mar", "value": 72 }, { "label": "Apr", "value": 70 },
+            { "label": "May", "value": 75 }, { "label": "Jun", "value": 80 },
+            { "label": "Jul", "value": 83 }, { "label": "Aug", "value": 78 },
+            { "label": "Sep", "value": 88 }, { "label": "Oct", "value": 92 },
+            { "label": "Nov", "value": 98 }, { "label": "Dec", "value": 84 }
+          ]
+        },
+        {
+          "name": "FY 2024",
+          "data": [
+            { "label": "Jan", "value": 55 }, { "label": "Feb", "value": 57 },
+            { "label": "Mar", "value": 60 }, { "label": "Apr", "value": 59 },
+            { "label": "May", "value": 62 }, { "label": "Jun", "value": 66 },
+            { "label": "Jul", "value": 68 }, { "label": "Aug", "value": 71 },
+            { "label": "Sep", "value": 73 }, { "label": "Oct", "value": 75 },
+            { "label": "Nov", "value": 78 }, { "label": "Dec", "value": 65 }
+          ]
+        }
+      ],
+      "categories": ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+      "show_data_labels": false,
+      "show_legend": true,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full"],
+      "renderer_status": "planned",
+      "$notes": "Two-line YoY comparison. Current year solid, prior year dashed. Fill-between the two lines to visually encode the gap. Legend required."
+    },
+
+    {
+      "id": "cs-006",
+      "chart_type": "area",
+      "title": "Cumulative ARR Growth",
+      "x_label": "Quarter",
+      "y_label": "ARR ($M)",
+      "accent_color": "#0A84FF",
+      "palette": null,
+      "data": null,
+      "series": [
+        {
+          "name": "ARR",
+          "data": [
+            { "label": "Q1 2023", "value": 18.2 },
+            { "label": "Q2 2023", "value": 21.4 },
+            { "label": "Q3 2023", "value": 24.8 },
+            { "label": "Q4 2023", "value": 28.5 },
+            { "label": "Q1 2024", "value": 27.8 },
+            { "label": "Q2 2024", "value": 32.3 },
+            { "label": "Q3 2024", "value": 35.6 },
+            { "label": "Q4 2024", "value": 38.2 },
+            { "label": "Q1 2025", "value": 44.8 }
+          ]
+        }
+      ],
+      "categories": null,
+      "show_data_labels": false,
+      "show_legend": false,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "renderer_status": "planned",
+      "$notes": "Single-series filled area chart. Fill alpha 0.20, solid line on top. Use series[0].data when rendering; data field is null for area charts."
+    },
+
+    {
+      "id": "cs-007",
+      "chart_type": "donut",
+      "title": "Market Share by Segment",
+      "x_label": null,
+      "y_label": null,
+      "accent_color": "#0A84FF",
+      "palette": ["#0A84FF", "#0060CC", "#66B3FF", "#E5E7EB"],
+      "data": [
+        { "label": "Our Share",    "value": 34 },
+        { "label": "Competitor A", "value": 28 },
+        { "label": "Competitor B", "value": 22 },
+        { "label": "Other",        "value": 16 }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": true,
+      "show_legend": true,
+      "aspect_ratio": 1.0,
+      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "renderer_status": "planned",
+      "$notes": "Donut (hollow pie) with wedge_width 0.55. Data labels show % inside each wedge. Aspect ratio 1.0 because the donut is square. Current renderer treats pie as solid; this is a distinct planned type."
+    },
+
+    {
+      "id": "cs-008",
+      "chart_type": "pie",
+      "title": "Q1 2025 Spend by Function",
+      "x_label": null,
+      "y_label": null,
+      "accent_color": "#0A84FF",
+      "palette": ["#0A84FF", "#0060CC", "#3399FF", "#66B3FF", "#CCE4FF"],
+      "data": [
+        { "label": "Engineering", "value": 42 },
+        { "label": "Sales",       "value": 28 },
+        { "label": "Marketing",   "value": 15 },
+        { "label": "CS",          "value": 9  },
+        { "label": "G&A",         "value": 6  }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": true,
+      "show_legend": false,
+      "aspect_ratio": 1.0,
+      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "renderer_status": "supported",
+      "$notes": "Solid pie. autopct labels on wedges. No legend — labels on wedges are sufficient. Aspect ratio 1.0. Palette overrides single accent_color for multi-segment fill."
+    },
+
+    {
+      "id": "cs-009",
+      "chart_type": "waterfall",
+      "title": "EBITDA Bridge — Q4 2024 to Q1 2025",
+      "x_label": "Driver",
+      "y_label": "EBITDA ($M)",
+      "accent_color": "#0A84FF",
+      "palette": {
+        "positive": "#0A84FF",
+        "negative": "#EF4444",
+        "total":    "#111111"
+      },
+      "data": [
+        { "label": "Q4 2024 EBITDA", "value": 8.4,  "bar_type": "total"    },
+        { "label": "Revenue Growth",  "value": 2.1,  "bar_type": "positive" },
+        { "label": "New Headcount",   "value": -1.4, "bar_type": "negative" },
+        { "label": "COGS Savings",    "value": 0.6,  "bar_type": "positive" },
+        { "label": "Marketing Spend", "value": -0.5, "bar_type": "negative" },
+        { "label": "Other",           "value": 0.2,  "bar_type": "positive" },
+        { "label": "Q1 2025 EBITDA", "value": 9.4,  "bar_type": "total"    }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": true,
+      "show_legend": false,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full"],
+      "renderer_status": "planned",
+      "$notes": "Each item carries bar_type: total | positive | negative. Totals are anchored at zero; positive/negative bars float from the running subtotal. palette is a dict (not list) for this chart type. Data labels required to show the delta value on each bar."
+    },
+
+    {
+      "id": "cs-010",
+      "chart_type": "scatter",
+      "title": "CAC vs LTV by Segment",
+      "x_label": "Customer Acquisition Cost ($k)",
+      "y_label": "Lifetime Value ($k)",
+      "accent_color": "#0A84FF",
+      "palette": null,
+      "data": [
+        { "label": "Enterprise A",  "value": 180 },
+        { "label": "Enterprise B",  "value": 210 },
+        { "label": "Enterprise C",  "value": 165 },
+        { "label": "Mid-Market A",  "value": 95  },
+        { "label": "Mid-Market B",  "value": 110 },
+        { "label": "Mid-Market C",  "value": 88  },
+        { "label": "SMB A",         "value": 42  },
+        { "label": "SMB B",         "value": 38  },
+        { "label": "SMB C",         "value": 55  }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": false,
+      "show_legend": false,
+      "aspect_ratio": 1.33,
+      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "renderer_status": "supported",
+      "$notes": "Current renderer uses index as x-coordinate and value as y. Future improvement: add x_value field to data items so both axes carry real data. Labels off; too many points for readable label placement."
+    },
+
+    {
+      "id": "cs-011",
+      "chart_type": "horizontal_bar",
+      "title": "Sales Pipeline Funnel",
+      "x_label": "Number of Opportunities",
+      "y_label": null,
+      "accent_color": "#0A84FF",
+      "palette": null,
+      "data": [
+        { "label": "Leads",        "value": 420 },
+        { "label": "Qualified",    "value": 210 },
+        { "label": "Proposal",     "value": 95  },
+        { "label": "Negotiation",  "value": 52  },
+        { "label": "Closed Won",   "value": 31  }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": true,
+      "show_legend": false,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full"],
+      "renderer_status": "planned",
+      "$notes": "Horizontal variant of bar. Stages on y-axis, count on x-axis. y-axis inverted so Leads is at top. Data labels to the right of each bar. No legend."
+    },
+
+    {
+      "id": "cs-012",
+      "chart_type": "kpi_tile",
+      "title": "Q1 2025 Key Metrics",
+      "x_label": null,
+      "y_label": null,
+      "accent_color": "#0A84FF",
+      "palette": null,
+      "data": [
+        {
+          "label": "ARR",
+          "value": 44.8,
+          "unit": "$M",
+          "delta": "+17.3%",
+          "delta_direction": "positive",
+          "subtitle": "vs Q1 2024"
+        },
+        {
+          "label": "NPS",
+          "value": 72,
+          "unit": "pts",
+          "delta": "+12 pts",
+          "delta_direction": "positive",
+          "subtitle": "Record high"
+        },
+        {
+          "label": "Churn",
+          "value": 1.2,
+          "unit": "%",
+          "delta": "-0.6 pts",
+          "delta_direction": "positive",
+          "subtitle": "18-month low"
+        }
+      ],
+      "series": null,
+      "categories": null,
+      "show_data_labels": true,
+      "show_legend": false,
+      "aspect_ratio": 2.67,
+      "intended_template_keys": ["kpi.3up", "chart.full"],
+      "renderer_status": "planned",
+      "$notes": "Renders as a 3-panel image: large metric value + unit, smaller delta with directional color (green positive, red negative), subtitle line. Aspect ratio 2.67 fills the full 11.83-inch content width at a 4.5-inch height. delta_direction drives color: positive = green, negative = red."
+    },
+
+    {
+      "id": "cs-013",
+      "chart_type": "combo_bar_line",
+      "title": "Revenue vs Net Revenue Retention",
+      "x_label": "Quarter",
+      "y_label": "Revenue ($M)",
+      "accent_color": "#0A84FF",
+      "palette": ["#0A84FF", "#EF4444"],
+      "data": null,
+      "series": [
+        {
+          "name": "Revenue ($M)",
+          "series_type": "bar",
+          "y_axis": "primary",
+          "data": [
+            { "label": "Q1 2024", "value": 27.8 },
+            { "label": "Q2 2024", "value": 32.3 },
+            { "label": "Q3 2024", "value": 35.6 },
+            { "label": "Q4 2024", "value": 38.2 },
+            { "label": "Q1 2025", "value": 44.8 }
+          ]
+        },
+        {
+          "name": "NRR (%)",
+          "series_type": "line",
+          "y_axis": "secondary",
+          "data": [
+            { "label": "Q1 2024", "value": 108 },
+            { "label": "Q2 2024", "value": 110 },
+            { "label": "Q3 2024", "value": 109 },
+            { "label": "Q4 2024", "value": 111 },
+            { "label": "Q1 2025", "value": 114 }
+          ]
+        }
+      ],
+      "categories": ["Q1 2024", "Q2 2024", "Q3 2024", "Q4 2024", "Q1 2025"],
+      "show_data_labels": false,
+      "show_legend": true,
+      "aspect_ratio": 1.78,
+      "intended_template_keys": ["chart.full"],
+      "renderer_status": "planned",
+      "$notes": "Dual-axis combo: bars on primary y-axis (left), line on secondary y-axis (right). Each series carries series_type and y_axis fields. Legend required. palette[0] for bars, palette[1] for line."
+    }
+
+  ]
+}

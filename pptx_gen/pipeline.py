@@ -16,6 +16,7 @@ from pptx_gen.indexing.embedder import SentenceTransformerEmbedder, SupportsEmbe
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.layout.resolver import resolve_deck_layout
 from pptx_gen.layout.schemas import ResolvedDeckLayout, StyleTokens
+from pptx_gen.planning.llm_client import build_default_structured_llm_client
 from pptx_gen.planning.prompt_chain import (
     StructuredLLMClient,
     build_retrieval_plan,
@@ -173,6 +174,7 @@ def generate_deck(
     style_tokens = style_tokens or StyleTokens(**DEFAULT_STYLE_TOKENS)
     embedder = embedder or SentenceTransformerEmbedder()
     vector_store = vector_store or InMemoryVectorStore()
+    llm_client = llm_client or build_default_structured_llm_client()
 
     brief: DeckBrief | None = None
     outline: OutlineSpec | None = None

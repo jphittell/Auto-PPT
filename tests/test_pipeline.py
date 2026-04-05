@@ -51,7 +51,13 @@ def test_generate_deck_without_refinement_writes_pptx(
 def test_generate_deck_from_source_runs_end_to_end(
     tmp_path: Path,
     deterministic_embedder,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setattr("pptx_gen.pipeline.build_default_structured_llm_client", lambda: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("PPTX_GEN_ANTHROPIC_MODEL", raising=False)
+    monkeypatch.delenv("PPTX_GEN_OPENAI_MODEL", raising=False)
     source_path = tmp_path / "source.txt"
     source_path.write_text(
         "Quarterly review. Revenue improved materially. Margin expanded after infrastructure changes. "
@@ -161,7 +167,12 @@ def test_generate_deck_skips_refinement_when_client_missing(
     make_presentation_spec,
     make_slide,
     make_block,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setattr("pptx_gen.pipeline.build_default_structured_llm_client", lambda: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("PPTX_GEN_ANTHROPIC_MODEL", raising=False)
     spec = PresentationSpec(
         **make_presentation_spec(
             slides=[

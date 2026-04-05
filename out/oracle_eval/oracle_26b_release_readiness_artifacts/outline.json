@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "headline": "Oracle HCM Cloud 26B Release Notes Global Human",
+      "message": "Create a release readiness briefing for the 26B Global HR update",
+      "evidence_queries": [],
+      "template_key": "title.hero"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "agenda",
+      "headline": "Agenda",
+      "message": "Review goals, evidence, and next actions.",
+      "evidence_queries": [],
+      "template_key": "agenda.list"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "headline": "Oracle HCM Cloud 26B Release Notes Global Human",
+      "message": "Oracle HCM Cloud 26B Release Notes Global Human",
+      "evidence_queries": [
+        "Oracle HCM Cloud 26B Release Notes Global Human",
+        "Oracle HCM Cloud 26B Release Notes Global Human evidence",
+        "Oracle HCM Cloud 26B Release Notes Global Human source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "headline": "Release Date June 2026 Document Type Feature Summary",
+      "message": "Release Date: June 2026 Document Type: Feature Summary",
+      "evidence_queries": [
+        "Release Date: June 2026 Document Type: Feature Summary",
+        "Release Date: June 2026 Document Type: Feature Summary evidence",
+        "Release Date: June 2026 Document Type: Feature Summary source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "headline": "Overview",
+      "message": "Overview",
+      "evidence_queries": [
+        "Overview",
+        "Overview evidence",
+        "Overview source data"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "summary",
+      "headline": "Key Takeaways",
+      "message": "Summarize the strongest supported points and actions.",
+      "evidence_queries": [],
+      "template_key": "content.1col"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

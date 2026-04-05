@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0.0",
+  "audience": "Executive Steering Committee",
+  "goal": "Create a decision-support deck on positions versus jobs in Oracle HCM",
+  "tone": "executive",
+  "slide_count_target": 8,
+  "source_corpus_ids": [
+    "src-positions_vs_jobs_oracle_hcm_solution_guide"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "Purpose",
+    "one_sentence_thesis": "Purpose",
+    "key_takeaways": [
+      "Positions vs",
+      "Purpose",
+      "This document supports the design decision between Position",
+      "Background"
+    ],
+    "user_request": "Create a decision-support deck on positions versus jobs in Oracle HCM",
+    "deck_archetype": "decision_guide",
+    "source_preview": "- Positions vs\n- Purpose\n- This document supports the design decision between Position\n- Background"
+  }
+}

@@ -1,0 +1,75 @@
+Positions vs. Jobs Management in Oracle HCM Cloud
+Solution Presentation and Design Decision Guide
+
+Purpose
+
+This document supports the design decision between Position Management and Job-based workforce modeling in Oracle HCM Cloud. It is intended for HR transformation leads, solution architects, and organizational design stakeholders evaluating how to structure their workforce hierarchy during an Oracle HCM implementation or re-implementation.
+
+Background
+
+Oracle HCM Cloud supports two primary models for workforce structure: a Job-based model and a Position-based model. Both models use the Job object as a foundation, but they differ significantly in how granular and controlled the assignment of workers to organizational slots is managed. A hybrid approach is also available and is increasingly common in complex global organizations.
+
+The choice between these models has downstream implications for recruiting, headcount planning, compensation, payroll configuration, and reporting. This decision should be made early in the design phase and validated with HR, Finance, and Operations leadership before configuration begins.
+
+Understanding Jobs in Oracle HCM Cloud
+
+A Job in Oracle HCM Cloud represents a generic role classification that exists independently of organizational structure. Jobs carry attributes including job family, job function, grade, competency requirements, and standard working hours. The same job can be assigned to workers in any business unit, department, or location.
+
+Jobs are managed centrally in the job catalog and are typically governed by HR or Compensation. Because jobs are not tied to a specific headcount slot or reporting line, they are well-suited for organizations with high workforce flexibility, frequent role changes, or a preference for lean organizational structures.
+
+Key characteristics of a Job-based model include unlimited assignment of workers to the same job across the enterprise, no built-in headcount control at the role level, simplified configuration and lower administrative overhead, and faster hire and transfer transactions because position availability is not a constraint.
+
+Understanding Positions in Oracle HCM Cloud
+
+A Position in Oracle HCM Cloud represents a specific, budgeted slot within a department and location. Each position is associated with a job but adds specificity through its placement in the organizational hierarchy. A position carries its own attributes including FTE, grade, probation period, shift, and reporting relationships.
+
+Positions enable headcount control because a position can be configured to allow only one incumbent, multiple incumbents up to an FTE cap, or an unlimited number of incumbents. When a worker is terminated, the position remains in the organizational structure and can be refilled, which preserves institutional knowledge about role requirements and compensation benchmarks.
+
+Key characteristics of a Position-based model include explicit headcount governance at the role level, a persistent organizational structure that survives workforce changes, tighter integration with Oracle Recruiting for requisition creation tied to open positions, more complex configuration and higher administrative overhead to maintain the position inventory, and stronger support for regulated industries and public sector organizations where headcount authorization is required.
+
+Comparing the Two Models
+
+Headcount Control
+In a Job-based model, headcount is managed through reporting and budgeting tools outside the core HR record. Finance and HR must reconcile headcount independently. In a Position-based model, headcount is governed directly in the workforce structure. The system enforces FTE limits and can prevent overhiring without a position override.
+
+Recruiting Integration
+Oracle Recruiting Cloud creates job requisitions that link to either a job or a position. In a Position-based model, the requisition inherits position attributes including department, grade, and hiring manager, reducing data entry errors and ensuring consistency between the open role and the eventual hire record. In a Job-based model, recruiters enter these attributes manually for each requisition.
+
+Organizational Change Management
+When departments are reorganized, a Job-based model requires updating worker assignment records to reflect new reporting lines and cost centers. A Position-based model allows the positions themselves to be moved within the hierarchy, with incumbent assignments following automatically. For large-scale reorganizations this can significantly reduce the volume of individual assignment changes.
+
+Compensation and Grade Enforcement
+Both models support grade ladders and compensation bands, but the enforcement mechanism differs. In a Position-based model, grade can be enforced at the position level, restricting the grades available for any worker assigned to that position. In a Job-based model, grade enforcement is applied at the job level and applies uniformly across all workers in that job regardless of organizational context.
+
+Reporting and Analytics
+Position-based models produce cleaner headcount and vacancy reporting because the organizational structure is explicit. Vacancy reports, span-of-control analysis, and FTE utilization reports are more straightforward to build and interpret. Job-based models require additional reporting logic to infer organizational intent from assignment data.
+
+When to Choose a Job-Based Model
+
+Organizations that benefit most from a Job-based model typically share several characteristics. The workforce is highly dynamic with frequent role changes and project-based assignments. Organizational structures are flat or frequently reorganized. HR administrative capacity is limited and maintaining a position inventory is not feasible. The organization operates in a single country or a small number of similar legislative environments. Speed and simplicity of hire transactions is prioritized over headcount governance.
+
+When to Choose a Position-Based Model
+
+Organizations that benefit most from a Position-based model typically include those that require strict headcount authorization, such as public sector, healthcare, financial services, and defense contractors. The workforce structure is relatively stable with well-defined roles and reporting relationships. The organization uses Oracle Recruiting Cloud and wants to leverage position-driven requisition creation. Finance and HR have agreed to manage headcount through the HR system of record rather than through external budget tools. The organization operates across multiple countries with different legislative requirements that benefit from position-level configuration.
+
+The Hybrid Approach
+
+Many enterprise organizations adopt a hybrid model in which certain business units or legal employers use Position Management while others operate on a Job-based model. Oracle HCM Cloud supports this at the enterprise level through the Enable Position Management option at the legal employer or business unit level.
+
+Common hybrid patterns include using Position Management for headquarters and regulated entities while using a Job-based model for field operations and contract workers, applying Position Management to permanent employees and a Job-based model to contingent and temporary workers, and enabling Position Management only for business units that have completed organizational design work, with plans to extend to remaining units in subsequent phases.
+
+The hybrid approach introduces complexity in cross-unit transfers and headcount reporting. Organizations adopting a hybrid model should define clear governance rules for how workers moving between position-managed and job-managed units are handled.
+
+Implementation Recommendations
+
+Regardless of which model is selected, the following practices support a successful implementation.
+
+Define the position or job governance model before configuration begins. Decide who owns job catalog maintenance, who approves position creation, and how grade ladders are managed across business units.
+
+Cleanse source data before migration. Job titles, grade codes, and department hierarchies sourced from legacy systems often contain inconsistencies that become structural defects in Oracle HCM Cloud if not resolved before load.
+
+Conduct a headcount reconciliation between the current HR system and the proposed Oracle structure before go-live. Discrepancies between active headcount and position inventory are one of the most common causes of delayed go-live in Oracle HCM implementations.
+
+Involve Finance in the design session. The connection between position FTE, compensation budget, and Oracle Planning and Budgeting Cloud Services is strongest when Finance and HR align on the model early.
+
+Plan for ongoing governance. Position inventories require regular review to retire vacant positions, update grade ladders, and reflect organizational changes. Without a defined governance cadence, position inventories become stale and undermine the value of the Position-based model.
