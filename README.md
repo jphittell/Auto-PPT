@@ -84,8 +84,7 @@ $env:PPTX_GEN_ANTHROPIC_MODEL="claude-opus-4-6"
 ```
 
 You can also place these in a local repo `.env` file instead of exporting them in the shell.
-Start from [`.env.example`](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/.env.example), copy it to `.env`,
-and fill in your real values. `.env` is gitignored.
+Create `.env` in the repo root, add the variables you need, and keep your real values local. `.env` is gitignored.
 
 Generation writes:
 
@@ -150,3 +149,13 @@ Notes:
 - ingest in the UI is real and calls the current `ingest_and_index()` pipeline
 - generation in the UI is mocked so the full user flow is navigable while backend planning remains isolated
 - PDF export returns a stub preview and PPTX export is intentionally upgrade-gated in the UI
+- `pptx-gen serve` serves the API and, when `web/` exists, the built React app from the same process
+- for the single-server flow, build the frontend first:
+
+```powershell
+cd ui
+npm install
+npm run build
+cd ..
+pptx-gen serve
+```

@@ -75,6 +75,7 @@ class AnthropicStructuredClient:
             tool_choice={"type": "tool", "name": tool_name},
         )
         tool_input = _extract_tool_input(response, tool_name)
+        tool_input = _normalize_openai_payload(schema_name, tool_input)
         validated = schema_model.model_validate(tool_input)
         return validated.model_dump(mode="json")
 

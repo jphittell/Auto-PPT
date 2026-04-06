@@ -24,6 +24,14 @@ class SlidePurpose(str, Enum):
     APPENDIX = "appendix"
 
 
+class SlideArchetype(str, Enum):
+    GENERIC = "generic"
+    EXECUTIVE_OVERVIEW = "executive_overview"
+    ARCHITECTURE_GRID = "architecture_grid"
+    COMPARISON = "comparison"
+    METRICS = "metrics"
+
+
 class PresentationBlockKind(str, Enum):
     TEXT = "text"
     BULLETS = "bullets"
@@ -87,6 +95,7 @@ class SlideSpec(BaseModel):
     slide_id: str = Field(min_length=1)
     purpose: SlidePurpose
     layout_intent: LayoutIntent
+    archetype: SlideArchetype | None = None
     headline: str = Field(min_length=1)
     speaker_notes: str = ""
     blocks: list[PresentationBlock] = Field(min_length=1)
@@ -126,6 +135,7 @@ class OutlineItem(BaseModel):
 
     slide_id: str = Field(min_length=1)
     purpose: SlidePurpose
+    archetype: SlideArchetype | None = None
     headline: str = Field(min_length=1)
     message: str = Field(min_length=1)
     evidence_queries: list[str] = Field(default_factory=list)
@@ -231,9 +241,9 @@ class PresentationSpec(BaseModel):
                 word_count = 0
                 for block in slide.blocks:
                     word_count += _count_words(block.content)
-                if word_count > 40:
+                if word_count > 70:
                     raise ValueError(
-                        f"slide {slide.slide_id} exceeds 40-word content cap with {word_count} words"
+                        f"slide {slide.slide_id} exceeds 70-word content cap with {word_count} words"
                     )
 
             if slide.purpose in citation_required_purposes:

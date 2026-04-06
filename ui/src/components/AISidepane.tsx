@@ -70,7 +70,7 @@ export function AISidepane(props: AISidepaneProps) {
                   disabled={props.actionLoading !== null}
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-left text-sm text-slate-800 disabled:opacity-60"
                 >
-                  {props.actionLoading === action ? 'Working…' : action}
+                  {props.actionLoading === action ? 'Working...' : action}
                 </button>
               ))}
             </div>

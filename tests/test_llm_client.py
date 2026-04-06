@@ -178,6 +178,64 @@ def test_openai_structured_client_normalizes_presentation_spec_like_payload() ->
     assert result["slides"][0]["blocks"][0]["content"] == {"text": "Quarter summary"}
 
 
+def test_anthropic_structured_client_normalizes_presentation_spec_like_payload() -> None:
+    response = SimpleNamespace(
+        content=[
+            SimpleNamespace(
+                type="tool_use",
+                name="return_presentationspec",
+                input={
+                    "schema_version": "1.0.0",
+                    "theme": {
+                        "style_tokens": {
+                            "fonts": {"heading": "Aptos Display", "body": "Aptos", "mono": "Cascadia Code"},
+                            "colors": {"bg": "#FFFFFF", "text": "#111111", "accent": "#0A84FF", "muted": "#6B7280"},
+                            "spacing": {"margin_in": 0.5, "gutter_in": 0.25},
+                            "images": {"source_policy": "provided_only", "style_prompt": "clean editorial visuals"},
+                        }
+                    },
+                    "slides": [
+                        {
+                            "slide_id": "s1",
+                            "template_key": "title.hero",
+                            "title": "Quarterly Review",
+                            "blocks": [{"kind": "text", "content": "Quarter summary"}],
+                        },
+                        {
+                            "slide_id": "s2",
+                            "template_key": "content.1col",
+                            "headline": "Revenue Improved",
+                            "blocks": [{"kind": "text", "content": "Revenue improved materially"}],
+                        },
+                        {
+                            "slide_id": "s3",
+                            "template_key": "content.1col",
+                            "headline": "Margin Expanded",
+                            "blocks": [
+                                {
+                                    "kind": "text",
+                                    "content": "Margin expanded after infrastructure changes",
+                                    "source_citations": [{"source_id": "doc-1", "locator": "doc-1:page1"}],
+                                }
+                            ],
+                        },
+                    ],
+                },
+            )
+        ]
+    )
+    sdk = FakeAnthropicSDK(response)
+    client = AnthropicStructuredClient(anthropic_client=sdk, api_key="test-key")
+
+    result = client.generate_json(system_prompt="sys", user_prompt="user", schema_name="PresentationSpec")
+
+    assert result["title"] == "Quarterly Review"
+    assert result["slides"][0]["layout_intent"]["template_key"] == "title.hero"
+    assert result["slides"][1]["blocks"][0]["source_citations"] == [
+        {"source_id": "doc-1", "locator": "doc-1:page1", "quote": None, "confidence": None}
+    ]
+
+
 def test_build_default_structured_llm_client_returns_none_without_key(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

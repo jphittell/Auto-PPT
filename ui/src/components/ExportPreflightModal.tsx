@@ -24,15 +24,15 @@ export function ExportPreflightModal({ open, imageIssueCount, onClose, onContinu
     <ModalFrame open={open} onClose={onClose} title="Export preflight">
       <div className="space-y-4 text-sm text-slate-700">
         <div className="flex items-center justify-between">
-          <span>✓ All slides have titles</span>
+          <span>Pass: All slides have titles</span>
           <span className="text-emerald-600">Pass</span>
         </div>
         <div className="flex items-center justify-between">
-          <span>✓ Reading order is set</span>
+          <span>Pass: Reading order is set</span>
           <span className="text-emerald-600">Pass</span>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span>{resolved ? '✓ All image alt text covered' : `⚠ ${imageIssueCount} images have no alt text`}</span>
+          <span>{resolved ? 'Pass: All image alt text covered' : `Warn: ${imageIssueCount} images have no alt text`}</span>
           {resolved ? (
             <span className="text-emerald-600">Resolved</span>
           ) : (
@@ -47,7 +47,7 @@ export function ExportPreflightModal({ open, imageIssueCount, onClose, onContinu
               }}
               className="rounded-xl bg-slate-900 px-3 py-2 text-white"
             >
-              {loading ? 'Generating…' : 'Auto-generate alt text'}
+              {loading ? 'Generating...' : 'Auto-generate alt text'}
             </button>
           )}
         </div>

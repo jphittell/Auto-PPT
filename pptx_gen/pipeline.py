@@ -124,13 +124,8 @@ def ingest_and_index(
     options: IngestionOptions | None = None,
     embedder: SupportsEmbedding | None = None,
     vector_store: InMemoryVectorStore | None = None,
-    artifacts_dir: str | Path | None = None,
 ) -> IngestionIndexResult:
     request = parse_source(source_path, title=title, language=language, options=options)
-
-    if not request.document.elements:
-        raise ValueError(f"No content elements could be extracted from '{source_path}'")
-
     chunks = chunk_document(request)
 
     embedder = embedder or SentenceTransformerEmbedder()
@@ -138,7 +133,7 @@ def ingest_and_index(
     embeddings = embedder.encode([chunk.text for chunk in chunks])
     vector_store.upsert_chunks(chunks, embeddings)
 
-    result = IngestionIndexResult(
+    return IngestionIndexResult(
         doc_id=request.document.elements[0].doc_id,
         source_id=request.source.id,
         ingestion_request=request,
@@ -147,11 +142,6 @@ def ingest_and_index(
         chunk_ids=[chunk.chunk_id for chunk in chunks],
         chunks=chunks,
     )
-
-    if artifacts_dir is not None:
-        _persist_json(Path(artifacts_dir) / "ingestion_result.json", result)
-
-    return result
 
 
 def generate_deck(
@@ -184,7 +174,9 @@ def generate_deck(
     style_tokens = style_tokens or StyleTokens(**DEFAULT_STYLE_TOKENS)
     embedder = embedder or SentenceTransformerEmbedder()
     vector_store = vector_store or InMemoryVectorStore()
+    requested_llm_client = llm_client
     llm_client = llm_client or build_default_structured_llm_client()
+    allow_deterministic_fallback = requested_llm_client is None and llm_client is not None
 
     brief: DeckBrief | None = None
     outline: OutlineSpec | None = None
@@ -206,32 +198,50 @@ def generate_deck(
             options=ingest_options,
             embedder=embedder,
             vector_store=vector_store,
-            artifacts_dir=artifacts_dir,
         )
-        brief = collect_deck_brief(
-            user_request=user_brief or goal,
-            audience=audience,
-            goal=goal,
-            tone=tone,
-            slide_count_target=slide_count_target,
-            source_corpus_ids=[ingestion_result.source_id],
-            document_title=title or ingestion_result.ingestion_request.document.title,
-            source_texts=[chunk.text for chunk in ingestion_result.chunks],
-            llm_client=llm_client,
-        )
-        outline = generate_outline(brief, llm_client=llm_client)
-        retrieval_plan = build_retrieval_plan(brief, outline, llm_client=llm_client)
-        retrieved_chunks = execute_retrieval_plan(retrieval_plan, vector_store=vector_store, embedder=embedder)
-        presentation_spec = generate_presentation_spec(
-            brief,
-            outline,
-            retrieved_chunks,
-            deck_title=title or ingestion_result.ingestion_request.document.title or "Untitled Presentation",
-            style_tokens=style_tokens,
-            theme_name=theme_name,
-            language=language,
-            llm_client=llm_client,
-        )
+        planning_inputs = {
+            "user_request": user_brief or goal,
+            "audience": audience,
+            "goal": goal,
+            "tone": tone,
+            "slide_count_target": slide_count_target,
+            "source_corpus_ids": [ingestion_result.source_id],
+            "document_title": title or ingestion_result.ingestion_request.document.title,
+            "source_texts": [chunk.text for chunk in ingestion_result.chunks],
+        }
+        deck_title = title or ingestion_result.ingestion_request.document.title or "Untitled Presentation"
+        try:
+            brief = collect_deck_brief(llm_client=llm_client, **planning_inputs)
+            outline = generate_outline(brief, llm_client=llm_client)
+            retrieval_plan = build_retrieval_plan(brief, outline, llm_client=llm_client)
+            retrieved_chunks = execute_retrieval_plan(retrieval_plan, vector_store=vector_store, embedder=embedder)
+            presentation_spec = generate_presentation_spec(
+                brief,
+                outline,
+                retrieved_chunks,
+                deck_title=deck_title,
+                style_tokens=style_tokens,
+                theme_name=theme_name,
+                language=language,
+                llm_client=llm_client,
+            )
+        except Exception:
+            if not allow_deterministic_fallback:
+                raise
+            brief = collect_deck_brief(llm_client=None, **planning_inputs)
+            outline = generate_outline(brief, llm_client=None)
+            retrieval_plan = build_retrieval_plan(brief, outline, llm_client=None)
+            retrieved_chunks = execute_retrieval_plan(retrieval_plan, vector_store=vector_store, embedder=embedder)
+            presentation_spec = generate_presentation_spec(
+                brief,
+                outline,
+                retrieved_chunks,
+                deck_title=deck_title,
+                style_tokens=style_tokens,
+                theme_name=theme_name,
+                language=language,
+                llm_client=None,
+            )
         _persist_json(artifacts_dir / "brief.json", brief)
         _persist_json(artifacts_dir / "outline.json", outline)
         _persist_json(artifacts_dir / "retrieval_plan.json", retrieval_plan)
@@ -352,6 +362,9 @@ def generate_deck(
                 style_tokens=final_spec.theme.style_tokens,
             )
             _persist_json(artifacts_dir / "export_report.json", export_report)
+    else:
+        pass
+
     status = ExportStatus.SUCCESS if export_report.passed else ExportStatus.FAILED
     artifact_urls = [str(output_path)] if output_path.exists() and status is ExportStatus.SUCCESS else None
     return DeckGenerationResult(

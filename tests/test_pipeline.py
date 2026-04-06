@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import pptx_gen.pipeline as pipeline_module
 from pptx_gen.pipeline import ExportStatus, generate_deck
 from pptx_gen.planning.prompt_chain import revise_for_design_quality
 from pptx_gen.planning.schemas import DesignRefinement, PresentationSpec
@@ -195,6 +196,144 @@ def test_generate_deck_skips_refinement_when_client_missing(
     assert result.refinement_applied is False
     assert "no llm client configured" in result.refinement_status
     assert result.export_job.status is ExportStatus.SUCCESS
+
+
+def test_generate_deck_falls_back_when_default_llm_output_is_invalid(
+    monkeypatch,
+    tmp_path: Path,
+    deterministic_embedder,
+) -> None:
+    source_path = tmp_path / "source.txt"
+    source_path.write_text(
+        "Quarterly review. Revenue improved materially. Margin expanded after infrastructure changes. "
+        "Leadership should approve the hiring plan.",
+        encoding="utf-8",
+    )
+
+    class InvalidStructuredClient:
+        def generate_json(self, *, system_prompt: str, user_prompt: str, schema_name: str) -> dict:
+            if schema_name == "DeckBrief":
+                return {
+                    "schema_version": "1.0.0",
+                    "audience": "Leadership team",
+                    "goal": "Summarize quarterly performance",
+                    "tone": "executive",
+                    "slide_count_target": 5,
+                    "source_corpus_ids": ["source-txt"],
+                    "questions_for_user": [],
+                }
+            if schema_name == "OutlineSpec":
+                return {
+                    "schema_version": "1.0.0",
+                    "outline": [
+                        {
+                            "slide_id": "s1",
+                            "purpose": "title",
+                            "headline": "Quarterly Review",
+                            "message": "Open the review.",
+                            "evidence_queries": [],
+                            "template_key": "title.hero",
+                        },
+                        {
+                            "slide_id": "s2",
+                            "purpose": "content",
+                            "headline": "Revenue Improved",
+                            "message": "Revenue improved materially.",
+                            "evidence_queries": ["revenue improved materially"],
+                            "template_key": "content.1col",
+                        },
+                        {
+                            "slide_id": "s3",
+                            "purpose": "summary",
+                            "headline": "Key Takeaways",
+                            "message": "Close the review.",
+                            "evidence_queries": [],
+                            "template_key": "content.1col",
+                        },
+                    ],
+                    "questions_for_user": [],
+                }
+            if schema_name == "RetrievalPlan":
+                return {
+                    "schema_version": "1.0.0",
+                    "retrieval_plan": [
+                        {
+                            "slide_id": "s2",
+                            "queries": [
+                                {
+                                    "query": "revenue improved materially",
+                                    "doc_ids": ["source-txt"],
+                                    "min_date": None,
+                                }
+                            ],
+                        }
+                    ],
+                    "questions_for_user": [],
+                }
+            if schema_name == "PresentationSpec":
+                return {
+                    "schema_version": "1.0.0",
+                    "title": "Quarterly Review",
+                    "audience": "Leadership team",
+                    "language": "en-US",
+                    "theme": {
+                        "name": "Auto PPT",
+                        "style_tokens": pipeline_module.StyleTokens(**pipeline_module.DEFAULT_STYLE_TOKENS).model_dump(),
+                    },
+                    "slides": [
+                        {
+                            "slide_id": "s1",
+                            "purpose": "title",
+                            "layout_intent": {"template_key": "title.hero", "strict_template": True},
+                            "headline": "Quarterly Review",
+                            "speaker_notes": "Open the review.",
+                            "blocks": [
+                                {
+                                    "block_id": "b1",
+                                    "kind": "text",
+                                    "content": {"subtitle": "Quarter summary"},
+                                    "source_citations": [],
+                                    "asset_refs": [],
+                                }
+                            ],
+                        },
+                        {
+                            "slide_id": "s2",
+                            "purpose": "content",
+                            "layout_intent": {"template_key": "content.1col", "strict_template": True},
+                            "headline": "Revenue Improved",
+                            "speaker_notes": "Revenue improved materially.",
+                            "blocks": [
+                                {
+                                    "block_id": "b1",
+                                    "kind": "text",
+                                    "content": {"text": "Revenue improved materially"},
+                                    "source_citations": [],
+                                    "asset_refs": [],
+                                }
+                            ],
+                        },
+                    ],
+                    "questions_for_user": [],
+                }
+            raise AssertionError(f"unexpected schema_name: {schema_name}")
+
+    monkeypatch.setattr(pipeline_module, "build_default_structured_llm_client", lambda: InvalidStructuredClient())
+
+    result = generate_deck(
+        source_path=source_path,
+        output_path=tmp_path / "fallback-generated.pptx",
+        audience="Leadership team",
+        goal="Summarize quarterly performance",
+        slide_count_target=5,
+        embedder=deterministic_embedder,
+        llm_client=None,
+    )
+
+    assert Path(result.output_path).exists()
+    assert result.export_job.status is ExportStatus.SUCCESS
+    assert result.outline is not None
+    assert any(slide.blocks for slide in result.presentation_spec.slides)
 
 
 def test_design_refinement_preserves_citations(

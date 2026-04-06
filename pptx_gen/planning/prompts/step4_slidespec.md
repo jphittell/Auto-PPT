@@ -19,7 +19,11 @@ Style tokens:
 ## Instructions
 
 - Return only valid JSON for the `PresentationSpec` schema.
+- Set `title` to the value of `extensions.document_title` from the deck brief (never use "Generated Presentation" or any other placeholder).
+- Set `audience` to the `audience` field from the deck brief exactly as provided.
 - Preserve all `slide_id` values and slide order from the outline.
+- For each slide, use the `headline` from the corresponding outline item verbatim — do NOT replace it with "Slide 1", "Slide 2", or any other placeholder.
+- CRITICAL: bullet items, text blocks, and callout text must contain real synthesized content from the retrieved chunks — not the slide headline, not the outline message repeated verbatim, and not placeholder phrases. Each bullet must be a distinct insight (8–15 words).
 - Use only canonical template keys from the repo layout registry:
     - "title.hero", "agenda.list", "section.header"
     - "content.1col", "content.2col.text_image", "content.3col.cards"

@@ -35,6 +35,9 @@ export function OutlineTreeEditor({ slides, onTitleChange, onReorder }: OutlineT
                 <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium capitalize text-indigo-700">
                   {slide.purpose}
                 </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  {slide.template_id.replace(/\./g, ' / ')}
+                </span>
                 <input
                   value={slide.title}
                   onChange={(event) => onTitleChange(index, event.target.value)}
@@ -57,7 +60,11 @@ export function OutlineTreeEditor({ slides, onTitleChange, onReorder }: OutlineT
                     </li>
                   ))}
                 </ul>
-              ) : null}
+              ) : (
+                <div className="mt-3 line-clamp-3 text-sm text-slate-600">
+                  {slide.blocks[0]?.content}
+                </div>
+              )}
             </div>
           </div>
         </div>

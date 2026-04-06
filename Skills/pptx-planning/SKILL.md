@@ -5,13 +5,14 @@ description: Build and maintain the five-step JSON-only planning and RAG orchest
 
 # PPTX Planning
 
-Read `AGENTS.md`, [schemas.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/planning/schemas.py), [prompt_chain.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/planning/prompt_chain.py), and [prompts](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/planning/prompts) before editing this area.
+Read `AGENTS.md`, [schemas.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/planning/schemas.py), [prompt_chain.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/planning/prompt_chain.py), [llm_client.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/planning/llm_client.py), and [prompts](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/planning/prompts) before editing this area.
 
 ## Preserve
 
 - Keep every planning boundary schema-first and JSON-only.
 - Preserve `questions_for_user` as the mechanism for surfacing missing inputs instead of hallucinating.
 - Keep `PresentationSpec` as the canonical intermediate representation between planning and layout.
+- Keep structured model-client behavior aligned with the typed planning contracts in `llm_client.py`; do not let provider-specific code drift from the shared schemas.
 - Preserve block-level `source_citations`; design revision may add citations but must not remove existing ones.
 - Keep the non-appendix word cap and other contract validators in `schemas.py`, not just in tests.
 - Store prompt text in `planning/prompts/` rather than embedding large prompt strings inline.

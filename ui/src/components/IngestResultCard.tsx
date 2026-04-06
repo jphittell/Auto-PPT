@@ -1,39 +1,32 @@
 import type { IngestResult } from '../types'
 
-export function IngestResultCard({ result }: { result: IngestResult }) {
-  const total = Object.values(result.element_types).reduce((sum, count) => sum + count, 0) || 1
+export function IngestResultCard({ result, onRemove }: { result: IngestResult; onRemove?: () => void }) {
+  const sections = result.element_types.heading ?? 0
+  const paragraphs = result.element_types.paragraph ?? 0
+  const bulletItems = result.element_types.list_item ?? 0
+  const summaryParts = [
+    `${result.title} was processed into ${result.chunk_count} content chunks.`,
+    sections > 0 ? `It includes ${sections} section heading${sections === 1 ? '' : 's'}.` : null,
+    paragraphs > 0 ? `The document contains ${paragraphs} paragraph block${paragraphs === 1 ? '' : 's'}.` : null,
+    bulletItems > 0 ? `It also includes ${bulletItems} bullet item${bulletItems === 1 ? '' : 's'}.` : null,
+  ].filter(Boolean)
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-slate-500">Detected document</p>
+          <p className="text-sm text-slate-500">Uploaded document</p>
           <h3 className="text-lg font-semibold text-slate-950">{result.title}</h3>
         </div>
         <div className="flex gap-6 text-sm">
-          <div>
-            <p className="text-slate-500">Chunks</p>
-            <p className="font-semibold text-slate-950">{result.chunk_count}</p>
-          </div>
-          <div>
-            <p className="text-slate-500">Doc ID</p>
-            <p className="font-semibold text-slate-950">{result.doc_id}</p>
-          </div>
+          {onRemove ? (
+            <button type="button" onClick={onRemove} className="self-start rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600">
+              Remove
+            </button>
+          ) : null}
         </div>
       </div>
-      <div className="mt-5 space-y-3">
-        {Object.entries(result.element_types).map(([key, count]) => (
-          <div key={key} className="space-y-1">
-            <div className="flex items-center justify-between text-sm">
-              <span className="capitalize text-slate-700">{key.replace('_', ' ')}</span>
-              <span className="font-medium text-slate-900">{count}</span>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-indigo-500" style={{ width: `${(count / total) * 100}%` }} />
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">{summaryParts.join(' ')}</div>
     </div>
   )
 }

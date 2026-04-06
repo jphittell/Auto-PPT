@@ -3,15 +3,18 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { getTemplates } from '../api/client'
 import { TemplateCard } from '../components/TemplateCard'
+import { featuredTemplates, mergeTemplates } from '../mock/templates'
 import type { Template } from '../types'
 
 export function TemplateGalleryPage() {
-  const [templates, setTemplates] = useState<Template[]>([])
+  const [templates, setTemplates] = useState<Template[]>(featuredTemplates)
   const [query, setQuery] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
-    getTemplates().then(setTemplates).catch(() => setTemplates([]))
+    getTemplates()
+      .then((results) => setTemplates(results.length > 0 ? mergeTemplates(results) : featuredTemplates))
+      .catch(() => setTemplates(featuredTemplates))
   }, [])
 
   const filtered = useMemo(
@@ -28,7 +31,7 @@ export function TemplateGalleryPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <Link to="/" className="text-sm text-slate-500">
-              ← Back home
+              {'<- Back home'}
             </Link>
             <h1 className="mt-3 text-4xl font-semibold text-slate-950">Template gallery</h1>
           </div>
@@ -44,6 +47,11 @@ export function TemplateGalleryPage() {
             <TemplateCard key={template.id} template={template} onSelect={() => navigate(`/new?template=${template.id}`)} />
           ))}
         </div>
+        {filtered.length === 0 ? (
+          <div className="mt-8 rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+            No templates matched your search.
+          </div>
+        ) : null}
       </div>
     </div>
   )

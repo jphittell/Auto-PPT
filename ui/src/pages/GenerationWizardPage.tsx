@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { generateDeck, getTemplates, ingestDocument } from '../api/client'
+import { generateDeck, getTemplates, ingestDocument, planDeck } from '../api/client'
 import { FileDropzone } from '../components/FileDropzone'
 import { GeneratingScreen } from '../components/GeneratingScreen'
 import { IngestResultCard } from '../components/IngestResultCard'
@@ -23,6 +23,9 @@ export function GenerationWizardPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [ingesting, setIngesting] = useState(false)
   const [generatingOutline, setGeneratingOutline] = useState(false)
+  const [finalizingDeck, setFinalizingDeck] = useState(false)
+  const [generationError, setGenerationError] = useState<string | null>(null)
+  const [generationComplete, setGenerationComplete] = useState(false)
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const addDeck = useDeckStore((state) => state.addDeck)
@@ -42,13 +45,37 @@ export function GenerationWizardPage() {
     () => templates.find((template) => template.id === wizard.selectedTemplateId) ?? null,
     [templates, wizard.selectedTemplateId],
   )
+  const deckLevelTemplates = useMemo(
+    () => templates.filter((template) => template.deck_default_allowed),
+    [templates],
+  )
 
-  async function handleFileSelect(file: File) {
+  useEffect(() => {
+    if (!deckLevelTemplates.length) return
+    if (deckLevelTemplates.some((template) => template.id === wizard.selectedTemplateId)) return
+    wizard.setSelectedTemplateId(deckLevelTemplates[0].id)
+  }, [deckLevelTemplates, wizard.selectedTemplateId])
+
+  useEffect(() => {
+    if (wizard.step !== 5 || finalizingDeck || generationComplete || generationError || !wizard.plannedDraftId) return
+    void handleFinalizeDeck()
+  }, [wizard.step, wizard.plannedDraftId, finalizingDeck, generationComplete, generationError])
+
+  async function handleFilesSelect(files: File[]) {
+    setIngesting(true)
+    const nextResults = [...wizard.ingestResults]
     try {
-      setIngesting(true)
-      const result = await ingestDocument(file)
-      wizard.setIngestResult(result)
-      addToast(`Ingested ${result.title}`, 'success')
+      for (const file of files) {
+        const result = await ingestDocument(file)
+        const existingIndex = nextResults.findIndex((item) => item.doc_id === result.doc_id)
+        if (existingIndex >= 0) {
+          nextResults[existingIndex] = result
+        } else {
+          nextResults.push(result)
+        }
+        addToast(`Ingested ${result.title}`, 'success')
+      }
+      wizard.setIngestResults(nextResults)
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Upload failed', 'error')
     } finally {
@@ -57,22 +84,24 @@ export function GenerationWizardPage() {
   }
 
   async function handleGenerateOutline() {
-    if (!wizard.ingestResult) {
-      addToast('Upload a document first.', 'error')
+    if (wizard.ingestResults.length === 0) {
+      addToast('Upload at least one document first.', 'error')
       return
     }
     try {
       setGeneratingOutline(true)
-      const deck = await generateDeck({
-        doc_id: wizard.ingestResult.doc_id,
+      const draft = await planDeck({
+        doc_ids: wizard.ingestResults.map((result) => result.doc_id),
         goal: wizard.goal,
         audience: wizard.audience,
         tone: wizard.tone,
         slide_count: wizard.slideCount,
       })
-      wizard.setOutline(deck.slides)
-      wizard.setGeneratedDeckId(deck.id)
-      addDeck(deck)
+      wizard.setOutline(draft.slides)
+      wizard.setPlannedDraftId(draft.draft_id)
+      wizard.setGeneratedDeckId(null)
+      setGenerationComplete(false)
+      setGenerationError(null)
       wizard.setStep(3)
     } catch (error) {
       addToast(error instanceof Error ? error.message : 'Deck generation failed', 'error')
@@ -81,14 +110,55 @@ export function GenerationWizardPage() {
     }
   }
 
+  async function handleFinalizeDeck() {
+    if (!wizard.plannedDraftId) {
+      setGenerationError('No deck draft is available yet.')
+      return
+    }
+    try {
+      setFinalizingDeck(true)
+      setGenerationError(null)
+      const deck = await generateDeck({
+        draft_id: wizard.plannedDraftId,
+        outline: wizard.outline.map((slide) => ({
+          id: slide.id,
+          index: slide.index,
+          purpose: slide.purpose,
+          title: slide.title,
+          template_id: slide.template_id,
+        })),
+        selected_template_id: wizard.selectedTemplateId,
+        brand_kit: wizard.brandKit,
+      })
+      wizard.setGeneratedDeckId(deck.id)
+      addDeck(deck)
+      setGenerationComplete(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Deck generation failed'
+      setGenerationError(message)
+      addToast(message, 'error')
+    } finally {
+      setFinalizingDeck(false)
+    }
+  }
+
   function renderStep() {
     if (wizard.step === 1) {
       return (
         <div className="space-y-6">
-          <FileDropzone accept=".pdf,.txt,.md" loading={ingesting} onFileSelect={handleFileSelect} />
-          {wizard.ingestResult ? <IngestResultCard result={wizard.ingestResult} /> : null}
+          <FileDropzone accept=".pdf,.txt,.md" multiple loading={ingesting} onFilesSelect={handleFilesSelect} />
+          {wizard.ingestResults.length > 0 ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                {wizard.ingestResults.length} source document{wizard.ingestResults.length === 1 ? '' : 's'} ready for planning
+              </div>
+              {wizard.ingestResults.map((result) => (
+                <IngestResultCard key={result.doc_id} result={result} onRemove={() => wizard.removeIngestResult(result.doc_id)} />
+              ))}
+            </div>
+          ) : null}
           <Link to="/templates" className="inline-flex text-sm text-indigo-700">
-            Skip — use a template instead
+            Skip - use a template instead
           </Link>
         </div>
       )
@@ -144,12 +214,12 @@ export function GenerationWizardPage() {
               disabled={generatingOutline}
               className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
-              {generatingOutline ? 'Planning your deck…' : 'Regenerate outline'}
+              {generatingOutline ? 'Planning your deck...' : 'Regenerate outline'}
             </button>
           </div>
           {generatingOutline && wizard.outline.length === 0 ? (
             <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-panel">
-              <div className="text-lg font-medium text-slate-900">Planning your deck…</div>
+              <div className="text-lg font-medium text-slate-900">Planning your deck...</div>
             </div>
           ) : (
             <OutlineTreeEditor
@@ -168,7 +238,7 @@ export function GenerationWizardPage() {
           <div>
             <h2 className="text-2xl font-semibold text-slate-950">Style</h2>
             <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {templates.map((template) => (
+              {deckLevelTemplates.map((template) => (
                 <TemplateCard
                   key={template.id}
                   template={template}
@@ -245,12 +315,19 @@ export function GenerationWizardPage() {
 
     return (
       <GeneratingScreen
+        complete={generationComplete}
+        error={generationError}
         onComplete={() => {
           if (!wizard.generatedDeckId) {
             addToast('No generated deck is available yet.', 'error')
             return
           }
           navigate(`/editor/${wizard.generatedDeckId}`)
+        }}
+        onRetry={() => {
+          setGenerationError(null)
+          setGenerationComplete(false)
+          void handleFinalizeDeck()
         }}
       />
     )
@@ -270,6 +347,8 @@ export function GenerationWizardPage() {
       return
     }
     if (wizard.step === 4) {
+      setGenerationComplete(false)
+      setGenerationError(null)
       wizard.setStep(5)
     }
   }
@@ -280,7 +359,7 @@ export function GenerationWizardPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <Link to="/" className="text-sm text-slate-500">
-              ← Back home
+              {'<- Back home'}
             </Link>
             <h1 className="mt-3 text-4xl font-semibold text-slate-950">Generation wizard</h1>
           </div>
@@ -303,7 +382,7 @@ export function GenerationWizardPage() {
             <button
               type="button"
               onClick={primaryAction}
-              disabled={generatingOutline}
+              disabled={generatingOutline || finalizingDeck}
               className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white disabled:opacity-60"
             >
               {wizard.step === 2 ? 'Plan outline' : wizard.step === 4 ? 'Generate deck' : 'Continue'}

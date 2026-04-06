@@ -99,7 +99,7 @@ def add_bullets(
     profile = style_profile(style_tokens, style_ref or "body", ResolvedElementKind.TEXTBOX)
     for index, item in enumerate(items):
         paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
-        paragraph.text = item
+        paragraph.text = f"• {item}"
         paragraph.level = 0
         paragraph.alignment = PP_ALIGN.LEFT
         runs = paragraph.runs or (_ensure_first_run(paragraph),)
@@ -229,7 +229,7 @@ def style_profile(
             {
                 "font_size_pt": 16,
                 "bold": style_ref == "takeaway",
-                "fill_color": colors.accent if style_ref == "takeaway" else colors.bg,
+                "fill_color": colors.accent if style_ref == "takeaway" else "#F8FAFC",
                 "line_color": colors.accent,
                 "text_color": "#FFFFFF" if style_ref == "takeaway" else colors.text,
             }
@@ -262,7 +262,7 @@ def extract_text_lines(content: Any) -> list[str]:
     if isinstance(content, dict):
         if isinstance(content.get("items"), list):
             return [str(item) for item in content["items"] if item is not None]
-        ordered_keys = ("text", "value", "label", "delta", "sub_label", "subtitle", "presenter", "date")
+        ordered_keys = ("title", "text", "value", "label", "delta", "sub_label", "subtitle", "presenter", "date")
         values = [str(content[key]) for key in ordered_keys if content.get(key)]
         if values:
             return values

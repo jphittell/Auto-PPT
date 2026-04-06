@@ -5,13 +5,14 @@ description: Render deterministic slide layouts into `.pptx` artifacts and enfor
 
 # PPTX Renderer
 
-Read `AGENTS.md`, [pptx_exporter.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/renderer/pptx_exporter.py), [qa.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/renderer/qa.py), and the layout schemas before editing this area.
+Read `AGENTS.md`, [pptx_exporter.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/renderer/pptx_exporter.py), [slide_ops.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/renderer/slide_ops.py), [qa.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/renderer/qa.py), and the layout schemas before editing this area.
 
 ## Preserve
 
 - Keep rendering deterministic and local-only. Do not embed remote image URLs.
 - Treat charts as pre-rendered images unless the renderer contract changes deliberately.
 - Keep speaker notes separate from visible slide content.
+- Preserve shared rendering helpers in `slide_ops.py` as the common logic layer used by both export and QA.
 - Preserve the separation between layout, asset resolution, rendering, and QA responsibilities.
 - Keep `QAReport` and related models strict with `ConfigDict(extra="forbid")`.
 

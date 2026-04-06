@@ -5,7 +5,7 @@ description: Resolve `PresentationSpec` into deterministic slide geometry for th
 
 # PPTX Layout
 
-Read `AGENTS.md`, [schemas.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/layout/schemas.py), [templates.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/layout/templates.py), and [resolver.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/layout/resolver.py) before editing this area.
+Read `AGENTS.md`, [schemas.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/layout/schemas.py), [templates.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/layout/templates.py), and [resolver.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/layout/resolver.py) before editing this area.
 
 ## Preserve
 

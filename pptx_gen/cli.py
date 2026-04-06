@@ -80,3 +80,7 @@ def serve_command(host: str, port: int, reload: bool) -> None:
         ) from exc
 
     uvicorn.run("pptx_gen.api:app", host=host, port=port, reload=reload)
+
+
+if __name__ == "__main__":
+    cli()

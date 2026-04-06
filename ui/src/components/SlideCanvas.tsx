@@ -17,9 +17,16 @@ export function SlideCanvas({ slide, onTitleChange, onBlockChange }: SlideCanvas
             onChange={(event) => onTitleChange(event.target.value)}
             className="w-full border-none bg-transparent text-3xl font-semibold text-slate-950 outline-none"
           />
-          <span className="rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium capitalize text-indigo-700">
-            {slide.purpose}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium capitalize text-indigo-700">
+              {slide.purpose}
+            </span>
+            {slide.archetype ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">
+                {slide.archetype.replace(/_/g, ' ')}
+              </span>
+            ) : null}
+          </div>
         </div>
         <div className="space-y-5">
           {slide.blocks.map((block, index) => (

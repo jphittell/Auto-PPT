@@ -5,7 +5,7 @@ description: Encode chunks and manage retrieval metadata for this repo's vector 
 
 # PPTX Indexing
 
-Read `AGENTS.md`, [embedder.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/indexing/embedder.py), [vector_store.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/indexing/vector_store.py), and the ingestion/planning schemas before editing this area.
+Read `AGENTS.md`, [embedder.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/indexing/embedder.py), [vector_store.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/indexing/vector_store.py), and the ingestion/planning schemas before editing this area.
 
 ## Preserve
 
@@ -20,4 +20,3 @@ Read `AGENTS.md`, [embedder.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/A
 - Do not move citation logic into the vector store.
 - Do not make indexing code depend on prompt files or renderer contracts.
 - Update indexing or pipeline tests whenever embedding or query result shape changes.
-

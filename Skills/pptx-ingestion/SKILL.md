@@ -5,7 +5,7 @@ description: Parse PDFs and text into typed `ContentObject` elements and determi
 
 # PPTX Ingestion
 
-Read `AGENTS.md`, [schemas.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/ingestion/schemas.py), [parser.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/ingestion/parser.py), and [chunker.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/pptx_gen/ingestion/chunker.py) before editing this area.
+Read `AGENTS.md`, [schemas.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/ingestion/schemas.py), [parser.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/ingestion/parser.py), and [chunker.py](C:/Users/jphit/.codex/Projects/Auto-PPT/pptx_gen/ingestion/chunker.py) before editing this area.
 
 ## Preserve
 
@@ -14,7 +14,7 @@ Read `AGENTS.md`, [schemas.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Au
 - Keep `chunk_id` in the format `{doc_id}:{element_id}:{chunk_index}` and `locator` in the format `{doc_id}:page{page}`.
 - Preserve the current normalized element types: `title`, `heading`, `paragraph`, `list_item`, `table`, `figure`, `caption`.
 - Keep `IngestionRequest` and nested models strict with `ConfigDict(extra="forbid")`.
-- Update [test_ingestion.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/tests/test_ingestion.py) and [conftest.py](C:/Users/jphit/OneDrive/Desktop/Codex/Projects/Auto%20PPT/tests/conftest.py) whenever parser, chunking, or provenance behavior changes.
+- Update [test_ingestion.py](C:/Users/jphit/.codex/Projects/Auto-PPT/tests/test_ingestion.py) and [conftest.py](C:/Users/jphit/.codex/Projects/Auto-PPT/tests/conftest.py) whenever parser, chunking, or provenance behavior changes.
 
 ## Avoid
 

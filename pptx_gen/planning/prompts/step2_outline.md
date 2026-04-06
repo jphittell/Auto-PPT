@@ -14,7 +14,8 @@ Deck brief:
 - Slide 1 must be `title`.
 - Use `agenda` only when the deck is long enough to benefit from it.
 - End on `summary` unless a clearly justified `appendix` is needed.
-- Keep headlines short and scannable.
+- Keep headlines short and scannable (5–8 words max).
+- The `message` field for each slide must be a distinct, concrete statement of what that slide will communicate — NOT a copy of the headline and NOT a generic phrase like "provide evidence". Use the key_takeaways and thesis from the brief as the basis for actual content.
 - Use `template_key` values that match the repo's canonical layout registry.
 - If `extensions.deck_archetype` indicates a release-readiness document, favor a flow like:
   what changed -> impact/risk -> known issues -> required actions.

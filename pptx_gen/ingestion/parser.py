@@ -420,10 +420,18 @@ def _map_element_type(raw_element: Any, page_number: int | None, title_claimed: 
 
 
 def _infer_title(path: Path, elements: list[ContentObject]) -> str:
+    stem = path.stem.replace("_", " ").replace("-", " ").strip()
     for element in elements:
         if element.type is ContentElementType.TITLE:
-            return element.text
-    return path.stem.replace("_", " ").strip() or path.name
+            text = element.text.strip()
+            # Prefer the filename stem when the parsed title looks like a fragment
+            # (ends with a dangling conjunction/preposition, or is shorter than stem)
+            last_word = text.rsplit(" ", 1)[-1].lower().rstrip(".,;:")
+            is_fragment = last_word in {"and", "or", "but", "the", "a", "an", "of", "in", "on", "at", "by", "for", "with", "to"}
+            if stem and (is_fragment or (len(stem) > len(text) + 5)):
+                return stem
+            return text
+    return stem or path.name
 
 
 def _make_doc_id(path: Path) -> str:

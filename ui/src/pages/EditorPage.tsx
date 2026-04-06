@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-import { exportDeck, generateDeck, getTemplates } from '../api/client'
+import { exportDeck, getTemplates } from '../api/client'
 import { AISidepane } from '../components/AISidepane'
 import { ExportPreflightModal } from '../components/ExportPreflightModal'
 import { SlideCanvas } from '../components/SlideCanvas'
 import { SlideRail } from '../components/SlideRail'
-import { UpgradeModal } from '../components/UpgradeModal'
 import { useDeckStore } from '../store/deckStore'
 import { useUIStore } from '../store/uiStore'
 import { useWizardStore } from '../store/wizardStore'
@@ -46,26 +45,49 @@ export function EditorPage() {
     if (!currentDeck || !slide) return
     try {
       setActionLoading(action)
-      const regenerated = await generateDeck({
-        doc_id: currentDeck.doc_id,
-        goal: `${currentDeck.goal} — ${action}`,
-        audience: currentDeck.audience,
-        tone: 50,
-        slide_count: currentDeck.slides.length,
-      })
-      const nextSlide = regenerated.slides[Math.min(selectedSlideIndex, regenerated.slides.length - 1)]
       if (action === 'Add slide after this') {
+        const nextSlide = {
+          ...slide,
+          id: `${slide.id}-${Date.now()}`,
+          index: selectedSlideIndex + 2,
+          title: `${slide.title} follow-up`,
+        }
         insertSlideAfter(selectedSlideIndex, {
           ...nextSlide,
-          id: `${nextSlide.id}-${Date.now()}`,
-          index: selectedSlideIndex + 2,
         })
       } else if (action === 'Regenerate layout') {
         const currentIndex = templates.findIndex((item) => item.id === slide.template_id)
         const selectedTemplate = templates[(currentIndex + 1) % Math.max(templates.length, 1)]
         updateSlide(selectedSlideIndex, { template_id: selectedTemplate?.id ?? slide.template_id })
+      } else if (action === 'Convert to bullet list') {
+        const bulletText = slide.blocks.map((block) => block.content).join('\n')
+        replaceSlide(selectedSlideIndex, {
+          ...slide,
+          blocks: [{ id: slide.blocks[0]?.id ?? `block-${Date.now()}`, kind: 'bullets', content: bulletText }],
+        })
+      } else if (action === 'Make more concise') {
+        replaceSlide(selectedSlideIndex, {
+          ...slide,
+          blocks: slide.blocks.map((block) => ({
+            ...block,
+            content: block.content
+              .split(/\s+/)
+              .slice(0, 12)
+              .join(' '),
+          })),
+        })
+      } else if (action === 'Rewrite for investors') {
+        replaceSlide(selectedSlideIndex, {
+          ...slide,
+          title: `${slide.title} for investors`,
+          blocks: slide.blocks.map((block) => ({
+            ...block,
+            content: `${block.content} Focus on traction, differentiation, and upside.`,
+          })),
+        })
       } else {
-        replaceSlide(selectedSlideIndex, { ...nextSlide, id: slide.id, index: slide.index })
+        ui.addToast('Action not implemented.', 'info')
+        return
       }
       setHistory((entries) => [action, ...entries].slice(0, 3))
       ui.addToast(action, 'success')
@@ -77,27 +99,34 @@ export function EditorPage() {
   }
 
   async function handlePdfExport() {
+    await handleDeckExport('pdf')
+  }
+
+  async function handlePptxExport() {
+    await handleDeckExport('pptx')
+  }
+
+  async function handleDeckExport(format: 'pdf' | 'pptx') {
     if (!currentDeck) return
     try {
-      const result = await exportDeck(currentDeck.id, 'pdf')
-      if (result.type !== 'pdf') return
+      const result = await exportDeck(currentDeck.id, format)
       const url = URL.createObjectURL(result.blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `${currentDeck.id}.pdf`
+      anchor.download = `${currentDeck.id}.${format}`
       anchor.click()
       URL.revokeObjectURL(url)
       ui.setPreflightModalOpen(false)
-      ui.addToast('PDF exported.', 'success')
+      ui.addToast(`${format.toUpperCase()} exported.`, 'success')
     } catch (error) {
-      ui.addToast(error instanceof Error ? error.message : 'PDF export failed', 'error')
+      ui.addToast(error instanceof Error ? error.message : `${format.toUpperCase()} export failed`, 'error')
     }
   }
 
   if (!currentDeck || !slide) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-slate-500">Loading deck…</div>
+        <div className="text-slate-500">Loading deck...</div>
       </div>
     )
   }
@@ -109,7 +138,7 @@ export function EditorPage() {
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-6 py-4 text-sm">
           <Link to="/" className="text-slate-600">
-            ← Back to decks
+            {'<- Back to decks'}
           </Link>
           <span className="text-slate-300">|</span>
           <label className="flex items-center gap-2">
@@ -146,7 +175,7 @@ export function EditorPage() {
             </button>
             <button
               type="button"
-              onClick={() => ui.setUpgradeModalOpen(true)}
+              onClick={() => void handlePptxExport()}
               className="rounded-xl bg-slate-950 px-4 py-2 text-white"
             >
               Export PPTX
@@ -186,17 +215,6 @@ export function EditorPage() {
         imageIssueCount={imageIssueCount}
         onClose={() => ui.setPreflightModalOpen(false)}
         onContinue={handlePdfExport}
-      />
-      <UpgradeModal
-        open={ui.upgradeModalOpen}
-        onClose={() => {
-          ui.setUpgradeModalOpen(false)
-          ui.addToast('Coming soon')
-        }}
-        onExportPdf={() => {
-          ui.setUpgradeModalOpen(false)
-          ui.setPreflightModalOpen(true)
-        }}
       />
     </div>
   )
