@@ -126,6 +126,10 @@ def ingest_and_index(
     vector_store: InMemoryVectorStore | None = None,
 ) -> IngestionIndexResult:
     request = parse_source(source_path, title=title, language=language, options=options)
+
+    if not request.document.elements:
+        raise ValueError(f"No content elements could be extracted from '{source_path}'")
+
     chunks = chunk_document(request)
 
     embedder = embedder or SentenceTransformerEmbedder()
@@ -341,9 +345,6 @@ def generate_deck(
                 style_tokens=final_spec.theme.style_tokens,
             )
             _persist_json(artifacts_dir / "export_report.json", export_report)
-    else:
-        pass
-
     status = ExportStatus.SUCCESS if export_report.passed else ExportStatus.FAILED
     artifact_urls = [str(output_path)] if output_path.exists() and status is ExportStatus.SUCCESS else None
     return DeckGenerationResult(

@@ -51,14 +51,18 @@ def _deduplicate_elements(elements: Iterable[ContentObject], *, redact_pii: bool
     deduped: list[ContentObject] = []
     seen_hashes: set[str] = set()
     for element in elements:
-        text = _redact_pii(element.text) if redact_pii else _normalize_text(element.text)
-        if not text:
+        normalized = _normalize_text(element.text)
+        if not normalized:
             continue
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        # Always hash the original (normalised) text so that two elements differing
+        # only in PII (e.g. different email addresses) are not falsely treated as
+        # duplicates after redaction collapses them to the same placeholder string.
+        digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
         if digest in seen_hashes:
             continue
         seen_hashes.add(digest)
-        deduped.append(element.model_copy(update={"text": text}))
+        stored_text = _redact_pii(element.text) if redact_pii else normalized
+        deduped.append(element.model_copy(update={"text": stored_text}))
     return deduped
 
 

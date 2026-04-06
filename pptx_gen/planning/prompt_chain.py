@@ -602,7 +602,10 @@ def _extract_comparison_table(chunks: list[RetrievedChunk]) -> dict[str, list[li
                 continue
 
             if line.endswith(":"):
-                current_metric = None
+                # Treat "Label:" as a metric header, not a reset.
+                candidate = line[:-1].strip()
+                if candidate and ":" not in candidate and len(candidate.split()) <= 6:
+                    current_metric = candidate
                 continue
 
             if ":" not in line and len(line.split()) <= 6:

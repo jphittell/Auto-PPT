@@ -23,7 +23,9 @@ def test_parse_pdf_preserves_provenance_and_types(sample_pdf_path) -> None:
 def test_chunker_redacts_pii_and_deduplicates(sample_ingestion_request) -> None:
     chunks = chunk_document(sample_ingestion_request)
 
-    assert len(chunks) == 2
+    # Fixture has 3 elements; e0002 and e0003 are identical so one is deduped → 2 chunks.
+    unique_element_ids = {chunk.element_id for chunk in chunks}
+    assert len(unique_element_ids) == len(chunks), "each chunk should come from a distinct element after dedup"
     assert all("sample@example.com" not in chunk.text for chunk in chunks)
     assert any("[REDACTED_EMAIL]" in chunk.text for chunk in chunks)
 

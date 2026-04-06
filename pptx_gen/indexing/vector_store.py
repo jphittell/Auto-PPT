@@ -40,9 +40,12 @@ class InMemoryVectorStore:
         query_embedding: Sequence[float],
         n_results: int = 5,
     ) -> list[RetrievedChunk]:
+        safe_n = min(n_results, self.collection.count())
+        if safe_n == 0:
+            return []
         results = self.collection.query(
             query_embeddings=[list(map(float, query_embedding))],
-            n_results=n_results,
+            n_results=safe_n,
             include=["documents", "metadatas", "distances"],
         )
         ids = results.get("ids", [[]])[0]
