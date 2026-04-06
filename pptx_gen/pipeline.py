@@ -124,6 +124,7 @@ def ingest_and_index(
     options: IngestionOptions | None = None,
     embedder: SupportsEmbedding | None = None,
     vector_store: InMemoryVectorStore | None = None,
+    artifacts_dir: str | Path | None = None,
 ) -> IngestionIndexResult:
     request = parse_source(source_path, title=title, language=language, options=options)
 
@@ -137,7 +138,7 @@ def ingest_and_index(
     embeddings = embedder.encode([chunk.text for chunk in chunks])
     vector_store.upsert_chunks(chunks, embeddings)
 
-    return IngestionIndexResult(
+    result = IngestionIndexResult(
         doc_id=request.document.elements[0].doc_id,
         source_id=request.source.id,
         ingestion_request=request,
@@ -146,6 +147,11 @@ def ingest_and_index(
         chunk_ids=[chunk.chunk_id for chunk in chunks],
         chunks=chunks,
     )
+
+    if artifacts_dir is not None:
+        _persist_json(Path(artifacts_dir) / "ingestion_result.json", result)
+
+    return result
 
 
 def generate_deck(
@@ -200,6 +206,7 @@ def generate_deck(
             options=ingest_options,
             embedder=embedder,
             vector_store=vector_store,
+            artifacts_dir=artifacts_dir,
         )
         brief = collect_deck_brief(
             user_request=user_brief or goal,
