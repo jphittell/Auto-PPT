@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s2",
+      "queries": [
+        {
+          "query": "Methods of data ingestion in AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Structured data connectors in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "queries": [
+        {
+          "query": "Hybrid architecture in AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "AI system processes for slide generation",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        {
+          "query": "Comparison of layout strategies in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Template-first vs rule-based layout strategies",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "queries": [
+        {
+          "query": "Benefits of template-driven layouts in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Improvement in presentation quality with templates",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "queries": [
+        {
+          "query": "Features of rule-based auto-layouts in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Enhancements in design through rule-based layouts",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "queries": [
+        {
+          "query": "Constraints in free-form layouts for AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Maintaining readability in free-form layouts",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "queries": [
+        {
+          "query": "Best practices for AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Recommendations for Oracle consultants using AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

@@ -1,0 +1,51 @@
+{
+  "stage": "layout",
+  "passed": true,
+  "items": [
+    {
+      "dimension": "executability",
+      "check": "layout.resolved",
+      "status": "pass",
+      "message": "resolved layout is available for validation",
+      "slide_id": null,
+      "element_id": null,
+      "metric": null
+    }
+  ],
+  "executability": {
+    "name": "executability",
+    "status": "pass",
+    "passed_checks": 1,
+    "warnings": 0,
+    "failures": 0
+  },
+  "layout_quality": {
+    "name": "layout",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "text_quality": {
+    "name": "text",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "image_quality": {
+    "name": "image",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "color_quality": {
+    "name": "color",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "design_summary": "executability=pass, layout=pass, text=pass, image=pass, color=pass"
+}

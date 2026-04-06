@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "archetype": null,
+      "headline": "AI Presentation Systems Overview",
+      "message": "Introduce the topic of AI presentation systems and their capabilities.",
+      "evidence_queries": [],
+      "template_key": "title.basic"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "archetype": "executive_overview",
+      "headline": "Data Ingestion Methods",
+      "message": "Explain how AI systems ingest data using structured data, document uploads, and cloud file links.",
+      "evidence_queries": [
+        "structured data ingestion",
+        "document upload methods",
+        "cloud file linking"
+      ],
+      "template_key": "content.2col"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "archetype": "architecture_grid",
+      "headline": "Hybrid Architecture Components",
+      "message": "Describe the hybrid architecture: data ingestion, retrieval, content planning, and layout.",
+      "evidence_queries": [
+        "hybrid architecture components",
+        "retrieval and grounding methods"
+      ],
+      "template_key": "content.4col"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "archetype": "comparison",
+      "headline": "Design Quality Strategies",
+      "message": "Compare template-first, rule-based auto-layout, and free-form layout generation strategies.",
+      "evidence_queries": [
+        "template-first strategy",
+        "rule-based auto-layout",
+        "free-form layout generation"
+      ],
+      "template_key": "content.3col.cards"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "archetype": "metrics",
+      "headline": "Template and Rule-Driven Layouts",
+      "message": "Discuss the use of templates and rules to ensure polished and predictable layouts.",
+      "evidence_queries": [
+        "template-driven layouts",
+        "rule-based layout rules"
+      ],
+      "template_key": "content.2col"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Intermediate Representation and Standards",
+      "message": "Explain the role of SlideSpec JSON and standards-compliant OOXML in AI presentation systems.",
+      "evidence_queries": [
+        "SlideSpec JSON role",
+        "OOXML standards"
+      ],
+      "template_key": "content.2col"
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "archetype": "comparison",
+      "headline": "Landscape of AI Presentation Tools",
+      "message": "Analyze representative tools and their approaches to achieving visual polish.",
+      "evidence_queries": [
+        "AI presentation tools",
+        "visual polish techniques"
+      ],
+      "template_key": "table.full"
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "archetype": "generic",
+      "headline": "Key Takeaways and Recommendations",
+      "message": "Summarize the main points and provide recommendations for Oracle consultants.",
+      "evidence_queries": [
+        "key takeaways for Oracle consultants",
+        "recommendations"
+      ],
+      "template_key": "summary.basic"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

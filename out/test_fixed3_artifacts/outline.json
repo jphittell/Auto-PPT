@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "archetype": null,
+      "headline": "AI Presentation Systems Overview",
+      "message": "Introduction to AI systems for creating polished PPTX decks",
+      "evidence_queries": [],
+      "template_key": "title.basic"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "archetype": "executive_overview",
+      "headline": "AI System Architecture",
+      "message": "Overview of AI presentation system architecture: data ingestion, retrieval, and slide generation",
+      "evidence_queries": [
+        "AI presentation system architecture",
+        "structured data ingestion",
+        "retrieval and grounding"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "archetype": "architecture_grid",
+      "headline": "Data Ingestion Methods",
+      "message": "Methods for data ingestion: structured data, document upload, and cloud integration",
+      "evidence_queries": [
+        "data ingestion methods",
+        "structured data connectors",
+        "cloud integration"
+      ],
+      "template_key": "content.3col.cards"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "archetype": "comparison",
+      "headline": "Slide Generation Strategies",
+      "message": "Comparison of slide generation strategies: template-first, rule-based, and free-form layouts",
+      "evidence_queries": [
+        "slide generation strategies",
+        "template-first approach",
+        "rule-based auto-layout"
+      ],
+      "template_key": "table.full"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "archetype": "metrics",
+      "headline": "Design Quality Strategies",
+      "message": "Strategies for maintaining design quality: template preservation and rule-based layouts",
+      "evidence_queries": [
+        "design quality strategies",
+        "template preservation",
+        "rule-based layouts"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Export and Compliance",
+      "message": "Exporting to PPTX and ensuring compliance with standards like ECMA-376",
+      "evidence_queries": [
+        "PPTX export standards",
+        "ECMA-376 compliance"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Representative Tools and Features",
+      "message": "Overview of representative AI presentation tools and their features",
+      "evidence_queries": [
+        "AI presentation tools",
+        "features of AI tools"
+      ],
+      "template_key": "content.3col.text"
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "archetype": "executive_overview",
+      "headline": "Key Takeaways and Recommendations",
+      "message": "Summarize key points and provide recommendations for AI presentation systems",
+      "evidence_queries": [
+        "key takeaways from AI presentation systems",
+        "recommendations for AI systems"
+      ],
+      "template_key": "summary.basic"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

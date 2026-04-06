@@ -1,0 +1,154 @@
+{
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s2",
+      "queries": [
+        {
+          "query": "methods for structured data ingestion in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "document upload techniques for AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "cloud file linking in AI data ingestion",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "queries": [
+        {
+          "query": "components of hybrid architecture in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "retrieval and grounding methods in AI presentation",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        {
+          "query": "template-first strategy in AI layout design",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "rule-based auto-layout techniques",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "free-form layout generation in AI tools",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "queries": [
+        {
+          "query": "use of templates in AI-driven layouts",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "rule-based layout rules for AI presentations",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "queries": [
+        {
+          "query": "role of SlideSpec JSON in AI presentations",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "OOXML standards in AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "queries": [
+        {
+          "query": "representative AI presentation tools",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "techniques for achieving visual polish in AI tools",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "queries": [
+        {
+          "query": "key takeaways for Oracle consultants on AI presentations",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "recommendations for Oracle consultants using AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

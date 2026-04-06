@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s2",
+      "queries": [
+        {
+          "query": "methods for structured data ingestion in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "RAG-style retrieval grounding in AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "queries": [
+        {
+          "query": "multi-step content planning in AI slide generation",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "slide outlining process in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        {
+          "query": "template-first strategy in AI presentation design",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "rule-based auto-layout in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "free-form layout generation in AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "queries": [
+        {
+          "query": "benefits of fixed layout in AI presentations",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "template-preserving generation endpoints in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "queries": [
+        {
+          "query": "implementing AI presentation systems with Oracle tools",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "queries": [
+        {
+          "query": "internal intermediate representation in AI systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "LLM as a component in AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "queries": [
+        {
+          "query": "summary of AI presentation system processes",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "strategies in AI presentation systems",
+          "doc_ids": [
+            "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks"
+          ],
+          "min_date": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

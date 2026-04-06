@@ -1,0 +1,51 @@
+{
+  "stage": "export",
+  "passed": false,
+  "items": [
+    {
+      "dimension": "executability",
+      "check": "render.export",
+      "status": "fail",
+      "message": "render failed: table element s5:table_area is missing columns/rows content",
+      "slide_id": null,
+      "element_id": null,
+      "metric": null
+    }
+  ],
+  "executability": {
+    "name": "executability",
+    "status": "fail",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 1
+  },
+  "layout_quality": {
+    "name": "layout",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "text_quality": {
+    "name": "text",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "image_quality": {
+    "name": "image",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "color_quality": {
+    "name": "color",
+    "status": "pass",
+    "passed_checks": 0,
+    "warnings": 0,
+    "failures": 0
+  },
+  "design_summary": "executability=fail, layout=pass, text=pass, image=pass, color=pass"
+}

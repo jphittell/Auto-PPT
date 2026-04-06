@@ -1,0 +1,339 @@
+{
+  "schema_version": "1.0.0",
+  "title": "Demo Document presentation",
+  "audience": "Executive Steering Committee",
+  "language": "en-US",
+  "theme": {
+    "name": "Auto PPT Mock",
+    "style_tokens": {
+      "fonts": {
+        "heading": "Aptos Display",
+        "body": "Aptos",
+        "mono": "Cascadia Code"
+      },
+      "colors": {
+        "bg": "#FFFFFF",
+        "text": "#111111",
+        "accent": "#0A84FF",
+        "muted": "#6B7280"
+      },
+      "spacing": {
+        "margin_in": 0.5,
+        "gutter_in": 0.25
+      },
+      "images": {
+        "source_policy": "provided_only",
+        "style_prompt": "clean editorial visuals"
+      }
+    }
+  },
+  "slides": [
+    {
+      "slide_id": "slide-1",
+      "purpose": "title",
+      "layout_intent": {
+        "template_key": "title.hero",
+        "strict_template": true
+      },
+      "headline": "Demo Document decision brief deck",
+      "speaker_notes": "Opening title slide for the generated deck.",
+      "blocks": [
+        {
+          "block_id": "title-meta",
+          "kind": "text",
+          "content": {
+            "subtitle": "Board update for Executive Steering Committee",
+            "presenter": "Auto-PPT",
+            "date": "Apr 05, 2026"
+          },
+          "source_citations": [],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-2",
+      "purpose": "agenda",
+      "layout_intent": {
+        "template_key": "agenda.list",
+        "strict_template": true
+      },
+      "headline": "Agenda",
+      "speaker_notes": "Agenda preview for the mock deck.",
+      "blocks": [
+        {
+          "block_id": "agenda-list",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Context and framing",
+              "Key insights",
+              "Recommended actions"
+            ]
+          },
+          "source_citations": [],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-3",
+      "purpose": "section",
+      "layout_intent": {
+        "template_key": "section.header",
+        "strict_template": true
+      },
+      "headline": "What matters most",
+      "speaker_notes": "Section divider.",
+      "blocks": [
+        {
+          "block_id": "section-context",
+          "kind": "callout",
+          "content": {
+            "tagline": "Structured around a balanced narrative for Executive Steering Committee.",
+            "footer_info": "Derived from Demo Document."
+          },
+          "source_citations": [],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-4",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "headline": "Core narrative",
+      "speaker_notes": "Single-column summary.",
+      "blocks": [
+        {
+          "block_id": "core-text",
+          "kind": "text",
+          "content": {
+            "text": "Demo Document decision brief is the central decision theme for this audience."
+          },
+          "source_citations": [
+            {
+              "source_id": "src-demo-doc",
+              "locator": "demo-doc:page1",
+              "quote": "Demo Document",
+              "confidence": 0.91
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        },
+        {
+          "block_id": "core-callout",
+          "kind": "callout",
+          "content": {
+            "text": "Keep the story concise, evidence-backed, and executive-readable."
+          },
+          "source_citations": [
+            {
+              "source_id": "src-demo-doc",
+              "locator": "demo-doc:page1",
+              "quote": "Demo Document",
+              "confidence": 0.91
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-5",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "headline": "Evidence and visual support",
+      "speaker_notes": "Two-column text and image composition.",
+      "blocks": [
+        {
+          "block_id": "visual-bullets",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Lead with the demo document decision brief takeaway.; Support claims with cited evidence.; Use visuals to shorten explanatory text.",
+              "Placeholder visual for Demo Document decision brief"
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-demo-doc",
+              "locator": "demo-doc:page1",
+              "quote": "Demo Document",
+              "confidence": 0.91
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-6",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "headline": "Performance trend",
+      "speaker_notes": "Chart-focused insight slide.",
+      "blocks": [
+        {
+          "block_id": "trend-chart",
+          "kind": "text",
+          "content": {
+            "text": "Baseline: 42; Current: 67; Target: 81"
+          },
+          "source_citations": [
+            {
+              "source_id": "src-demo-doc",
+              "locator": "demo-doc:page1",
+              "quote": "Demo Document",
+              "confidence": 0.91
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-7",
+      "purpose": "summary",
+      "layout_intent": {
+        "template_key": "kpi.3up",
+        "strict_template": true
+      },
+      "headline": "Executive readout",
+      "speaker_notes": "KPI summary.",
+      "blocks": [
+        {
+          "block_id": "kpi-summary",
+          "kind": "kpi_cards",
+          "content": {
+            "items": [
+              {
+                "value": "84%",
+                "label": "Readiness"
+              },
+              {
+                "value": "3",
+                "label": "Key actions"
+              },
+              {
+                "value": "Q2",
+                "label": "Decision window"
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-demo-doc",
+              "locator": "demo-doc:page1",
+              "quote": "Demo Document",
+              "confidence": 0.91
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        },
+        {
+          "block_id": "summary-quote",
+          "kind": "quote",
+          "content": {
+            "text": "Demo Document decision brief should be framed as a next-step decision, not background detail."
+          },
+          "source_citations": [
+            {
+              "source_id": "src-demo-doc",
+              "locator": "demo-doc:page1",
+              "quote": "Demo Document",
+              "confidence": 0.91
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "slide-8",
+      "purpose": "appendix",
+      "layout_intent": {
+        "template_key": "table.full",
+        "strict_template": true
+      },
+      "headline": "Appendix details",
+      "speaker_notes": "Reference table for supporting detail.",
+      "blocks": [
+        {
+          "block_id": "appendix-table",
+          "kind": "table",
+          "content": {
+            "rows": [
+              [
+                "Area",
+                "Signal"
+              ],
+              [
+                "Audience",
+                "Executive Steering Committee"
+              ],
+              [
+                "Goal",
+                "Board update"
+              ],
+              [
+                "Tone",
+                "balanced"
+              ]
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-demo-doc",
+              "locator": "demo-doc:page1",
+              "quote": "Demo Document",
+              "confidence": 0.91
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

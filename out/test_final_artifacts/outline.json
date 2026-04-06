@@ -1,0 +1,100 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "archetype": null,
+      "headline": "AI Presentation Systems Overview",
+      "message": "Introduce the architecture and capabilities of AI presentation systems.",
+      "evidence_queries": [],
+      "template_key": "title.basic"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "archetype": "executive_overview",
+      "headline": "Key Architecture Components",
+      "message": "AI systems use structured data ingestion, retrieval, and multi-step content planning.",
+      "evidence_queries": [
+        "structured data ingestion and normalization",
+        "retrieval/grounding via RAG-style retrieval"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "archetype": "architecture_grid",
+      "headline": "Template-Driven Layout Strategies",
+      "message": "Discuss template-first and rule-based auto-layout strategies for slide generation.",
+      "evidence_queries": [
+        "template-first, variable substitution",
+        "rule-based auto-layout"
+      ],
+      "template_key": "content.3col.cards"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "archetype": "comparison",
+      "headline": "Comparison of Layout Strategies",
+      "message": "Compare template-first, rule-based, and free-form layout strategies.",
+      "evidence_queries": [
+        "template-first, variable substitution",
+        "rule-based auto-layout",
+        "free-form layout generation"
+      ],
+      "template_key": "table.full"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "archetype": "metrics",
+      "headline": "Data Ingestion Modalities",
+      "message": "Explore various data ingestion methods like document upload and structured data connectors.",
+      "evidence_queries": [
+        "prompt + pasted text",
+        "document upload",
+        "linked cloud files",
+        "structured data connectors"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Intermediate Representation in AI Systems",
+      "message": "Explain the use of SlideSpec JSON for layout and rendering.",
+      "evidence_queries": [
+        "internal intermediate representation",
+        "SlideSpec JSON"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Standards and Compliance",
+      "message": "Discuss the importance of standards-compliant OOXML in PPTX generation.",
+      "evidence_queries": [
+        "ECMA-376 / ISO/IEC 29500",
+        "standards-compliant OOXML"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "archetype": null,
+      "headline": "Summary and Recommendations",
+      "message": "Summarize key points and provide recommendations for AI presentation systems.",
+      "evidence_queries": [],
+      "template_key": "summary.basic"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

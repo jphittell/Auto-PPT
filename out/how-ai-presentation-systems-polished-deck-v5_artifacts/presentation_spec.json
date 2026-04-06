@@ -1,0 +1,496 @@
+{
+  "schema_version": "1.0.0",
+  "title": "How AI Presentation Systems Ingest Data and Generate Visually Polished PPTX Decks",
+  "audience": "Oracle consultants",
+  "language": "en-US",
+  "theme": {
+    "name": "Auto PPT",
+    "style_tokens": {
+      "fonts": {
+        "heading": "Aptos Display",
+        "body": "Aptos",
+        "mono": "Cascadia Code"
+      },
+      "colors": {
+        "bg": "#FFFFFF",
+        "text": "#111111",
+        "accent": "#0A84FF",
+        "muted": "#6B7280"
+      },
+      "spacing": {
+        "margin_in": 0.5,
+        "gutter_in": 0.25
+      },
+      "images": {
+        "source_policy": "provided_only",
+        "style_prompt": "clean editorial visuals"
+      }
+    }
+  },
+  "slides": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "layout_intent": {
+        "template_key": "title.hero",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "AI Presentation Systems Overview",
+      "speaker_notes": "Introduction to AI systems for generating PPTX decks. Explain how AI presentation systems ingest data and generate visually polished PPTX decks.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": {
+            "subtitle": "implementation lens for Oracle consulting teams | Explain how AI presentation systems",
+            "presenter": "Oracle consultants",
+            "date": "2026-04-06",
+            "tagline": "Balanced framing"
+          },
+          "source_citations": [],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "executive.overview",
+        "strict_template": true
+      },
+      "archetype": "executive_overview",
+      "headline": "Data Ingestion in AI Systems",
+      "speaker_notes": "AI systems ingest structured data through various methods for presentation generation. Lead with the architecture and why it matters.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": {
+            "text": "How AI Presentation Systems Ingest Data outline-first drafting with clarifying"
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page6",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        },
+        {
+          "block_id": "b2",
+          "kind": "callout",
+          "content": {
+            "text": "Oracle consulting lens | Balanced framing"
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page6",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        },
+        {
+          "block_id": "b3",
+          "kind": "callout",
+          "content": {
+            "cards": [
+              {
+                "title": "Structured Data Ingestion",
+                "text": "Documents and records."
+              },
+              {
+                "title": "Document and Cloud Inputs",
+                "text": "Uploads and cloud"
+              },
+              {
+                "title": "RAG-style Retrieval",
+                "text": "Source grounding."
+              },
+              {
+                "title": "Outline-first Planning",
+                "text": "Brief and outline."
+              },
+              {
+                "title": "Template-driven Layout",
+                "text": "Deterministic composition."
+              },
+              {
+                "title": "Deterministic Export",
+                "text": "Editable PPTX output."
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page6",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        },
+        {
+          "block_id": "b4",
+          "kind": "text",
+          "content": {
+            "text": "6 components | governance"
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page6",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "architecture.grid",
+        "strict_template": true
+      },
+      "archetype": "architecture_grid",
+      "headline": "Slide Generation Process",
+      "speaker_notes": "AI systems use multi-step content planning and outlining for slide generation. Walk through the components and how they connect.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": {
+            "text": "This “draft in stages” pattern is explicitly described in AI"
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page19",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        },
+        {
+          "block_id": "b2",
+          "kind": "callout",
+          "content": {
+            "cards": [
+              {
+                "title": "RAG-style Retrieval",
+                "text": "Source grounding."
+              },
+              {
+                "title": "Outline-first Planning",
+                "text": "Brief and outline."
+              },
+              {
+                "title": "Template-driven Layout",
+                "text": "Deterministic composition."
+              },
+              {
+                "title": "Asset Generation",
+                "text": "Charts and icons."
+              },
+              {
+                "title": "Structured Data Ingestion",
+                "text": "Documents and records."
+              },
+              {
+                "title": "Document and Cloud Inputs",
+                "text": "Uploads and cloud"
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page19",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        },
+        {
+          "block_id": "b3",
+          "kind": "text",
+          "content": {
+            "text": "6 components | governance"
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page19",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.3col.cards",
+        "strict_template": true
+      },
+      "archetype": "comparison",
+      "headline": "Design Quality Strategies",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "callout",
+          "content": {
+            "cards": [
+              {
+                "title": "Template-First",
+                "text": "Fixed layouts."
+              },
+              {
+                "title": "Rule-Based Layout",
+                "text": "Constraints and resize."
+              },
+              {
+                "title": "QA and Validation",
+                "text": "Checks catch issues."
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.3col.cards",
+        "strict_template": true
+      },
+      "archetype": "metrics",
+      "headline": "Template-Driven Layout Benefits",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "callout",
+          "content": {
+            "cards": [
+              {
+                "title": "Rule-Based Layout",
+                "text": "Constraints and resize."
+              },
+              {
+                "title": "QA and Validation",
+                "text": "Checks catch issues."
+              },
+              {
+                "title": "Template-First",
+                "text": "Fixed layouts."
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page11",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.3col.cards",
+        "strict_template": true
+      },
+      "archetype": "generic",
+      "headline": "Implementation Guidance for Oracle",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "callout",
+          "content": {
+            "cards": [
+              {
+                "title": "Asset Generation",
+                "text": "Charts and icons."
+              },
+              {
+                "title": "Deterministic Export",
+                "text": "Editable PPTX output."
+              },
+              {
+                "title": "Structured Data Ingestion",
+                "text": "Documents and records."
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.3col.cards",
+        "strict_template": true
+      },
+      "archetype": "generic",
+      "headline": "Recommendation for AI System Use",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "callout",
+          "content": {
+            "cards": [
+              {
+                "title": "Asset Generation",
+                "text": "Charts and icons."
+              },
+              {
+                "title": "Deterministic Export",
+                "text": "Editable PPTX output."
+              },
+              {
+                "title": "Structured Data Ingestion",
+                "text": "Documents and records."
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page19",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "layout_intent": {
+        "template_key": "content.3col.cards",
+        "strict_template": true
+      },
+      "archetype": "generic",
+      "headline": "Key Takeaways",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "callout",
+          "content": {
+            "cards": [
+              {
+                "title": "Structured Data Ingestion",
+                "text": "Documents and records."
+              },
+              {
+                "title": "Template-driven Layout",
+                "text": "Deterministic composition."
+              },
+              {
+                "title": "Asset Generation",
+                "text": "Charts and icons."
+              }
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

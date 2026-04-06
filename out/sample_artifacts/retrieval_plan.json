@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s2",
+      "queries": [
+        {
+          "query": "Methods of data ingestion in AI presentation systems",
+          "doc_ids": [
+            "src-sample_ingestion"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Key processes in AI data ingestion for presentations",
+          "doc_ids": [
+            "src-sample_ingestion"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "queries": [
+        {
+          "query": "Process of generating PPTX decks using AI",
+          "doc_ids": [
+            "src-sample_ingestion"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Features of AI-generated presentation decks",
+          "doc_ids": [
+            "src-sample_ingestion"
+          ],
+          "min_date": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        {
+          "query": "Leading AI presentation tools and their features",
+          "doc_ids": [
+            "src-sample_ingestion"
+          ],
+          "min_date": null
+        },
+        {
+          "query": "Comparison of AI presentation tools capabilities",
+          "doc_ids": [
+            "src-sample_ingestion"
+          ],
+          "min_date": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

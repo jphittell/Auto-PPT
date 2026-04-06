@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "archetype": null,
+      "headline": "AI Presentation Systems Overview",
+      "message": "Introduction to AI systems for generating polished PPTX decks.",
+      "evidence_queries": [],
+      "template_key": "title.basic"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "archetype": "executive_overview",
+      "headline": "Key Architecture Components",
+      "message": "Overview of the hybrid architecture used in AI presentation systems.",
+      "evidence_queries": [
+        "What are the main components of AI presentation systems?"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "archetype": "architecture_grid",
+      "headline": "Data Ingestion and Normalization",
+      "message": "Methods for structured data ingestion and normalization in AI systems.",
+      "evidence_queries": [
+        "How do AI systems ingest and normalize data?"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "archetype": "metrics",
+      "headline": "Template-Driven Layout Strategies",
+      "message": "Explanation of template-first and rule-based auto-layout strategies.",
+      "evidence_queries": [
+        "What are the layout strategies used by AI systems?"
+      ],
+      "template_key": "content.3col.cards"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "archetype": "comparison",
+      "headline": "Comparison of Design Quality Strategies",
+      "message": "Comparison of template-first, rule-based, and free-form layout strategies.",
+      "evidence_queries": [
+        "How do different layout strategies compare?"
+      ],
+      "template_key": "table.full"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Asset Selection and Style Control",
+      "message": "How AI systems select and style assets for presentations.",
+      "evidence_queries": [
+        "How do AI systems handle asset selection and styling?"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Deterministic Export to PPTX",
+      "message": "Process of exporting AI-generated content to PPTX format.",
+      "evidence_queries": [
+        "How do AI systems export content to PPTX?"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "archetype": "executive_overview",
+      "headline": "Summary and Recommendations",
+      "message": "Summarize key points and provide recommendations for AI presentation systems.",
+      "evidence_queries": [
+        "What are the key takeaways and recommendations?"
+      ],
+      "template_key": "summary.basic"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

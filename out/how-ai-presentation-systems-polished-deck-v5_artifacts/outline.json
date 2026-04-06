@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "archetype": null,
+      "headline": "AI Presentation Systems Overview",
+      "message": "Introduction to AI systems for generating PPTX decks",
+      "evidence_queries": [],
+      "template_key": "title.basic"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "archetype": "executive_overview",
+      "headline": "Data Ingestion in AI Systems",
+      "message": "AI systems ingest structured data through various methods for presentation generation",
+      "evidence_queries": [
+        "structured data ingestion and normalization",
+        "retrieval/grounding via RAG-style retrieval"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "archetype": "architecture_grid",
+      "headline": "Slide Generation Process",
+      "message": "AI systems use multi-step content planning and outlining for slide generation",
+      "evidence_queries": [
+        "multi-step content planning and slide outlining"
+      ],
+      "template_key": "content.3col.cards"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "archetype": "comparison",
+      "headline": "Design Quality Strategies",
+      "message": "Comparison of template-first, rule-based, and free-form layout strategies",
+      "evidence_queries": [
+        "Template-first, variable substitution",
+        "Rule-based auto-layout",
+        "Free-form layout generation"
+      ],
+      "template_key": "table.full"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "archetype": "metrics",
+      "headline": "Template-Driven Layout Benefits",
+      "message": "Fixed layouts reduce failures and enhance polish",
+      "evidence_queries": [
+        "Keep a fixed layout and swap content",
+        "template-preserving generation endpoints"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Implementation Guidance for Oracle",
+      "message": "Guidance on implementing AI presentation systems with Oracle tools",
+      "evidence_queries": [
+        "implementation lens for Oracle consulting teams"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "archetype": "generic",
+      "headline": "Recommendation for AI System Use",
+      "message": "Recommendation on the best AI presentation system strategy",
+      "evidence_queries": [
+        "Introduce an internal intermediate representation",
+        "treat the LLM as one component"
+      ],
+      "template_key": "content.2col.text"
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "archetype": "generic",
+      "headline": "Key Takeaways",
+      "message": "Summary of AI presentation system processes and strategies",
+      "evidence_queries": [
+        "How AI Presentation Systems Ingest Data",
+        "structured data ingestion and normalization",
+        "retrieval/grounding",
+        "template-preserving generation endpoints"
+      ],
+      "template_key": "summary.basic"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

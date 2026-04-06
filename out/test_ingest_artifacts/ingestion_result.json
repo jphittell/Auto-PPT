@@ -1,0 +1,156 @@
+{
+  "doc_id": "project_operations_tracker",
+  "source_id": "src-project_operations_tracker",
+  "ingestion_request": {
+    "schema_version": "1.0.0",
+    "source": {
+      "type": "upload",
+      "id": "src-project_operations_tracker",
+      "uri": "C:\\Users\\jphit\\.codex\\Projects\\Auto-PPT\\Input\\Assets\\Spreadsheets\\Project_Operations_Tracker.xlsx",
+      "permissions": null
+    },
+    "document": {
+      "title": "Project Operations Tracker",
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "language": "en",
+      "elements": [
+        {
+          "doc_id": "project_operations_tracker",
+          "element_id": "e0001",
+          "page": 1,
+          "type": "title",
+          "text": "Project Operations Tracker",
+          "extensions": null
+        },
+        {
+          "doc_id": "project_operations_tracker",
+          "element_id": "e0002",
+          "page": 1,
+          "type": "heading",
+          "text": "Project Tracker",
+          "extensions": null
+        },
+        {
+          "doc_id": "project_operations_tracker",
+          "element_id": "e0003",
+          "page": 1,
+          "type": "table",
+          "text": "Project & Operations Tracker — FY 2025 | | | | | | | | | | | Project Name | Owner | Department | Phase | Start Date | Due Date | % Complete | Status | Budget ($) | Spent ($) | Variance ($) | Notes CRM Migration | Sarah Chen | IT | Execution | 2025-01-06 | 2025-06-30 | 0.58 | On Track | 450000 | 261000 | 189000 | Phase 2 kick-off complete Brand Refresh | Mike Torres | Marketing | Planning | 2025-02-03 | 2025-05-31 | 0.25 | On Track | 120000 | 30000 | 90000 | Agency brief approved ERP Upgrade | Lisa Park | Finance | Discovery | 2025-01-13 | 2025-09-30 | 0.1 | At Risk | 980000 | 98000 | 882000 | Vendor selection delayed Hiring — Eng (×12) | Tom Reed | HR | Execution | 2025-01-06 | 2025-07-31 | 0.67 | On Track | 240000 | 160800 | 79200 | 8 of 12 roles filled Salesforce CPQ | Amy Johnson | Sales Ops | Testing | 2024-11-04 | 2025-04-30 | 0.85 | On Track | 310000 | 263500 | 46500 | UAT sign-off pending Data Warehouse v2 | Carlos Ruiz | Engineering | Execution | 2025-01-20 | 2025-08-31 | 0.4 | On Track | 620000 | 248000 | 372000 | Snowflake migration in progress Office Expansion | Dana White | Facilities | Planning | 2025-03-03 | 2025-12-31 | 0.08 | On Track | 750000 | 60000 | 690000 | Permits submitted SOC 2 Certification | James Lee | Security | Execution | 2025-01-06 | 2025-07-15 | 0.55 | On Track | 180000 | 99000 | 81000 | Audit fieldwork started Mobile App — v3 | Priya Patel | Product | Build | 2025-02-03 | 2025-08-31 | 0.3 | At Risk | 540000 | 162000 | 378000 | Backend API blocked Partner Portal | Ryan Kim | Engineering | Design | 2025-03-03 | 2025-10-31 | 0.15 | On Track | 280000 | 42000 | 238000 | UX wireframes in review GDPR Remediation | Elena Vasquez | Legal | Execution | 2025-01-13 | 2025-05-31 | 0.7 | On Track | 95000 | 66500 | 28500 | DPA updates complete Supply Chain Audit | Ben Foster | Operations | Complete | 2025-01-06 | 2025-03-31 | 1 | Complete | 160000 | 148000 | 12000 | Report delivered Content Platform | Sophie Grant | Marketing | Discovery | 2025-04-01 | 2025-11-30 | 0.05 | Not Started | 210000 | 10500 | 199500 | Kick-off scheduled Apr 14 BI Dashboard Rollout | Derek Nguyen | Analytics | Execution | 2025-02-10 | 2025-06-30 | 0.45 | On Track | 135000 | 60750 | 74250 | Exec dashboard live Customer Success Tool | Mia Thornton | CS | At Risk | 2025-01-20 | 2025-05-31 | 0.35 | At Risk | 175000 | 61250 | 113750 | Integration partner issues TOTALS | | | | | | | | 5245000 | 1771300 | 3473700 |",
+          "extensions": null
+        },
+        {
+          "doc_id": "project_operations_tracker",
+          "element_id": "e0004",
+          "page": 2,
+          "type": "heading",
+          "text": "Milestones",
+          "extensions": null
+        },
+        {
+          "doc_id": "project_operations_tracker",
+          "element_id": "e0005",
+          "page": 2,
+          "type": "table",
+          "text": "Key Milestones — Q1–Q2 2025 | | | | | | Milestone | Project | Owner | Target Date | Actual Date | Status | Notes CRM Phase 1 Go-Live | CRM Migration | Sarah Chen | 2025-02-28 | 2025-02-26 | Complete | Two days early Brand Concept Approval | Brand Refresh | Mike Torres | 2025-03-15 | | On Track | ERP Vendor Selected | ERP Upgrade | Lisa Park | 2025-03-31 | | At Risk | Delayed by 3 weeks Q1 Hiring Goal (6 roles) | Hiring — Eng (×12) | Tom Reed | 2025-03-31 | 2025-03-28 | Complete | CPQ UAT Sign-Off | Salesforce CPQ | Amy Johnson | 2025-04-15 | | On Track | DWH Dev Complete | Data Warehouse v2 | Carlos Ruiz | 2025-05-31 | | On Track | SOC 2 Audit Complete | SOC 2 Certification | James Lee | 2025-06-01 | | On Track | Mobile Beta Release | Mobile App — v3 | Priya Patel | 2025-05-15 | | At Risk | API blocker risk GDPR Remediation Done | GDPR Remediation | Elena Vasquez | 2025-05-31 | | On Track | Supply Chain Report | Supply Chain Audit | Ben Foster | 2025-03-31 | 2025-03-28 | Complete | Report delivered early",
+          "extensions": null
+        }
+      ]
+    },
+    "options": {
+      "chunking": "by_element",
+      "redact_pii": true,
+      "max_chunk_chars": 1200
+    },
+    "extensions": null
+  },
+  "n_elements": 5,
+  "n_chunks": 7,
+  "chunk_ids": [
+    "project_operations_tracker:e0001:0",
+    "project_operations_tracker:e0002:0",
+    "project_operations_tracker:e0003:0",
+    "project_operations_tracker:e0003:1",
+    "project_operations_tracker:e0003:2",
+    "project_operations_tracker:e0004:0",
+    "project_operations_tracker:e0005:0"
+  ],
+  "chunks": [
+    {
+      "chunk_id": "project_operations_tracker:e0001:0",
+      "chunk_index": 0,
+      "doc_id": "project_operations_tracker",
+      "source_id": "src-project_operations_tracker",
+      "element_id": "e0001",
+      "element_type": "title",
+      "page": 1,
+      "locator": "project_operations_tracker:page1",
+      "text": "Project Operations Tracker"
+    },
+    {
+      "chunk_id": "project_operations_tracker:e0002:0",
+      "chunk_index": 0,
+      "doc_id": "project_operations_tracker",
+      "source_id": "src-project_operations_tracker",
+      "element_id": "e0002",
+      "element_type": "heading",
+      "page": 1,
+      "locator": "project_operations_tracker:page1",
+      "text": "Project Tracker"
+    },
+    {
+      "chunk_id": "project_operations_tracker:e0003:0",
+      "chunk_index": 0,
+      "doc_id": "project_operations_tracker",
+      "source_id": "src-project_operations_tracker",
+      "element_id": "e0003",
+      "element_type": "table",
+      "page": 1,
+      "locator": "project_operations_tracker:page1",
+      "text": "Project & Operations Tracker — FY 2025 | | | | | | | | | | | Project Name | Owner | Department | Phase | Start Date | Due Date | % Complete | Status | Budget ($) | Spent ($) | Variance ($) | Notes CRM Migration | Sarah Chen | IT | Execution | 2025-01-06 | 2025-06-30 | 0.58 | On Track | 450000 | 261000 | 189000 | Phase 2 kick-off complete Brand Refresh | Mike Torres | Marketing | Planning | 2025-02-03 | 2025-05-31 | 0.25 | On Track | 120000 | 30000 | 90000 | Agency brief approved ERP Upgrade | Lisa Park | Finance | Discovery | 2025-01-13 | 2025-09-30 | 0.1 | At Risk | 980000 | 98000 | 882000 | Vendor selection delayed Hiring — Eng (×12) | Tom Reed | HR | Execution | 2025-01-06 | 2025-07-31 | 0.67 | On Track | 240000 | 160800 | 79200 | 8 of 12 roles filled Salesforce CPQ | Amy Johnson | Sales Ops | Testing | 2024-11-04 | 2025-04-30 | 0.85 | On Track | 310000 | 263500 | 46500 | UAT sign-off pending Data Warehouse v2 | Carlos Ruiz | Engineering | Execution | 2025-01-20 | 2025-08-31 | 0.4 | On Track | 620000 | 248000 | 372000 | Snowflake migration in progress Office Expansion | Dana White | Facilities | Planning | 2025-03-03 | 2025-12-31 | 0.08 | On Track | 750000 | 60000 | 690000 |"
+    },
+    {
+      "chunk_id": "project_operations_tracker:e0003:1",
+      "chunk_index": 1,
+      "doc_id": "project_operations_tracker",
+      "source_id": "src-project_operations_tracker",
+      "element_id": "e0003",
+      "element_type": "table",
+      "page": 1,
+      "locator": "project_operations_tracker:page1",
+      "text": "Permits submitted SOC 2 Certification | James Lee | Security | Execution | 2025-01-06 | 2025-07-15 | 0.55 | On Track | 180000 | 99000 | 81000 | Audit fieldwork started Mobile App — v3 | Priya Patel | Product | Build | 2025-02-03 | 2025-08-31 | 0.3 | At Risk | 540000 | 162000 | 378000 | Backend API blocked Partner Portal | Ryan Kim | Engineering | Design | 2025-03-03 | 2025-10-31 | 0.15 | On Track | 280000 | 42000 | 238000 | UX wireframes in review GDPR Remediation | Elena Vasquez | Legal | Execution | 2025-01-13 | 2025-05-31 | 0.7 | On Track | 95000 | 66500 | 28500 | DPA updates complete Supply Chain Audit | Ben Foster | Operations | Complete | 2025-01-06 | 2025-03-31 | 1 | Complete | 160000 | 148000 | 12000 | Report delivered Content Platform | Sophie Grant | Marketing | Discovery | 2025-04-01 | 2025-11-30 | 0.05 | Not Started | 210000 | 10500 | 199500 | Kick-off scheduled Apr 14 BI Dashboard Rollout | Derek Nguyen | Analytics | Execution | 2025-02-10 | 2025-06-30 | 0.45 | On Track | 135000 | 60750 | 74250 | Exec dashboard live Customer Success Tool | Mia Thornton | CS | At Risk | 2025-01-20 | 2025-05-31 | 0.35 | At Risk | 175000 | 61250 | 113750 | Integration partner issues"
+    },
+    {
+      "chunk_id": "project_operations_tracker:e0003:2",
+      "chunk_index": 2,
+      "doc_id": "project_operations_tracker",
+      "source_id": "src-project_operations_tracker",
+      "element_id": "e0003",
+      "element_type": "table",
+      "page": 1,
+      "locator": "project_operations_tracker:page1",
+      "text": "TOTALS | | | | | | | | 5245000 | 1771300 | 3473700 |"
+    },
+    {
+      "chunk_id": "project_operations_tracker:e0004:0",
+      "chunk_index": 0,
+      "doc_id": "project_operations_tracker",
+      "source_id": "src-project_operations_tracker",
+      "element_id": "e0004",
+      "element_type": "heading",
+      "page": 2,
+      "locator": "project_operations_tracker:page2",
+      "text": "Milestones"
+    },
+    {
+      "chunk_id": "project_operations_tracker:e0005:0",
+      "chunk_index": 0,
+      "doc_id": "project_operations_tracker",
+      "source_id": "src-project_operations_tracker",
+      "element_id": "e0005",
+      "element_type": "table",
+      "page": 2,
+      "locator": "project_operations_tracker:page2",
+      "text": "Key Milestones — Q1–Q2 2025 | | | | | | Milestone | Project | Owner | Target Date | Actual Date | Status | Notes CRM Phase 1 Go-Live | CRM Migration | Sarah Chen | 2025-02-28 | 2025-02-26 | Complete | Two days early Brand Concept Approval | Brand Refresh | Mike Torres | 2025-03-15 | | On Track | ERP Vendor Selected | ERP Upgrade | Lisa Park | 2025-03-31 | | At Risk | Delayed by 3 weeks Q1 Hiring Goal (6 roles) | Hiring — Eng (×12) | Tom Reed | 2025-03-31 | 2025-03-28 | Complete | CPQ UAT Sign-Off | Salesforce CPQ | Amy Johnson | 2025-04-15 | | On Track | DWH Dev Complete | Data Warehouse v2 | Carlos Ruiz | 2025-05-31 | | On Track | SOC 2 Audit Complete | SOC 2 Certification | James Lee | 2025-06-01 | | On Track | Mobile Beta Release | Mobile App — v3 | Priya Patel | 2025-05-15 | | At Risk | API blocker risk GDPR Remediation Done | GDPR Remediation | Elena Vasquez | 2025-05-31 | | On Track | Supply Chain Report | Supply Chain Audit | Ben Foster | 2025-03-31 | 2025-03-28 | Complete | Report delivered early"
+    }
+  ]
+}

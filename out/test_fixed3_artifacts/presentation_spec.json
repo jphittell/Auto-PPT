@@ -1,0 +1,300 @@
+{
+  "schema_version": "1.0.0",
+  "title": "How AI Presentation Systems Ingest Data and Generate Visually Polished PPTX Decks",
+  "audience": "Executive leadership",
+  "language": "en-US",
+  "theme": {
+    "name": "Auto PPT",
+    "style_tokens": {
+      "fonts": {
+        "heading": "Aptos Display",
+        "body": "Aptos",
+        "mono": "Cascadia Code"
+      },
+      "colors": {
+        "bg": "#FFFFFF",
+        "text": "#111111",
+        "accent": "#0A84FF",
+        "muted": "#6B7280"
+      },
+      "spacing": {
+        "margin_in": 0.5,
+        "gutter_in": 0.25
+      },
+      "images": {
+        "source_policy": "provided_only",
+        "style_prompt": "clean editorial visuals"
+      }
+    }
+  },
+  "slides": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "layout_intent": {
+        "template_key": "title.hero",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "AI Presentation Systems Overview",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": {
+            "text": ""
+          },
+          "source_citations": [],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "AI System Architecture",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Overview of AI presentation system architecture: data ingestion, retrieval, and slide generation"
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "Data Ingestion Methods",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": {
+            "text": ""
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page3",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "table.full",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "Slide Generation Strategies",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "table",
+          "content": {
+            "columns": [
+              "Column"
+            ],
+            "rows": [
+              [
+                ""
+              ]
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "Design Quality Strategies",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Strategies for maintaining design quality: template preservation and rule-based layouts"
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "Export and Compliance",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Exporting to PPTX and ensuring compliance with standards like ECMA-376"
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page3",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "Representative Tools and Features",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Overview of representative AI presentation tools and their features"
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "summary",
+      "layout_intent": {
+        "template_key": "content.1col",
+        "strict_template": true
+      },
+      "archetype": null,
+      "headline": "Key Takeaways and Recommendations",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Summarize key points and provide recommendations for AI presentation systems"
+            ]
+          },
+          "source_citations": [
+            {
+              "source_id": "src-how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks",
+              "locator": "how-ai-presentation-systems-ingest-data-and-generate-visually-polished-pptx-decks:page1",
+              "quote": null,
+              "confidence": null
+            }
+          ],
+          "style_overrides": null,
+          "asset_refs": [],
+          "x_security": null,
+          "extensions": null
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}
