@@ -1,0 +1,64 @@
+{
+  "$_comment": "BAD EXAMPLE: Headlines describe topics instead of takeaways. Evidence queries are vague single-word terms. Template choices are generic.",
+  "schema_version": "1.0.0",
+  "outline": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "headline": "Quarterly Update",
+      "message": "Quarterly update for the team.",
+      "evidence_queries": [],
+      "template_key": "title.hero"
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "headline": "Revenue Performance",
+      "message": "This slide covers revenue.",
+      "evidence_queries": [
+        "revenue"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "headline": "Margins",
+      "message": "This slide covers margins.",
+      "evidence_queries": [
+        "margins"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "headline": "Regional Update",
+      "message": "This slide covers regions.",
+      "evidence_queries": [
+        "regions"
+      ],
+      "template_key": "content.1col"
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "summary",
+      "headline": "Summary",
+      "message": "Summary of the above.",
+      "evidence_queries": [],
+      "template_key": "content.1col"
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null,
+  "$_failures": [
+    "headline='Revenue Performance' is a topic, not a takeaway. Should be: 'Revenue Hit $29M, Up 18% YoY'",
+    "headline='Margins' is a single word. Should convey the insight: 'Gross Margin Expanded 210bps to 64.4%'",
+    "headline='Summary' adds no value. Should state the closing action: 'Q1 Strong — Two Actions Needed Now'",
+    "message='This slide covers revenue' is a meta-description. Should summarize the actual content.",
+    "evidence_queries=['revenue'] is a single vague word. Should specify metric, period, and comparison.",
+    "No agenda slide — deck jumps from title to content without framing the narrative",
+    "All content slides use content.1col — no variety. Revenue metrics should use kpi.3up.",
+    "No template_key diversity suggests the planner ignored content shape entirely"
+  ]
+}

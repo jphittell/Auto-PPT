@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "audience": "IT steering committee and HR leadership",
+  "goal": "Present three integration approach options for Oracle HCM 26B and recommend the preferred path based on cost, risk, and timeline.",
+  "tone": "technical",
+  "slide_count_target": 10,
+  "source_corpus_ids": [
+    "doc_oracle_hcm_release_notes",
+    "doc_oracle_integration_options",
+    "doc_positions_vs_jobs_guide"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "Oracle HCM 26B Integration Approach — Options Analysis for IT Steering Committee",
+    "one_sentence_thesis": "Of the three integration approaches evaluated, the hybrid API-plus-HCM-Extract option offers the best balance of implementation speed, ongoing maintenance cost, and data fidelity for our org structure.",
+    "key_takeaways": [
+      "Oracle HCM 26B introduces 14 new REST endpoints that simplify position management",
+      "Full API approach has lowest ongoing cost but highest upfront implementation effort",
+      "HCM Extract approach is fastest to deploy but creates data freshness lag of up to 24 hours",
+      "Hybrid approach balances real-time position data with batch payroll processing",
+      "Positions-vs-Jobs model change requires org structure migration before go-live"
+    ],
+    "deck_archetype": "options_analysis"
+  }
+}

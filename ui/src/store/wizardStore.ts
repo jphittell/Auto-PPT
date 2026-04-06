@@ -1,10 +1,12 @@
 import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 
 import type { BrandKit, IngestResult, SlideSpec } from '../types'
 
 interface WizardStore {
-  step: 1 | 2 | 3 | 4 | 5
+  step: 1 | 2 | 3
   ingestResults: IngestResult[]
+  prompt: string
   goal: string
   audience: string
   tone: number
@@ -20,6 +22,7 @@ interface WizardStore {
   setIngestResults: (results: IngestResult[]) => void
   addIngestResult: (result: IngestResult) => void
   removeIngestResult: (docId: string) => void
+  setPrompt: (prompt: string) => void
   setGoal: (goal: string) => void
   setAudience: (audience: string) => void
   setTone: (tone: number) => void
@@ -41,9 +44,10 @@ const defaultBrandKit: BrandKit = {
   fontPair: 'Inter/Inter',
 }
 
-export const useWizardStore = create<WizardStore>((set) => ({
+export const useWizardStore = create<WizardStore>()(persist((set) => ({
   step: 1,
   ingestResults: [],
+  prompt: 'Create a consulting-style deck that explains this document clearly, with strong executive framing and polished slides.',
   goal: 'Raise seed',
   audience: 'Investors',
   tone: 50,
@@ -53,7 +57,7 @@ export const useWizardStore = create<WizardStore>((set) => ({
   brandKit: defaultBrandKit,
   plannedDraftId: null,
   generatedDeckId: null,
-  nextStep: () => set((state) => ({ step: Math.min(5, state.step + 1) as WizardStore['step'] })),
+  nextStep: () => set((state) => ({ step: Math.min(3, state.step + 1) as WizardStore['step'] })),
   prevStep: () => set((state) => ({ step: Math.max(1, state.step - 1) as WizardStore['step'] })),
   setStep: (step) => set({ step }),
   setIngestResults: (ingestResults) => set({ ingestResults }),
@@ -65,6 +69,7 @@ export const useWizardStore = create<WizardStore>((set) => ({
     set((state) => ({
       ingestResults: state.ingestResults.filter((item) => item.doc_id !== docId),
     })),
+  setPrompt: (prompt) => set({ prompt }),
   setGoal: (goal) => set({ goal }),
   setAudience: (audience) => set({ audience }),
   setTone: (tone) => set({ tone }),
@@ -89,6 +94,7 @@ export const useWizardStore = create<WizardStore>((set) => ({
     set({
       step: 1,
       ingestResults: [],
+      prompt: 'Create a consulting-style deck that explains this document clearly, with strong executive framing and polished slides.',
       goal: 'Raise seed',
       audience: 'Investors',
       tone: 50,
@@ -99,4 +105,7 @@ export const useWizardStore = create<WizardStore>((set) => ({
       plannedDraftId: null,
       generatedDeckId: null,
     }),
+}), {
+  name: 'auto-ppt-wizard',
+  storage: createJSONStorage(() => sessionStorage),
 }))

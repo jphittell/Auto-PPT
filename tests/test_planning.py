@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.ingestion.chunker import chunk_document
@@ -20,9 +22,18 @@ from pptx_gen.planning.schemas import (
     OutlineItem,
     OutlineSpec,
     PresentationSpec,
+    RetrievalPlan,
     RetrievedChunk,
     SlidePurpose,
 )
+
+
+GOLD_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "gold"
+
+
+def _load_gold_fixture(path: Path) -> dict:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return {key: value for key, value in payload.items() if not key.startswith("$_")}
 
 
 def test_collect_brief_outline_and_retrieval_plan_deterministic(sample_ingestion_request) -> None:
@@ -639,3 +650,36 @@ def test_revise_for_design_quality_preserves_identity_and_rejects_bad_payload(
             llm_client=BadClient(),
             enabled=True,
         )
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "model_type"),
+    [
+        ("brief_product_launch_good.json", DeckBrief),
+        ("brief_incident_retro_good.json", DeckBrief),
+        ("brief_oracle_hcm_good.json", DeckBrief),
+        ("brief_q1_review_good.json", DeckBrief),
+        ("outline_oracle_hcm_good.json", OutlineSpec),
+        ("outline_q1_review_good.json", OutlineSpec),
+        ("outline_bad_topic_headlines.json", OutlineSpec),
+        ("retrieval_oracle_hcm_good.json", RetrievalPlan),
+        ("retrieval_q1_review_good.json", RetrievalPlan),
+        ("retrieval_bad_vague.json", RetrievalPlan),
+        ("spec_oracle_hcm_good.json", PresentationSpec),
+        ("spec_product_launch_good.json", PresentationSpec),
+    ],
+)
+def test_gold_planning_fixtures_validate_against_declared_models(fixture_name: str, model_type: type) -> None:
+    fixture_path = GOLD_FIXTURE_DIR / fixture_name
+    payload = _load_gold_fixture(fixture_path)
+
+    parsed = model_type(**payload)
+
+    assert parsed.schema_version == "1.0.0"
+
+
+def test_dense_bad_spec_fixture_is_rejected_by_presentation_schema() -> None:
+    payload = _load_gold_fixture(GOLD_FIXTURE_DIR / "spec_bad_dense.json")
+
+    with pytest.raises(ValidationError, match="requires source_citations|exceeds 70-word content cap"):
+        PresentationSpec(**payload)

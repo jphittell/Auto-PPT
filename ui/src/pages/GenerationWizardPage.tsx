@@ -1,23 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { generateDeck, getTemplates, ingestDocument, planDeck } from '../api/client'
+import { generateDeck, getTemplates, ingestDocument, planDeckFromPrompt } from '../api/client'
 import { FileDropzone } from '../components/FileDropzone'
 import { GeneratingScreen } from '../components/GeneratingScreen'
 import { IngestResultCard } from '../components/IngestResultCard'
-import { OutlineTreeEditor } from '../components/OutlineTreeEditor'
-import { PillChipGroup } from '../components/PillChipGroup'
-import { TemplateCard } from '../components/TemplateCard'
-import { ToneSlider } from '../components/ToneSlider'
 import { WizardStepIndicator } from '../components/WizardStepIndicator'
 import { useDeckStore } from '../store/deckStore'
 import { useUIStore } from '../store/uiStore'
 import { useWizardStore } from '../store/wizardStore'
 import type { Template } from '../types'
-
-const goalOptions = ['Raise seed', 'Close a deal', 'Board update', 'Internal training', 'Product launch']
-const audienceOptions = ['Investors', 'Customers', 'Board', 'All-hands', 'New hires']
-const fontPairs = ['Inter/Inter', 'Lato/Merriweather', 'DM Sans/DM Serif Display']
 
 export function GenerationWizardPage() {
   const [templates, setTemplates] = useState<Template[]>([])
@@ -41,10 +33,6 @@ export function GenerationWizardPage() {
     if (template) wizard.setSelectedTemplateId(template)
   }, [searchParams])
 
-  const selectedTemplate = useMemo(
-    () => templates.find((template) => template.id === wizard.selectedTemplateId) ?? null,
-    [templates, wizard.selectedTemplateId],
-  )
   const deckLevelTemplates = useMemo(
     () => templates.filter((template) => template.deck_default_allowed),
     [templates],
@@ -57,7 +45,7 @@ export function GenerationWizardPage() {
   }, [deckLevelTemplates, wizard.selectedTemplateId])
 
   useEffect(() => {
-    if (wizard.step !== 5 || finalizingDeck || generationComplete || generationError || !wizard.plannedDraftId) return
+    if (wizard.step !== 3 || finalizingDeck || generationComplete || generationError || !wizard.plannedDraftId) return
     void handleFinalizeDeck()
   }, [wizard.step, wizard.plannedDraftId, finalizingDeck, generationComplete, generationError])
 
@@ -88,17 +76,20 @@ export function GenerationWizardPage() {
       addToast('Upload at least one document first.', 'error')
       return
     }
+    if (!wizard.prompt.trim()) {
+      addToast('Enter a prompt before planning the outline.', 'error')
+      return
+    }
     try {
       setGeneratingOutline(true)
-      const draft = await planDeck({
+      const draft = await planDeckFromPrompt({
         doc_ids: wizard.ingestResults.map((result) => result.doc_id),
-        goal: wizard.goal,
-        audience: wizard.audience,
-        tone: wizard.tone,
-        slide_count: wizard.slideCount,
+        prompt: wizard.prompt.trim(),
       })
       wizard.setOutline(draft.slides)
       wizard.setPlannedDraftId(draft.draft_id)
+      wizard.setGoal(draft.goal)
+      wizard.setAudience(draft.audience)
       wizard.setGeneratedDeckId(null)
       setGenerationComplete(false)
       setGenerationError(null)
@@ -167,148 +158,27 @@ export function GenerationWizardPage() {
     if (wizard.step === 2) {
       return (
         <div className="space-y-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-panel">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-950">Goal</h2>
-            <div className="mt-4">
-              <PillChipGroup options={goalOptions} value={wizard.goal} onChange={wizard.setGoal} />
-            </div>
+          <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
+            {wizard.ingestResults.length} source document{wizard.ingestResults.length === 1 ? '' : 's'} ready:
+            <span className="ml-2 font-medium text-slate-950">
+              {wizard.ingestResults.map((result) => result.title).join(', ')}
+            </span>
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-slate-950">Audience</h2>
-            <div className="mt-4">
-              <PillChipGroup options={audienceOptions} value={wizard.audience} onChange={wizard.setAudience} />
-            </div>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-slate-950">Tone</h2>
-            <div className="mt-4">
-              <ToneSlider value={wizard.tone} onChange={wizard.setTone} />
-            </div>
-          </div>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">Slide count</span>
-            <input
-              type="number"
-              min={6}
-              max={20}
-              value={wizard.slideCount}
-              onChange={(event) => wizard.setSlideCount(Number(event.target.value))}
-              className="w-32 rounded-xl border border-slate-200 px-4 py-3 outline-none"
+            <h2 className="text-xl font-semibold text-slate-950">Prompt</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Describe the deck you want. We&apos;ll infer audience, framing, tone, and slide count from your prompt.
+            </p>
+            <textarea
+              value={wizard.prompt}
+              onChange={(event) => wizard.setPrompt(event.target.value)}
+              placeholder="Create a deck for Oracle consultants explaining how AI presentation systems ingest source data, plan slides, and export polished PPTX files."
+              className="mt-4 min-h-48 w-full resize-y rounded-3xl border border-slate-200 px-5 py-4 text-base leading-7 text-slate-900 outline-none"
             />
-          </label>
-        </div>
-      )
-    }
-
-    if (wizard.step === 3) {
-      return (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-950">Outline preview</h2>
-              <p className="text-sm text-slate-600">Review and reorder the planned slides.</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleGenerateOutline}
-              disabled={generatingOutline}
-              className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {generatingOutline ? 'Planning your deck...' : 'Regenerate outline'}
-            </button>
           </div>
-          {generatingOutline && wizard.outline.length === 0 ? (
-            <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-panel">
-              <div className="text-lg font-medium text-slate-900">Planning your deck...</div>
-            </div>
-          ) : (
-            <OutlineTreeEditor
-              slides={wizard.outline}
-              onReorder={wizard.reorderOutline}
-              onTitleChange={wizard.updateOutlineTitle}
-            />
-          )}
-        </div>
-      )
-    }
-
-    if (wizard.step === 4) {
-      return (
-        <div className="space-y-8">
-          <div>
-            <h2 className="text-2xl font-semibold text-slate-950">Style</h2>
-            <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {deckLevelTemplates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  selected={template.id === wizard.selectedTemplateId}
-                  onSelect={() => wizard.setSelectedTemplateId(template.id)}
-                />
-              ))}
-            </div>
+          <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
+            Example: <span className="font-medium text-slate-900">Create a 6-slide executive deck for Oracle consultants on AI presentation system architecture with polished, consulting-style slides.</span>
           </div>
-          <details className="rounded-3xl border border-slate-200 bg-white p-6 shadow-panel">
-            <summary className="cursor-pointer text-lg font-semibold text-slate-950">Brand kit (optional)</summary>
-            <div className="mt-6 grid gap-5 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Logo upload</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (!file) return
-                    const reader = new FileReader()
-                    reader.onload = () => wizard.setBrandKit({ logo: typeof reader.result === 'string' ? reader.result : null })
-                    reader.readAsDataURL(file)
-                  }}
-                  className="block w-full rounded-xl border border-slate-200 px-4 py-3"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Primary color</span>
-                <div className="flex items-center gap-3">
-                  <input type="color" value={wizard.brandKit.primary} onChange={(event) => wizard.setBrandKit({ primary: event.target.value })} />
-                  <input
-                    value={wizard.brandKit.primary}
-                    onChange={(event) => wizard.setBrandKit({ primary: event.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                  />
-                </div>
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Accent color</span>
-                <div className="flex items-center gap-3">
-                  <input type="color" value={wizard.brandKit.accent} onChange={(event) => wizard.setBrandKit({ accent: event.target.value })} />
-                  <input
-                    value={wizard.brandKit.accent}
-                    onChange={(event) => wizard.setBrandKit({ accent: event.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                  />
-                </div>
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Font pairing</span>
-                <select
-                  value={wizard.brandKit.fontPair}
-                  onChange={(event) => wizard.setBrandKit({ fontPair: event.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                >
-                  {fontPairs.map((pair) => (
-                    <option key={pair} value={pair}>
-                      {pair}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </details>
-          {selectedTemplate ? (
-            <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
-              Selected template: <span className="font-medium text-slate-950">{selectedTemplate.name}</span>
-            </div>
-          ) : null}
         </div>
       )
     }
@@ -335,21 +205,16 @@ export function GenerationWizardPage() {
 
   const primaryAction = () => {
     if (wizard.step === 1) {
+      if (wizard.ingestResults.length === 0) {
+        addToast('Upload at least one document first.', 'error')
+        return
+      }
       wizard.setStep(2)
       return
     }
     if (wizard.step === 2) {
       handleGenerateOutline()
       return
-    }
-    if (wizard.step === 3) {
-      wizard.setStep(4)
-      return
-    }
-    if (wizard.step === 4) {
-      setGenerationComplete(false)
-      setGenerationError(null)
-      wizard.setStep(5)
     }
   }
 
@@ -369,7 +234,7 @@ export function GenerationWizardPage() {
 
         <div className="mt-8">{renderStep()}</div>
 
-        {wizard.step < 5 ? (
+        {wizard.step < 3 ? (
           <div className="mt-8 flex items-center justify-between">
             <button
               type="button"
@@ -385,7 +250,7 @@ export function GenerationWizardPage() {
               disabled={generatingOutline || finalizingDeck}
               className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white disabled:opacity-60"
             >
-              {wizard.step === 2 ? 'Plan outline' : wizard.step === 4 ? 'Generate deck' : 'Continue'}
+              {wizard.step === 2 ? 'Generate deck' : 'Continue'}
             </button>
           </div>
         ) : null}

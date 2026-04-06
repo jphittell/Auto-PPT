@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s3",
+      "queries": [
+        { "query": "Oracle HCM 26B new REST API endpoints for position management and count", "doc_ids": ["doc_oracle_hcm_release_notes"], "min_date": null },
+        { "query": "API coverage comparison between Oracle HCM 26B and 25D releases", "doc_ids": ["doc_oracle_hcm_release_notes"], "min_date": null },
+        { "query": "Deprecated endpoints or extract methods in Oracle HCM 26B release", "doc_ids": ["doc_oracle_hcm_release_notes"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        { "query": "Positions versus jobs data model changes introduced in Oracle HCM 26B", "doc_ids": ["doc_positions_vs_jobs_guide"], "min_date": null },
+        { "query": "Org hierarchy migration steps required for positions-vs-jobs transition", "doc_ids": ["doc_positions_vs_jobs_guide"], "min_date": null },
+        { "query": "Downstream integration impact of positions-vs-jobs model change", "doc_ids": ["doc_oracle_integration_options", "doc_positions_vs_jobs_guide"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "queries": [
+        { "query": "Full REST API integration approach implementation timeline and effort for Oracle HCM", "doc_ids": ["doc_oracle_integration_options"], "min_date": null },
+        { "query": "Ongoing maintenance cost for full API approach to Oracle HCM position sync", "doc_ids": ["doc_oracle_integration_options"], "min_date": null },
+        { "query": "Technical risks of full API approach including rate limiting and error handling", "doc_ids": ["doc_oracle_integration_options"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "queries": [
+        { "query": "HCM Extract batch approach deployment timeline and configuration steps", "doc_ids": ["doc_oracle_integration_options"], "min_date": null },
+        { "query": "Data freshness lag characteristics of HCM Extract for position and payroll data", "doc_ids": ["doc_oracle_integration_options"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "queries": [
+        { "query": "Hybrid API plus HCM Extract integration approach description and architecture", "doc_ids": ["doc_oracle_integration_options"], "min_date": null },
+        { "query": "Implementation cost and timeline estimate for hybrid Oracle HCM integration", "doc_ids": ["doc_oracle_integration_options"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s9",
+      "queries": [
+        { "query": "Evaluation criteria and scores for three Oracle HCM integration options", "doc_ids": ["doc_oracle_integration_options"], "min_date": null },
+        { "query": "Total cost of ownership comparison for API, Extract, and hybrid over 3 years", "doc_ids": ["doc_oracle_integration_options"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s10",
+      "queries": [
+        { "query": "Recommended implementation milestones and target dates for hybrid approach", "doc_ids": ["doc_oracle_integration_options"], "min_date": null },
+        { "query": "Prerequisites and dependencies for August Oracle HCM 26B go-live", "doc_ids": ["doc_oracle_integration_options", "doc_oracle_hcm_release_notes"], "min_date": null }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

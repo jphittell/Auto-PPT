@@ -1,0 +1,207 @@
+{
+  "schema_version": "1.0.0",
+  "title": "Analytics Module Launch",
+  "audience": "Sales team and channel partners",
+  "language": "en-US",
+  "theme": {
+    "name": "Corporate 2026",
+    "style_tokens": {
+      "fonts": { "heading": "Aptos Display", "body": "Aptos", "mono": "Cascadia Code" },
+      "colors": { "bg": "#FFFFFF", "text": "#1A1A1A", "accent": "#2F6BFF", "muted": "#6B7280" },
+      "spacing": { "margin_in": 0.75, "gutter_in": 0.20 },
+      "images": { "source_policy": "provided_only", "style_prompt": "" }
+    }
+  },
+  "slides": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "layout_intent": { "template_key": "title.hero", "strict_template": true },
+      "headline": "Analytics Module Launch",
+      "speaker_notes": "Welcome the sales team. This deck gives you everything you need to position, demo, and close the new analytics module in Q2.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": { "text": "Sales Enablement Kit — April 2026" },
+          "source_citations": [],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "agenda",
+      "layout_intent": { "template_key": "agenda.list", "strict_template": true },
+      "headline": "Agenda",
+      "speaker_notes": "Five sections. Spend the most time on the competitive positioning and objection handling.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Why now: market opportunity",
+              "Product highlights and 3x performance claim",
+              "Competitive positioning vs Competitor A",
+              "Objection handling playbook",
+              "90-day launch targets"
+            ]
+          },
+          "source_citations": [],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "archetype": "metrics",
+      "layout_intent": { "template_key": "kpi.3up", "strict_template": true },
+      "headline": "3x Faster, 40% Cheaper, 2 Weeks to Migrate",
+      "speaker_notes": "These are the three numbers your prospects care about. The 3x benchmark was run on identical 10TB datasets. The 40% savings is at the 500-seat tier.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "callout",
+          "content": { "label": "Query Speed", "value": "3x", "delta": "vs Competitor A" },
+          "source_citations": [
+            { "source_id": "doc_product_spec_v3", "locator": "doc_product_spec_v3:page8", "quote": null }
+          ],
+          "asset_refs": []
+        },
+        {
+          "block_id": "b2",
+          "kind": "callout",
+          "content": { "label": "Cost Savings", "value": "40%", "delta": "at 500-seat tier" },
+          "source_citations": [
+            { "source_id": "doc_competitive_analysis_q1", "locator": "doc_competitive_analysis_q1:page3", "quote": null }
+          ],
+          "asset_refs": []
+        },
+        {
+          "block_id": "b3",
+          "kind": "callout",
+          "content": { "label": "Migration", "value": "2 weeks", "delta": "zero downtime" },
+          "source_citations": [
+            { "source_id": "doc_product_spec_v3", "locator": "doc_product_spec_v3:page12", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "layout_intent": { "template_key": "content.2col.text_image", "strict_template": true },
+      "headline": "Beta Customers Hit Full ROI in 60 Days",
+      "speaker_notes": "Acme Corp is our strongest reference. They migrated 200 dashboards in 9 days and saw query costs drop 52% in the first month.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Acme Corp: 200 dashboards migrated in 9 days",
+              "Globex: query costs dropped 52% in month one",
+              "Initech: 98% user adoption within 30 days"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_product_spec_v3", "locator": "doc_product_spec_v3:page15", "quote": null }
+          ],
+          "asset_refs": []
+        },
+        {
+          "block_id": "b2",
+          "kind": "image",
+          "content": { "alt_text": "Customer ROI timeline showing 60-day payback period" },
+          "source_citations": [
+            { "source_id": "doc_product_spec_v3", "locator": "doc_product_spec_v3:page16", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "content",
+      "archetype": "comparison",
+      "layout_intent": { "template_key": "content.3col.cards", "strict_template": true },
+      "headline": "Top Three Objections — Handled",
+      "speaker_notes": "Data residency is the #1 objection in EMEA. The EU region launched March 15 — make sure prospects know. Migration complexity is #2 — the 2-week proof point kills it.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "kpi_cards",
+          "content": {
+            "cards": [
+              { "title": "Data Residency", "body": "EU region live since March. SOC 2 Type II certified." },
+              { "title": "Migration Risk", "body": "Zero-downtime cutover. Average migration: 2 weeks." },
+              { "title": "Vendor Lock-in", "body": "Open export API. Full data portability guaranteed." }
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_competitive_analysis_q1", "locator": "doc_competitive_analysis_q1:page7", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "layout_intent": { "template_key": "chart.full", "strict_template": true },
+      "headline": "We Win on Speed at Every Data Scale",
+      "speaker_notes": "This benchmark was independently verified by DataBench Labs. At 50TB the gap widens to 4.2x because our columnar engine scales better with data volume.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "chart",
+          "content": {
+            "chart_type": "bar",
+            "title": "Query Performance: Us vs Competitor A",
+            "data": [
+              { "label": "1TB", "value": 2.8 },
+              { "label": "5TB", "value": 3.1 },
+              { "label": "10TB", "value": 3.0 },
+              { "label": "25TB", "value": 3.6 },
+              { "label": "50TB", "value": 4.2 }
+            ],
+            "x_label": "Dataset Size",
+            "y_label": "Speed Multiple (vs Competitor A)"
+          },
+          "source_citations": [
+            { "source_id": "doc_product_spec_v3", "locator": "doc_product_spec_v3:page9", "quote": "Independent benchmark by DataBench Labs, March 2026" }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "summary",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "90-Day Target: 50 Demos, 15 Closes",
+      "speaker_notes": "Marketing is running a launch campaign starting May 1. Inbound leads will be tagged 'analytics-launch'. Your SPIFFs double for the first 10 closes.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Target: 50 qualified demos and 15 closed deals by July 1",
+              "Lead with the 3x speed claim and the 60-day ROI proof point",
+              "Use Acme Corp as the primary reference for enterprise prospects"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_competitive_analysis_q1", "locator": "doc_competitive_analysis_q1:page12", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    }
+  ],
+  "questions_for_user": []
+}

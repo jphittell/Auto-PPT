@@ -57,6 +57,7 @@ export interface IngestResult {
   chunk_count: number
   title: string
   element_types: Record<string, number>
+  summary: string
 }
 
 export interface PlanParams {
@@ -65,6 +66,11 @@ export interface PlanParams {
   audience: string
   tone: number
   slide_count: number
+}
+
+export interface PlanPromptParams {
+  doc_ids: string[]
+  prompt: string
 }
 
 export interface BrandKit {
@@ -79,6 +85,16 @@ export interface GenerateParams {
   outline: Array<Pick<SlideSpec, 'id' | 'index' | 'purpose' | 'title' | 'template_id'>>
   selected_template_id: string
   brand_kit: BrandKit
+}
+
+export interface SlidePreviewParams {
+  slide_id: string
+  title: string
+  purpose: SlidePurpose
+  template_id: string
+  content: string
+  audience: string
+  goal: string
 }
 
 export type ExportResult =

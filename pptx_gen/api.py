@@ -28,8 +28,10 @@ from pptx_gen.api_schemas import (
     IngestResponse,
     OutlineSlideRequest,
     PlanDeckRequest,
+    PlanPromptRequest,
     PlanDeckResponse,
     PresentationSpecResponse,
+    SlidePreviewRequest,
     SlideSpecResponse,
     TemplateResponse,
     ThemeSummaryResponse,
@@ -44,6 +46,7 @@ from pptx_gen.planning.prompt_chain import (
     generate_outline,
     generate_presentation_spec,
 )
+from pptx_gen.planning.llm_client import build_default_structured_llm_client
 from pptx_gen.planning.schemas import (
     DeckBrief,
     DeckTheme,
@@ -53,6 +56,7 @@ from pptx_gen.planning.schemas import (
     PresentationBlock,
     PresentationBlockKind,
     PresentationSpec,
+    RetrievedChunk,
     SlideArchetype,
     SlidePurpose,
     SlideSpec,
@@ -92,6 +96,7 @@ _DECKS: dict[str, PresentationSpecResponse] = {}
 _RAW_DECK_SPECS: dict[str, PresentationSpec] = {}
 _CHAT_SESSIONS: dict[str, list[ChatMessageResponse]] = {}
 _EMBEDDER: Any | None = None
+_STRUCTURED_LLM_CLIENT: Any | bool | None = None
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = REPO_ROOT / "web"
 WEB_INDEX = WEB_DIR / "index.html"
@@ -128,11 +133,13 @@ async def ingest_document(file: UploadFile = File(...)) -> IngestResponse:
         )
 
     element_counts = Counter(element.type.value for element in result.ingestion_request.document.elements)
+    summary = await _generate_document_summary(result)
     response = IngestResponse(
         doc_id=result.doc_id,
         chunk_count=result.n_chunks,
         title=result.ingestion_request.document.title,
         element_types=dict(sorted(element_counts.items())),
+        summary=summary,
     )
     _INGESTED_DOCS[result.doc_id] = response
     _INGESTED_RESULTS[result.doc_id] = result
@@ -141,52 +148,83 @@ async def ingest_document(file: UploadFile = File(...)) -> IngestResponse:
 
 @app.post("/api/plan", response_model=PlanDeckResponse)
 async def plan_deck(request: PlanDeckRequest) -> PlanDeckResponse:
+    return _plan_deck_response(
+        doc_ids=request.doc_ids,
+        goal=request.goal,
+        audience=request.audience,
+        tone=request.tone,
+        slide_count=request.slide_count,
+    )
+
+
+@app.post("/api/plan/prompt", response_model=PlanDeckResponse)
+async def plan_deck_from_prompt(request: PlanPromptRequest) -> PlanDeckResponse:
     ingestion_results = _ingested_results_for(request.doc_ids)
     combined_title = " + ".join(result.ingestion_request.document.title for result in ingestion_results)
-    tone_label = _tone_label_from_score(request.tone)
+    inferred = _infer_chat_brief(request.prompt, combined_title)
+    return _plan_deck_response(
+        doc_ids=request.doc_ids,
+        goal=inferred["goal"],
+        audience=inferred["audience"],
+        tone=inferred["tone"],
+        slide_count=inferred["slide_count"],
+    )
+
+
+def _plan_deck_response(
+    *,
+    doc_ids: list[str],
+    goal: str,
+    audience: str,
+    tone: float,
+    slide_count: int,
+) -> PlanDeckResponse:
+    ingestion_results = _ingested_results_for(doc_ids)
+    combined_title = " + ".join(result.ingestion_request.document.title for result in ingestion_results)
+    tone_label = _tone_label_from_score(tone)
     source_ids = [result.source_id for result in ingestion_results]
     source_texts = [chunk.text for result in ingestion_results for chunk in result.chunks]
 
     brief = collect_deck_brief(
-        user_request=request.goal,
-        audience=request.audience,
-        goal=request.goal,
+        user_request=goal,
+        audience=audience,
+        goal=goal,
         tone=tone_label,
-        slide_count_target=request.slide_count,
+        slide_count_target=slide_count,
         source_corpus_ids=source_ids,
         document_title=combined_title,
         source_texts=source_texts,
         llm_client=None,
     )
-    outline = _normalize_outline_exact_count(generate_outline(brief, llm_client=None), request.slide_count, request.goal)
+    outline = _normalize_outline_exact_count(generate_outline(brief, llm_client=None), slide_count, goal)
 
     created_at = datetime.now().isoformat(timespec="seconds")
     draft_id = f"draft-{uuid4().hex[:10]}"
     _DRAFTS[draft_id] = DraftState(
         draft_id=draft_id,
-        doc_ids=list(request.doc_ids),
+        doc_ids=list(doc_ids),
         source_ids=source_ids,
         title=combined_title,
-        goal=request.goal,
-        audience=request.audience,
+        goal=goal,
+        audience=audience,
         tone_label=tone_label,
-        slide_count=request.slide_count,
-        brief=brief.model_copy(update={"slide_count_target": request.slide_count}),
+        slide_count=slide_count,
+        brief=brief.model_copy(update={"slide_count_target": slide_count}),
         outline=outline,
         created_at=created_at,
     )
 
     return PlanDeckResponse(
         draft_id=draft_id,
-        doc_id=request.doc_ids[0],
-        doc_ids=list(request.doc_ids),
+        doc_id=doc_ids[0],
+        doc_ids=list(doc_ids),
         title=combined_title,
-        goal=request.goal,
-        audience=request.audience,
+        goal=goal,
+        audience=audience,
         slides=_outline_to_response_slides(
             outline,
-            goal=request.goal,
-            audience=request.audience,
+            goal=goal,
+            audience=audience,
             title=combined_title,
             created_at=created_at,
         ),
@@ -196,6 +234,9 @@ async def plan_deck(request: PlanDeckRequest) -> PlanDeckResponse:
 
 @app.post("/api/generate", response_model=PresentationSpecResponse)
 async def generate_deck_from_draft(request: GenerateDeckRequest) -> PresentationSpecResponse:
+    import logging
+    logger = logging.getLogger("pptx_gen.api")
+
     draft = _DRAFTS.get(request.draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail=f"Unknown draft_id: {request.draft_id}")
@@ -206,35 +247,99 @@ async def generate_deck_from_draft(request: GenerateDeckRequest) -> Presentation
     if selected_template_id not in DECK_DEFAULT_TEMPLATE_IDS:
         raise HTTPException(status_code=400, detail=f"Unsupported deck-level template: {request.selected_template_id}")
 
-    outline = _apply_outline_edits(draft, request.outline)
-    vector_store = _build_vector_store(draft.doc_ids)
-    retrieved_chunks = execute_retrieval_plan(
-        build_retrieval_plan(draft.brief, outline, llm_client=None),
-        vector_store=vector_store,
-        embedder=_get_embedder(),
-    )
-    style_tokens = _style_tokens_from_brand_kit(request.brand_kit)
-    deck_id = f"deck-{draft.doc_ids[0]}-{len(_DECKS) + 1}"
-    logo_path = _persist_logo_asset(deck_id, request.brand_kit.logo_data_url)
+    try:
+        outline = _apply_outline_edits(draft, request.outline)
+        vector_store = _build_vector_store(draft.doc_ids)
+        retrieved_chunks = execute_retrieval_plan(
+            build_retrieval_plan(draft.brief, outline, llm_client=None),
+            vector_store=vector_store,
+            embedder=_get_embedder(),
+        )
+        style_tokens = _style_tokens_from_brand_kit(request.brand_kit)
+        deck_id = f"deck-{draft.doc_ids[0]}-{len(_DECKS) + 1}"
+        logo_path = _persist_logo_asset(deck_id, request.brand_kit.logo_data_url)
 
-    spec = generate_presentation_spec(
-        draft.brief.model_copy(update={"tone": draft.tone_label, "slide_count_target": draft.slide_count}),
-        outline,
-        retrieved_chunks,
-        deck_title=f"{draft.title} presentation",
-        style_tokens=style_tokens,
-        theme_name=_theme_name(selected_template_id),
-        language="en-US",
-        llm_client=None,
-    )
-    spec = _enforce_outline_authority(spec, outline, draft.source_ids)
-    spec = _apply_global_template_default(spec, selected_template_id)
-    spec = _inject_brand_logo(spec, logo_path)
+        spec = generate_presentation_spec(
+            draft.brief.model_copy(update={"tone": draft.tone_label, "slide_count_target": draft.slide_count}),
+            outline,
+            retrieved_chunks,
+            deck_title=f"{draft.title} presentation",
+            style_tokens=style_tokens,
+            theme_name=_theme_name(selected_template_id),
+            language="en-US",
+            llm_client=_get_optional_structured_llm_client(),
+        )
+        spec = _enforce_outline_authority(spec, outline, draft.source_ids)
+        spec = _apply_global_template_default(spec, selected_template_id)
+        spec = _inject_brand_logo(spec, logo_path)
 
-    response = _to_api_presentation_spec(deck_id, draft.doc_ids, draft.goal, spec)
-    _RAW_DECK_SPECS[deck_id] = spec
-    _DECKS[deck_id] = response
-    return response
+        response = _to_api_presentation_spec(deck_id, draft.doc_ids, draft.goal, spec)
+        _RAW_DECK_SPECS[deck_id] = spec
+        _DECKS[deck_id] = response
+        return response
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("generate_deck_from_draft failed")
+        raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
+
+
+@app.post("/api/slide/preview", response_model=SlideSpecResponse)
+async def generate_slide_preview(request: SlidePreviewRequest) -> SlideSpecResponse:
+    import logging
+    logger = logging.getLogger("pptx_gen.api")
+
+    try:
+        purpose = SlidePurpose(request.purpose)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Unsupported slide purpose: {request.purpose}") from exc
+
+    content_text = request.content.strip()
+    chosen_template = canonical_template_key(request.template_id or _infer_best_template_for_content(content_text))
+
+    llm_client = _get_optional_structured_llm_client()
+    if llm_client is not None and hasattr(llm_client, "generate_json"):
+        system = (
+            "You are a presentation designer. Return a PresentationSpec with exactly one slide. "
+            "Keep the slide consulting-style, concise, and faithful to the input content."
+        )
+        user_prompt = (
+            f"Title: {request.title}\n"
+            f"Audience: {request.audience}\n"
+            f"Purpose: {request.purpose}\n"
+            f"Preferred template: {chosen_template}\n\n"
+            "Produce consulting-style slide content.\n\n"
+            f"Raw content:\n{content_text}"
+        )
+        result = llm_client.generate_json(
+            system_prompt=system,
+            user_prompt=user_prompt,
+            schema_name="PresentationSpec",
+        )
+        slide_payloads = result.get("slides", []) if isinstance(result, dict) else []
+        if slide_payloads:
+            slide = SlideSpec.model_validate(slide_payloads[0]).model_copy(
+                update={"slide_id": request.slide_id}
+            )
+            return _to_api_slide_spec(slide, index=1)
+
+    try:
+        # Use LLM to summarize and structure content for the slide
+        structured = await _llm_structure_slide_content(
+            content_text, request.title, request.audience, chosen_template,
+        )
+        slide = _build_preview_slide(
+            slide_id=request.slide_id,
+            purpose=purpose,
+            headline=structured.get("headline", request.title),
+            template_key=structured.get("template_id", chosen_template),
+            blocks_data=structured.get("blocks", []),
+            speaker_notes=structured.get("speaker_notes", ""),
+        )
+        return _to_api_slide_spec(slide, index=1)
+    except Exception as exc:
+        logger.exception("slide preview generation failed")
+        raise HTTPException(status_code=500, detail=f"Preview generation failed: {exc}") from exc
 
 
 @app.post("/api/chat/generate", response_model=ChatGenerateResponse)
@@ -351,7 +456,10 @@ async def export_deck(deck_id: str, request: ExportRequest) -> Response:
                 headers={"Content-Disposition": f'attachment; filename="{deck_id}.pptx"'},
             )
 
-    pdf_bytes = _build_stub_pdf(deck_id)
+    from pptx_gen.renderer.pdf_exporter import export_deck_to_pdf
+
+    deck_data = _DECKS[deck_id].model_dump()
+    pdf_bytes = export_deck_to_pdf(deck_data)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -374,6 +482,100 @@ def _get_embedder():
     if _EMBEDDER is None:
         _EMBEDDER = pipeline_module.SentenceTransformerEmbedder()
     return _EMBEDDER
+
+
+def _get_optional_structured_llm_client():
+    global _STRUCTURED_LLM_CLIENT
+    if _STRUCTURED_LLM_CLIENT is False:
+        return None
+    if _STRUCTURED_LLM_CLIENT is None:
+        _STRUCTURED_LLM_CLIENT = build_default_structured_llm_client()
+    return _STRUCTURED_LLM_CLIENT
+
+
+def _require_structured_llm_client():
+    client = _get_optional_structured_llm_client()
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="No structured LLM client is configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.",
+        )
+    return client
+
+
+async def _generate_document_summary(result: pipeline_module.IngestionIndexResult) -> str:
+    """Generate a natural-language summary of an ingested document using the LLM."""
+    from pptx_gen.ingestion.schemas import ContentElementType
+
+    elements = result.ingestion_request.document.elements
+    title = result.ingestion_request.document.title
+
+    # Collect headings and leading content to form a representative excerpt
+    headings = [el.text for el in elements if el.type in (ContentElementType.TITLE, ContentElementType.HEADING)]
+    paragraphs = [el.text for el in elements if el.type == ContentElementType.PARAGRAPH and len(el.text.split()) > 8]
+
+    # Build a concise excerpt (first ~2000 chars) for the LLM
+    excerpt_parts: list[str] = []
+    char_budget = 2000
+    for heading in headings[:15]:
+        excerpt_parts.append(f"## {heading}")
+        char_budget -= len(heading) + 3
+        if char_budget <= 0:
+            break
+    for para in paragraphs[:20]:
+        if char_budget <= 0:
+            break
+        excerpt_parts.append(para)
+        char_budget -= len(para)
+
+    excerpt = "\n\n".join(excerpt_parts)
+
+    # Try LLM summary
+    try:
+        llm_client = _get_optional_structured_llm_client()
+        if llm_client is None:
+            raise ValueError("No LLM client")
+
+        system = (
+            "You summarize documents for presentation authors. Write a clear, informative 3-5 sentence overview "
+            "describing what the document covers, its key topics, and the kind of content it contains. "
+            "Be specific about the subject matter — mention actual topics, findings, and themes, not just "
+            "structural details like page counts. Write in third person."
+        )
+        user_prompt = f"Document title: {title}\n\nExcerpt:\n{excerpt}"
+
+        if hasattr(llm_client, "anthropic_client"):
+            response = llm_client.anthropic_client.messages.create(
+                model=llm_client.model,
+                max_tokens=300,
+                temperature=0.3,
+                system=system,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            return response.content[0].text.strip()
+        elif hasattr(llm_client, "openai_client"):
+            response = llm_client.openai_client.chat.completions.create(
+                model=llm_client.model,
+                max_tokens=300,
+                temperature=0.3,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            return response.choices[0].message.content.strip()
+    except Exception:
+        pass
+
+    # Fallback: extractive summary from headings
+    if headings:
+        topic_list = ", ".join(headings[:6])
+        return (
+            f'"{title}" covers the following topics: {topic_list}. '
+            f"The document contains {len(paragraphs)} substantive sections "
+            f"across {result.n_chunks} content segments."
+        )
+    return f'"{title}" was processed into {result.n_chunks} content segments.'
 
 
 def _ingested_results_for(doc_ids: list[str]) -> list[pipeline_module.IngestionIndexResult]:
@@ -745,7 +947,7 @@ def _outline_preview_blocks(
             {
                 "id": f"{item.slide_id}-agenda",
                 "kind": "bullets",
-                "content": "\n".join(f"• {line}" for line in agenda_lines),
+                "content": "\n".join(f"\u2022 {line}" for line in agenda_lines),
                 "citation": None,
             }
         ]
@@ -755,7 +957,7 @@ def _outline_preview_blocks(
         {
             "id": f"{item.slide_id}-outline",
             "kind": "bullets",
-            "content": "\n".join(f"• {_trim_outline_line(line)}" for line in bullets if line),
+            "content": "\n".join(f"\u2022 {_trim_outline_line(line)}" for line in bullets if line),
             "citation": None,
         }
     ]
@@ -807,6 +1009,265 @@ def _trim_outline_line(value: str) -> str:
 def _fallback_citation(source_ids: list[str]) -> list[SourceCitation]:
     source_id = source_ids[0] if source_ids else "source"
     return [SourceCitation(source_id=source_id, locator=f"{source_id}:page1")]
+
+
+async def _llm_structure_slide_content(
+    content: str,
+    title: str,
+    audience: str,
+    suggested_template: str,
+) -> dict[str, Any]:
+    """Use LLM to summarize raw text into structured slide content."""
+    import json as _json
+
+    system = f"""You are a presentation designer. Given raw text, produce a structured JSON slide.
+
+Choose the best template_id from: content.1col, content.3col.cards, executive.overview, architecture.grid, kpi.3up
+The suggested template is "{suggested_template}" but override if a better one fits.
+
+Return JSON with:
+- "headline": concise slide title (max 8 words)
+- "template_id": chosen template
+- "speaker_notes": 1-2 sentence presenter note
+- "blocks": array of content blocks, each with "kind" and fields:
+  - For callout/cards: {{"kind":"callout","cards":[{{"title":"...","text":"..."}}]}} (one card per distinct point, each text 15-25 words)
+  - For bullets: {{"kind":"bullets","items":["...",...]}} (one bullet per distinct point, each 10-20 words)
+  - For text: {{"kind":"text","text":"..."}} (40-80 words, summarized)
+  - For kpi_cards: {{"kind":"kpi_cards","items":[{{"value":"...","label":"..."}}]}} (3 items)
+
+CRITICAL RULES:
+- Every distinct point or idea from the input MUST appear in the output. Do not drop any user content.
+- Summarize and rephrase for clarity — do NOT just copy the raw text verbatim.
+- If there are 4+ distinct points, use cards (one per point) or bullets (one per point). Do not cap at 3 if there are more.
+- Each card/bullet should be a distinct insight derived from the input.
+Audience: {audience}"""
+
+    user_prompt = f"Title: {title}\n\nRaw content:\n{content}"
+
+    try:
+        llm_client = _get_optional_structured_llm_client()
+        if llm_client is None:
+            raise ValueError("No LLM client")
+
+        if hasattr(llm_client, "generate_json"):
+            result = llm_client.generate_json(
+                system_prompt=system,
+                user_prompt=(
+                    f"{user_prompt}\n\n"
+                    "Return a PresentationSpec with exactly one slide that follows the requested structure."
+                ),
+                schema_name="PresentationSpec",
+            )
+            slide_payloads = result.get("slides", []) if isinstance(result, dict) else []
+            if not slide_payloads:
+                raise ValueError("Structured preview returned no slides")
+            slide_payload = slide_payloads[0]
+            layout_intent = slide_payload.get("layout_intent", {}) if isinstance(slide_payload, dict) else {}
+            normalized_blocks: list[dict[str, Any]] = []
+            for block in slide_payload.get("blocks", []) if isinstance(slide_payload, dict) else []:
+                kind = block.get("kind", "text")
+                block_content = block.get("content", {}) if isinstance(block, dict) else {}
+                if kind == "callout":
+                    normalized_blocks.append({"kind": kind, "cards": block_content.get("cards", [])})
+                elif kind in {"bullets", "kpi_cards"}:
+                    normalized_blocks.append({"kind": kind, "items": block_content.get("items", [])})
+                else:
+                    normalized_blocks.append({"kind": kind, "text": block_content.get("text", "")})
+            return {
+                "headline": slide_payload.get("headline", title),
+                "template_id": layout_intent.get("template_key", suggested_template),
+                "speaker_notes": slide_payload.get("speaker_notes", ""),
+                "blocks": normalized_blocks,
+            }
+        elif hasattr(llm_client, "anthropic_client"):
+            response = llm_client.anthropic_client.messages.create(
+                model=llm_client.model,
+                max_tokens=800,
+                temperature=0.3,
+                system=system,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            raw = response.content[0].text.strip()
+        elif hasattr(llm_client, "openai_client"):
+            response = llm_client.openai_client.chat.completions.create(
+                model=llm_client.model,
+                max_tokens=800,
+                temperature=0.3,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            raw = response.choices[0].message.content.strip()
+        else:
+            raise ValueError("Unknown LLM client type")
+
+        # Extract JSON from response (may be wrapped in markdown fences)
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        return _json.loads(raw)
+    except Exception:
+        # Fallback: structure content without LLM
+        return _fallback_structure_content(content, title, suggested_template)
+
+
+def _fallback_structure_content(content: str, title: str, template: str) -> dict[str, Any]:
+    """Structure content into slide blocks without LLM."""
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    bullet_lines = [line.lstrip("-•* ").strip() for line in lines if line.startswith(("-", "•", "*"))]
+    plain_lines = [line for line in lines if not line.startswith(("-", "•", "*"))]
+
+    # Extract sentences for card content
+    sentences = []
+    for line in lines:
+        sentences.extend(re.split(r"(?<=[.!?])\s+", line))
+    sentences = [s.strip() for s in sentences if len(s.split()) >= 5]
+
+    if template in ("content.3col.cards", "architecture.grid"):
+        cards = []
+        for i, sentence in enumerate(sentences[:6]):
+            words = sentence.split()
+            card_title = " ".join(words[:5])
+            card_text = " ".join(words[:25])
+            cards.append({"title": card_title, "text": card_text})
+        while len(cards) < 3:
+            cards.append({"title": f"Key point {len(cards)+1}", "text": "Add detail here."})
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [{"kind": "callout", "cards": cards[:6]}],
+        }
+
+    if template == "kpi.3up":
+        items = []
+        for sentence in sentences[:3]:
+            numbers = re.findall(r"\b[\d,.]+[%$]?\b", sentence)
+            value = numbers[0] if numbers else str(len(items) + 1)
+            label = " ".join(sentence.split()[:6])
+            items.append({"value": value, "label": label})
+        while len(items) < 3:
+            items.append({"value": "N/A", "label": f"Metric {len(items)+1}"})
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [{"kind": "kpi_cards", "items": items}],
+        }
+
+    if bullet_lines:
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [{"kind": "bullets", "items": bullet_lines[:6]}],
+        }
+
+    # Default: summarize as text
+    summary = " ".join(sentences[:5]) if sentences else content[:300]
+    return {
+        "headline": title,
+        "template_id": template,
+        "speaker_notes": "",
+        "blocks": [{"kind": "text", "text": summary}],
+    }
+
+
+def _build_preview_slide(
+    *,
+    slide_id: str,
+    purpose: SlidePurpose,
+    headline: str,
+    template_key: str,
+    blocks_data: list[dict[str, Any]],
+    speaker_notes: str,
+) -> SlideSpec:
+    """Build a SlideSpec from structured block data."""
+    blocks: list[PresentationBlock] = []
+    for i, block_data in enumerate(blocks_data):
+        kind_str = block_data.get("kind", "text")
+        try:
+            kind = PresentationBlockKind(kind_str)
+        except ValueError:
+            kind = PresentationBlockKind.TEXT
+
+        if kind == PresentationBlockKind.CALLOUT:
+            content = {"cards": block_data.get("cards", [])}
+        elif kind == PresentationBlockKind.BULLETS:
+            content = {"items": block_data.get("items", [])}
+        elif kind == PresentationBlockKind.KPI_CARDS:
+            content = {"items": block_data.get("items", [])}
+        else:
+            content = {"text": block_data.get("text", "")}
+
+        blocks.append(PresentationBlock(
+            block_id=f"b{i+1}",
+            kind=kind,
+            content=content,
+        ))
+
+    if not blocks:
+        blocks.append(PresentationBlock(
+            block_id="b1",
+            kind=PresentationBlockKind.TEXT,
+            content={"text": headline},
+        ))
+
+    return SlideSpec(
+        slide_id=slide_id,
+        purpose=purpose,
+        layout_intent=LayoutIntent(template_key=template_key, strict_template=True),
+        headline=headline,
+        speaker_notes=speaker_notes,
+        blocks=blocks,
+    )
+
+
+def _infer_best_template_for_content(content: str) -> str:
+    """Analyze content to choose the best slide template."""
+    lowered = content.lower()
+    word_count = len(content.split())
+
+    # Detect comparison / multi-option content → cards
+    if any(term in lowered for term in ("option", "vs.", "versus", "compare", "comparison", "alternative")):
+        return "content.3col.cards"
+
+    # Detect architecture / component descriptions → grid
+    if any(term in lowered for term in ("component", "architecture", "pipeline", "module", "layer", "system")):
+        return "architecture.grid"
+
+    # Detect metrics / numbers → KPI
+    import re
+    numbers = re.findall(r"\b\d+[%$]?\b", content)
+    if len(numbers) >= 3:
+        return "kpi.3up"
+
+    # Detect lists of 3+ distinct points → cards
+    bullet_lines = [line for line in content.splitlines() if line.strip().startswith(("-", "•", "*", "1", "2", "3"))]
+    if len(bullet_lines) >= 3:
+        return "content.3col.cards"
+
+    # Detect multiple paragraphs with distinct topics → executive overview
+    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+    if len(paragraphs) >= 2 and word_count > 60:
+        return "executive.overview"
+
+    # Dense text → executive overview for summarization
+    if word_count > 80:
+        return "executive.overview"
+
+    return "content.1col"
+
+
+def _preview_archetype_for_template(template_key: str) -> SlideArchetype | None:
+    if template_key == "executive.overview":
+        return SlideArchetype.EXECUTIVE_OVERVIEW
+    if template_key == "architecture.grid":
+        return SlideArchetype.ARCHITECTURE_GRID
+    return None
 
 
 def _to_api_presentation_spec(
@@ -862,9 +1323,31 @@ def _to_api_presentation_spec(
     )
 
 
+def _to_api_slide_spec(slide: SlideSpec, *, index: int) -> SlideSpecResponse:
+    return SlideSpecResponse(
+        id=slide.slide_id,
+        index=index,
+        purpose=slide.purpose.value,
+        archetype=slide.archetype.value if slide.archetype else None,
+        title=slide.headline,
+        blocks=[
+            {
+                "id": block.block_id,
+                "kind": block.kind.value,
+                "content": _stringify_block_content(block.kind, block.content),
+                "data": block.content,
+                "citation": block.source_citations[0].locator if block.source_citations else None,
+            }
+            for block in slide.blocks
+        ],
+        template_id=slide.layout_intent.template_key,
+        speaker_notes=slide.speaker_notes or None,
+    )
+
+
 def _stringify_block_content(kind: PresentationBlockKind, content: dict[str, Any]) -> str:
     if kind is PresentationBlockKind.BULLETS:
-        return "\n".join(f"• {item}" for item in content.get("items", []))
+        return "\n".join(f"\u2022 {item}" for item in content.get("items", []))
     if kind is PresentationBlockKind.KPI_CARDS:
         return "\n".join(f"{item.get('value', '')}|{item.get('label', '')}" for item in content.get("items", []))
     if kind is PresentationBlockKind.TABLE:

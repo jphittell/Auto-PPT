@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0.0",
+  "audience": "Sales team and channel partners",
+  "goal": "Enable the sales team to position the new analytics module, handle common objections, and close deals in the first 90 days.",
+  "tone": "persuasive",
+  "slide_count_target": 7,
+  "source_corpus_ids": [
+    "doc_product_spec_v3",
+    "doc_competitive_analysis_q1"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "Analytics Module Launch — Sales Enablement Kit",
+    "one_sentence_thesis": "The new analytics module delivers 3x faster query performance at 40% lower cost than the incumbent, with a migration path that takes under two weeks.",
+    "key_takeaways": [
+      "Query performance benchmarked at 3x faster than Competitor A on identical datasets",
+      "Pricing undercuts incumbent by 40% at the 500-seat tier",
+      "Two-week migration path with zero-downtime cutover for existing customers",
+      "Three enterprise beta customers achieved full ROI within 60 days",
+      "Top objection is data residency — handled by new EU region launched in March"
+    ],
+    "deck_archetype": "decision_guide"
+  }
+}

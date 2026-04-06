@@ -1,8 +1,8 @@
-const steps = ['Upload', 'Goal', 'Outline', 'Style', 'Generate']
+const steps = ['Upload', 'Prompt', 'Generate']
 
-export function WizardStepIndicator({ step }: { step: 1 | 2 | 3 | 4 | 5 }) {
+export function WizardStepIndicator({ step }: { step: 1 | 2 | 3 }) {
   return (
-    <ol className="grid gap-3 sm:grid-cols-5">
+    <ol className="grid gap-3 sm:grid-cols-3">
       {steps.map((label, index) => {
         const position = index + 1
         const status =

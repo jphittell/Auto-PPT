@@ -1,0 +1,28 @@
+{
+  "$_comment": "BAD EXAMPLE: Single-word queries, no doc_id scoping, compound queries, and missing slides.",
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s3",
+      "queries": [
+        { "query": "revenue", "doc_ids": [], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        { "query": "margins AND costs AND infrastructure AND savings AND APAC", "doc_ids": [], "min_date": null }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null,
+  "$_failures": [
+    "query='revenue' is a single word — too broad, retriever returns noise from every mention of revenue",
+    "query contains AND-chaining of 5 concepts — compound queries dilute retrieval relevance",
+    "doc_ids=[] on all queries means the retriever searches the entire corpus with no scoping",
+    "Only 2 slides have retrieval plans but the outline has 5+ content slides — missing coverage",
+    "Slide s3 has only 1 query — should have 2-4 for a KPI slide that needs multiple metrics",
+    "No queries for the risk slide (s6) or hiring plan slide (s7) which are data-heavy"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "audience": "Engineering leadership and SRE team",
+  "goal": "Share root cause analysis of the March 28 API outage, agree on three corrective actions, and assign owners with deadlines.",
+  "tone": "technical",
+  "slide_count_target": 6,
+  "source_corpus_ids": [
+    "doc_incident_timeline",
+    "doc_rca_report"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "March 28 API Outage — Post-Incident Review and Corrective Actions",
+    "one_sentence_thesis": "A cascading connection pool exhaustion caused a 47-minute API outage affecting 12,000 users, preventable with circuit breaker configuration and connection pool monitoring.",
+    "key_takeaways": [
+      "Root cause was unbounded connection pool growth triggered by a slow downstream dependency",
+      "Circuit breaker was configured but timeout was set too high at 30 seconds",
+      "Mean time to detect was 14 minutes — alerting threshold was 5x too generous",
+      "Three corrective actions: circuit breaker tuning, pool monitoring alert, and load-shed runbook"
+    ],
+    "deck_archetype": "executive_summary"
+  }
+}

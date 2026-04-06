@@ -1,4 +1,16 @@
-import type { ChatGenerateResponse, ExportResult, GenerateParams, IngestResult, PlanParams, PlannedDeck, PresentationSpec, Template } from '../types'
+import type {
+  ChatGenerateResponse,
+  ExportResult,
+  GenerateParams,
+  IngestResult,
+  PlanParams,
+  PlanPromptParams,
+  PlannedDeck,
+  PresentationSpec,
+  SlidePreviewParams,
+  SlideSpec,
+  Template,
+} from '../types'
 
 const BASE = '/api'
 
@@ -69,6 +81,24 @@ export async function exportDeck(deckId: string, format: 'pdf' | 'pptx'): Promis
     throw new Error(payload || `Export failed: ${response.status}`)
   }
   return { type: format, blob: await response.blob() }
+}
+
+export async function planDeckFromPrompt(params: PlanPromptParams): Promise<PlannedDeck> {
+  const response = await fetch(`${BASE}/plan/prompt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return parseJson<PlannedDeck>(response)
+}
+
+export async function generateSlidePreview(params: SlidePreviewParams): Promise<SlideSpec> {
+  const response = await fetch(`${BASE}/slide/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return parseJson<SlideSpec>(response)
 }
 
 export async function chatGenerateDeck(file: File, prompt: string): Promise<ChatGenerateResponse> {

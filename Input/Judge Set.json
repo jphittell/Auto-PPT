@@ -1,0 +1,247 @@
+{
+  "$schema_doc": "Judge Set — Auto PPT v1",
+  "$description": "10 sample slide scenarios for internal benchmarking of planning quality. Each scenario defines the input conditions and expected output characteristics. Use these as regression targets when changing the planning chain.",
+
+  "scenarios": [
+    {
+      "id": "judge-01",
+      "name": "Q1 Board Review — Revenue KPI Slide",
+      "source_input": "Q1 financial PDF with revenue, margin, and growth figures",
+      "audience": "Board of directors",
+      "goal": "Communicate Q1 revenue performance in a single KPI slide",
+      "preferred_template": "kpi.3up",
+      "must_have_citations": ["doc_q1_pdf:page2"],
+      "expected_block_count": 3,
+      "expected_block_kinds": ["callout", "callout", "callout"],
+      "success_notes": [
+        "Headline states the revenue figure AND the growth rate, not just 'Revenue Performance'",
+        "Three KPI blocks: Revenue ($29.3M), vs Plan (+4%), QoQ Growth (+6%)",
+        "Each KPI has a delta with comparison basis (YoY, vs Plan, vs Q4)",
+        "Speaker notes explain what drove the results, not just repeat the numbers"
+      ],
+      "failure_notes": [
+        "Headline is a topic label like 'Financial Highlights' instead of a takeaway",
+        "KPI blocks contain sentences instead of metric + value + delta triples",
+        "Missing citations on any of the three callout blocks",
+        "Speaker notes are empty or just restate the on-slide content"
+      ]
+    },
+
+    {
+      "id": "judge-02",
+      "name": "Oracle HCM — Options Comparison Table",
+      "source_input": "Integration options analysis document with three evaluated approaches",
+      "audience": "IT steering committee",
+      "goal": "Present a side-by-side comparison of three integration options",
+      "preferred_template": "table.full",
+      "must_have_citations": ["doc_oracle_integration_options:page10"],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["table"],
+      "success_notes": [
+        "Headline states which option wins: 'Hybrid Wins on 4 of 5 Criteria'",
+        "Table has 5 rows (criteria) and 4 columns (criterion + 3 options)",
+        "Cell content uses short labels (High/Medium/Low, dollar amounts, week counts)",
+        "No sentences in table cells — just data points",
+        "Speaker notes explain why hybrid loses on timeline but wins overall"
+      ],
+      "failure_notes": [
+        "Headline is neutral ('Comparison Matrix') instead of stating the conclusion",
+        "Table cells contain full sentences instead of short data labels",
+        "More than 8 rows — table is too dense for a single slide",
+        "Uses content.1col with bullets instead of table.full"
+      ]
+    },
+
+    {
+      "id": "judge-03",
+      "name": "Product Launch — Objection Handling Cards",
+      "source_input": "Competitive analysis with objection/response pairs",
+      "audience": "Sales team",
+      "goal": "Equip sales reps to handle the top 3 customer objections",
+      "preferred_template": "content.3col.cards",
+      "must_have_citations": ["doc_competitive_analysis_q1:page7"],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["kpi_cards"],
+      "success_notes": [
+        "Exactly 3 cards, one per objection",
+        "Each card has a 2-3 word title (the objection) and a 1-2 sentence response",
+        "Responses include specific proof points: dates, certifications, metrics",
+        "Speaker notes give the fuller talk track for each objection"
+      ],
+      "failure_notes": [
+        "Uses content.1col with a bullet list instead of cards",
+        "More than 3 cards — forces a template that can't fit them",
+        "Card responses are generic ('We handle this well') without proof points",
+        "Objections are framed from the seller's perspective instead of the buyer's"
+      ]
+    },
+
+    {
+      "id": "judge-04",
+      "name": "Incident Retro — Timeline Slide",
+      "source_input": "Incident timeline document with minute-by-minute log",
+      "audience": "Engineering leadership",
+      "goal": "Show the incident timeline with detection, response, and resolution phases",
+      "preferred_template": "table.full",
+      "must_have_citations": ["doc_incident_timeline:page1"],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["table"],
+      "success_notes": [
+        "Table columns: Time, Event, Phase (Detection/Response/Resolution)",
+        "5-8 key events, not every log entry — this is a summary, not a dump",
+        "Headline states the total duration: '47-Minute Outage: Detection to Resolution'",
+        "Speaker notes call out the 14-minute detection gap as the key learning"
+      ],
+      "failure_notes": [
+        "Every log entry included — 30+ rows in the table",
+        "Uses bullets instead of a table for timestamped events",
+        "Headline is 'Incident Timeline' without stating the duration or key metric",
+        "No mention of detection time in speaker notes"
+      ]
+    },
+
+    {
+      "id": "judge-05",
+      "name": "Q1 Board Review — Risk Escalation Slide",
+      "source_input": "Q1 PDF with risk register section",
+      "audience": "Board of directors",
+      "goal": "Escalate two operational risks with proposed mitigations and deadlines",
+      "preferred_template": "content.1col",
+      "must_have_citations": ["doc_q1_pdf:page8"],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["bullets"],
+      "success_notes": [
+        "Exactly 3 bullets: Risk 1 + data, Risk 2 + data, Actions + deadlines",
+        "Each risk bullet includes the specific number (71% concentration, 23% CAC increase)",
+        "Action bullet includes owner and deadline (May 1, April 30)",
+        "Headline frames urgency: 'Two Risks Require Board Attention' not 'Risk Overview'"
+      ],
+      "failure_notes": [
+        "Risks described without quantification ('There is a supplier risk')",
+        "Actions listed without deadlines or owners",
+        "More than 3 bullets — splits focus",
+        "Uses kpi.3up for risks — KPIs are for metrics, not risk narratives"
+      ]
+    },
+
+    {
+      "id": "judge-06",
+      "name": "Product Launch — Performance Benchmark Chart",
+      "source_input": "Product spec with benchmark data across 5 dataset sizes",
+      "audience": "Sales team and prospects",
+      "goal": "Show that our product is faster than the competitor at every data scale",
+      "preferred_template": "chart.full",
+      "must_have_citations": ["doc_product_spec_v3:page9"],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["chart"],
+      "success_notes": [
+        "Chart type is bar with 5 data points (1TB through 50TB)",
+        "Headline states the conclusion: 'We Win on Speed at Every Data Scale'",
+        "Citation footer includes the benchmark source (DataBench Labs)",
+        "Speaker notes explain that the gap widens at larger scales"
+      ],
+      "failure_notes": [
+        "Chart data presented as a bullet list instead of a visual chart",
+        "Headline is descriptive ('Performance Benchmark') instead of conclusive",
+        "Missing citation for the benchmark source",
+        "Two charts on one slide (e.g., speed AND cost)"
+      ]
+    },
+
+    {
+      "id": "judge-07",
+      "name": "Oracle HCM — Section Divider",
+      "source_input": "Integration options analysis (context only — no data needed for divider)",
+      "audience": "IT steering committee",
+      "goal": "Signal the transition from context slides to the three options deep-dive",
+      "preferred_template": "section.header",
+      "must_have_citations": [],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["text"],
+      "success_notes": [
+        "Headline is 2-4 words: 'Three Integration Options'",
+        "Tagline is one sentence framing the comparison criteria",
+        "No bullets, no data, no citations — this is a structural slide",
+        "Speaker notes provide the transition: 'Moving into the core analysis...'"
+      ],
+      "failure_notes": [
+        "Section divider contains content (bullet lists, data)",
+        "Uses content.1col instead of section.header",
+        "Headline is a full sentence instead of a section title",
+        "Missing from the deck entirely — deck jumps from context to options without a break"
+      ]
+    },
+
+    {
+      "id": "judge-08",
+      "name": "Q1 Board Review — Hiring Plan Table",
+      "source_input": "Financial model with headcount plan by department",
+      "audience": "Board of directors",
+      "goal": "Present the H1 hiring plan with roles, timing, and cost for board approval",
+      "preferred_template": "table.full",
+      "must_have_citations": ["doc_finance_model_xlsx:page5"],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["table"],
+      "success_notes": [
+        "Table columns: Team, Roles, Quarter, Cost",
+        "3 department rows plus a Total row",
+        "Headline includes both the total count and total cost: '18 Roles, $2.4M'",
+        "Speaker notes mention that the cost is within approved opex and approval enables May 1 recruiting"
+      ],
+      "failure_notes": [
+        "Hiring plan presented as bullets instead of a table",
+        "Table missing the Total row — board can't see the aggregate",
+        "Headline omits the cost ('H1 Hiring Plan' instead of '18 Roles, $2.4M')",
+        "More than 6 rows — too granular for a board slide (use appendix for role-level detail)"
+      ]
+    },
+
+    {
+      "id": "judge-09",
+      "name": "Incident Retro — Corrective Actions Summary",
+      "source_input": "RCA report with recommended corrective actions",
+      "audience": "Engineering leadership",
+      "goal": "Close the retro by assigning three corrective actions with owners and deadlines",
+      "preferred_template": "content.1col",
+      "must_have_citations": ["doc_rca_report:page4"],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["bullets"],
+      "success_notes": [
+        "Exactly 3 bullets, one per corrective action",
+        "Each bullet includes: what, who (owner), and when (deadline)",
+        "Headline is action-oriented: 'Three Actions to Prevent Recurrence'",
+        "Speaker notes explain the priority order and dependencies between actions"
+      ],
+      "failure_notes": [
+        "Actions listed without owners or deadlines",
+        "More than 3 actions — dilutes focus and accountability",
+        "Headline is passive: 'Recommended Actions' instead of directive",
+        "Actions are vague ('Improve monitoring') instead of specific ('Add connection pool alert at 80% threshold')"
+      ]
+    },
+
+    {
+      "id": "judge-10",
+      "name": "Product Launch — Title Slide",
+      "source_input": "Product spec (title and date only needed)",
+      "audience": "Sales team",
+      "goal": "Open the enablement deck with a clear, branded title slide",
+      "preferred_template": "title.hero",
+      "must_have_citations": [],
+      "expected_block_count": 1,
+      "expected_block_kinds": ["text"],
+      "success_notes": [
+        "Headline is the product name: 'Analytics Module Launch' (3-5 words)",
+        "Subtitle block includes the context: 'Sales Enablement Kit — April 2026'",
+        "Speaker notes welcome the audience and preview the deck's arc (20-30 words)",
+        "No bullets, no data, no charts — title slide is clean"
+      ],
+      "failure_notes": [
+        "Headline is a sentence ('We Are Launching a New Analytics Module')",
+        "Subtitle contains bullet points or data",
+        "Speaker notes are empty",
+        "Uses content.1col instead of title.hero"
+      ]
+    }
+  ]
+}

@@ -1,31 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-import { exportDeck, getTemplates } from '../api/client'
-import { AISidepane } from '../components/AISidepane'
+import { exportDeck, generateSlidePreview, getTemplates } from '../api/client'
 import { ExportPreflightModal } from '../components/ExportPreflightModal'
 import { SlideCanvas } from '../components/SlideCanvas'
 import { SlideRail } from '../components/SlideRail'
 import { useDeckStore } from '../store/deckStore'
 import { useUIStore } from '../store/uiStore'
-import { useWizardStore } from '../store/wizardStore'
-import type { Template } from '../types'
+import type { SlideSpec, Template } from '../types'
 
 export function EditorPage() {
   const { deckId } = useParams<{ deckId: string }>()
   const [templates, setTemplates] = useState<Template[]>([])
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [history, setHistory] = useState<string[]>([])
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewSlide, setPreviewSlide] = useState<SlideSpec | null>(null)
+  const [promptText, setPromptText] = useState('')
   const currentDeck = useDeckStore((state) => state.currentDeck)
   const loadDeck = useDeckStore((state) => state.loadDeck)
   const updateSlide = useDeckStore((state) => state.updateSlide)
-  const replaceSlide = useDeckStore((state) => state.replaceSlide)
-  const insertSlideAfter = useDeckStore((state) => state.insertSlideAfter)
   const addSlide = useDeckStore((state) => state.addSlide)
   const selectedSlideIndex = useDeckStore((state) => state.selectedSlideIndex)
   const setSelectedSlide = useDeckStore((state) => state.setSelectedSlide)
   const ui = useUIStore()
-  const brandKit = useWizardStore((state) => state.brandKit)
 
   useEffect(() => {
     if (deckId) void loadDeck(deckId)
@@ -41,60 +37,47 @@ export function EditorPage() {
     [currentDeck],
   )
 
-  async function runAiAction(action: string) {
-    if (!currentDeck || !slide) return
+  useEffect(() => {
+    setPreviewSlide(null)
+  }, [currentDeck?.id, selectedSlideIndex, slide?.template_id])
+
+  useEffect(() => {
+    if (!slide) {
+      setPromptText('')
+      return
+    }
+    setPromptText(slide.blocks.map((block) => block.content.trim()).filter(Boolean).join('\n\n'))
+  }, [slide])
+
+  async function handleGeneratePreview() {
+    if (!slide || !currentDeck) return
+    const content = promptText.trim()
+    if (!content) {
+      ui.addToast('Add slide text before generating a preview.', 'info')
+      return
+    }
+
     try {
-      setActionLoading(action)
-      if (action === 'Add slide after this') {
-        const nextSlide = {
-          ...slide,
-          id: `${slide.id}-${Date.now()}`,
-          index: selectedSlideIndex + 2,
-          title: `${slide.title} follow-up`,
-        }
-        insertSlideAfter(selectedSlideIndex, {
-          ...nextSlide,
-        })
-      } else if (action === 'Regenerate layout') {
-        const currentIndex = templates.findIndex((item) => item.id === slide.template_id)
-        const selectedTemplate = templates[(currentIndex + 1) % Math.max(templates.length, 1)]
-        updateSlide(selectedSlideIndex, { template_id: selectedTemplate?.id ?? slide.template_id })
-      } else if (action === 'Convert to bullet list') {
-        const bulletText = slide.blocks.map((block) => block.content).join('\n')
-        replaceSlide(selectedSlideIndex, {
-          ...slide,
-          blocks: [{ id: slide.blocks[0]?.id ?? `block-${Date.now()}`, kind: 'bullets', content: bulletText }],
-        })
-      } else if (action === 'Make more concise') {
-        replaceSlide(selectedSlideIndex, {
-          ...slide,
-          blocks: slide.blocks.map((block) => ({
-            ...block,
-            content: block.content
-              .split(/\s+/)
-              .slice(0, 12)
-              .join(' '),
-          })),
-        })
-      } else if (action === 'Rewrite for investors') {
-        replaceSlide(selectedSlideIndex, {
-          ...slide,
-          title: `${slide.title} for investors`,
-          blocks: slide.blocks.map((block) => ({
-            ...block,
-            content: `${block.content} Focus on traction, differentiation, and upside.`,
-          })),
-        })
-      } else {
-        ui.addToast('Action not implemented.', 'info')
-        return
+      setPreviewLoading(true)
+      const preview = await generateSlidePreview({
+        slide_id: slide.id,
+        title: slide.title,
+        purpose: slide.purpose,
+        template_id: slide.template_id,
+        content,
+        audience: currentDeck.audience,
+        goal: currentDeck.goal,
+      })
+      setPreviewSlide(preview)
+      // Update the slide's template if the pipeline chose a better one
+      if (preview.template_id && preview.template_id !== slide.template_id) {
+        updateSlide(selectedSlideIndex, { template_id: preview.template_id })
       }
-      setHistory((entries) => [action, ...entries].slice(0, 3))
-      ui.addToast(action, 'success')
+      ui.addToast('Slide preview generated with consulting-style copy.', 'success')
     } catch (error) {
-      ui.addToast(error instanceof Error ? error.message : 'AI action failed', 'error')
+      ui.addToast(error instanceof Error ? error.message : 'Slide preview failed', 'error')
     } finally {
-      setActionLoading(null)
+      setPreviewLoading(false)
     }
   }
 
@@ -186,26 +169,14 @@ export function EditorPage() {
         <div className="flex min-h-0 flex-1">
           <SlideCanvas
             slide={slide}
-            onTitleChange={(title) => updateSlide(selectedSlideIndex, { title })}
-            onBlockChange={(blockIndex, content) => {
-              const nextBlocks = slide.blocks.map((block, index) => (index === blockIndex ? { ...block, content } : block))
-              updateSlide(selectedSlideIndex, { blocks: nextBlocks })
-            }}
-          />
-          <AISidepane
-            activeTab={ui.activeTab}
-            onTabChange={ui.setActiveTab}
-            sidepaneOpen={ui.sidepaneOpen}
-            onToggle={ui.toggleSidepane}
-            slideTitle={slide.title}
-            slidePurpose={slide.purpose}
-            templates={templates}
-            selectedTemplateId={slide.template_id}
-            onTemplateSelect={(templateId) => updateSlide(selectedSlideIndex, { template_id: templateId })}
-            brandKit={brandKit}
-            onAction={runAiAction}
-            actionLoading={actionLoading}
-            history={history}
+            previewSlide={previewSlide}
+            deckTitle={currentDeck.title}
+            audience={currentDeck.audience}
+            themeName={currentDeck.theme?.name}
+            promptText={promptText}
+            onPromptTextChange={setPromptText}
+            onGeneratePreview={handleGeneratePreview}
+            previewLoading={previewLoading}
           />
         </div>
       </main>

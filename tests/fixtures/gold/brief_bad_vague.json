@@ -1,0 +1,31 @@
+{
+  "$_comment": "BAD EXAMPLE: Vague brief with missing specifics. The audience is generic, the goal is a tautology, tone is undefined, and extensions are empty or missing key fields.",
+  "schema_version": "1.0.0",
+  "audience": "stakeholders",
+  "goal": "Present the findings of the report.",
+  "tone": "professional",
+  "slide_count_target": 15,
+  "source_corpus_ids": [
+    "doc_report"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "Report",
+    "one_sentence_thesis": "This report has important findings.",
+    "key_takeaways": [
+      "The data shows results",
+      "There are recommendations"
+    ],
+    "deck_archetype": "executive_summary"
+  },
+  "$_failures": [
+    "audience='stakeholders' is too vague — who specifically? What level? What do they care about?",
+    "goal='Present the findings' is a tautology — every deck presents findings. What decision should the audience make?",
+    "tone='professional' is meaningless — all decks should be professional. Use 'executive', 'technical', etc.",
+    "slide_count_target=15 is too high for a single report with one source",
+    "document_title='Report' provides no specificity",
+    "one_sentence_thesis is not a thesis — it's a placeholder",
+    "key_takeaways are not takeaways — they're meta-descriptions of what a takeaway would look like",
+    "Only 2 key_takeaways instead of the required 4-6"
+  ]
+}

@@ -15,6 +15,7 @@ class IngestResponse(BaseModel):
     chunk_count: int = Field(ge=0)
     title: str = Field(min_length=1)
     element_types: dict[str, int] = Field(default_factory=dict)
+    summary: str = ""
 
 
 HEX_COLOR_PATTERN = r"^#[0-9A-Fa-f]{6}$"
@@ -28,6 +29,13 @@ class PlanDeckRequest(BaseModel):
     audience: str = Field(min_length=1)
     tone: float = Field(ge=0, le=100)
     slide_count: int = Field(ge=6, le=20)
+
+
+class PlanPromptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    doc_ids: list[str] = Field(min_length=1)
+    prompt: str = Field(min_length=1)
 
 
 class ContentBlockResponse(BaseModel):
@@ -128,6 +136,18 @@ class GenerateDeckRequest(BaseModel):
     outline: list[OutlineSlideRequest] = Field(min_length=1)
     selected_template_id: str = Field(min_length=1)
     brand_kit: BrandKitRequest
+
+
+class SlidePreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slide_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    template_id: str = Field(min_length=1)
+    content: str = Field(min_length=1)
+    audience: str = Field(min_length=1)
+    goal: str = Field(min_length=1)
 
 
 class ExportRequest(BaseModel):

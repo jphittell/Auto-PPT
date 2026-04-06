@@ -86,7 +86,7 @@ def validate_layout(layout: ResolvedDeckLayout, *, style_tokens: StyleTokens) ->
                 color_items.extend(_contrast_items(slide.slide_id, element, style_tokens))
 
         layout_items.extend(_overlap_items(slide.slide_id, slide.elements))
-        if text_word_count > 40:
+        if text_word_count > 80:
             text_items.append(
                 QAItem(
                     dimension="text",

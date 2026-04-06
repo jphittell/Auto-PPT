@@ -3,6 +3,7 @@ import type { ContentBlock } from '../types'
 interface BlockRendererProps {
   block: ContentBlock
   onChange: (content: string) => void
+  mode?: 'editor' | 'preview'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -36,19 +37,29 @@ function renderBulletItems(block: ContentBlock) {
   return block.content
     .split('\n')
     .filter(Boolean)
-    .map((item) => item.replace(/^[•*-]\s*/, ''))
+    .map((item) => item.replace(/^[\u2022*-]\s*/, ''))
 }
 
-export function BlockRenderer({ block, onChange }: BlockRendererProps) {
+export function BlockRenderer({ block, onChange, mode = 'editor' }: BlockRendererProps) {
+  const isPreview = mode === 'preview'
+
+  const renderEditor = (className: string) => (
+    <textarea
+      value={block.content}
+      onChange={(event) => onChange(event.target.value)}
+      className={className}
+    />
+  )
+
   if (block.kind === 'image') {
     return (
       <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
         <div className="mb-2 font-medium text-slate-700">Image slot</div>
-        <textarea
-          value={block.content}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 outline-none"
-        />
+        {isPreview ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-3 text-slate-500">{block.content || 'No image selected.'}</div>
+        ) : (
+          renderEditor('h-24 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 outline-none')
+        )}
       </div>
     )
   }
@@ -56,18 +67,18 @@ export function BlockRenderer({ block, onChange }: BlockRendererProps) {
   if (block.kind === 'quote') {
     return (
       <blockquote className="rounded-2xl border-l-4 border-indigo-500 bg-indigo-50 p-5">
-        <textarea
-          value={block.content}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-24 w-full resize-none border-none bg-transparent text-lg italic text-slate-800 outline-none"
-        />
+        {isPreview ? (
+          <div className="text-lg italic text-slate-800">{block.content}</div>
+        ) : (
+          renderEditor('h-24 w-full resize-none border-none bg-transparent text-lg italic text-slate-800 outline-none')
+        )}
       </blockquote>
     )
   }
 
   if (block.kind === 'callout') {
     const cards = renderCardsFromData(block.data)
-    if (cards.length > 0) {
+    if (cards.length > 0 && isPreview) {
       return (
         <div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -78,21 +89,16 @@ export function BlockRenderer({ block, onChange }: BlockRendererProps) {
               </div>
             ))}
           </div>
-          <textarea
-            value={block.content}
-            onChange={(event) => onChange(event.target.value)}
-            className="mt-4 h-24 w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none"
-          />
         </div>
       )
     }
     return (
       <div className="rounded-2xl bg-amber-50 p-5 ring-1 ring-amber-200">
-        <textarea
-          value={block.content}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-24 w-full resize-none border-none bg-transparent text-slate-900 outline-none"
-        />
+        {isPreview ? (
+          <div className="text-slate-900">{block.content}</div>
+        ) : (
+          renderEditor('h-24 w-full resize-none border-none bg-transparent text-slate-900 outline-none')
+        )}
       </div>
     )
   }
@@ -109,11 +115,7 @@ export function BlockRenderer({ block, onChange }: BlockRendererProps) {
             </div>
           ))}
         </div>
-        <textarea
-          value={block.content}
-          onChange={(event) => onChange(event.target.value)}
-          className="mt-4 h-24 w-full resize-none rounded-xl border border-slate-200 p-3 text-sm outline-none"
-        />
+        {!isPreview ? renderEditor('mt-4 h-24 w-full resize-none rounded-xl border border-slate-200 p-3 text-sm outline-none') : null}
       </div>
     )
   }
@@ -127,20 +129,14 @@ export function BlockRenderer({ block, onChange }: BlockRendererProps) {
             <li key={item}>{item}</li>
           ))}
         </ul>
-        <textarea
-          value={block.content}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-28 w-full resize-none rounded-xl border border-slate-200 p-3 text-sm outline-none"
-        />
+        {!isPreview ? renderEditor('h-28 w-full resize-none rounded-xl border border-slate-200 p-3 text-sm outline-none') : null}
       </div>
     )
   }
 
-  return (
-    <textarea
-      value={block.content}
-      onChange={(event) => onChange(event.target.value)}
-      className="min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 outline-none shadow-sm"
-    />
-  )
+  if (isPreview) {
+    return <div className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-sm">{block.content}</div>
+  }
+
+  return renderEditor('min-h-28 w-full resize-y rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 outline-none shadow-sm')
 }

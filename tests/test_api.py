@@ -13,6 +13,7 @@ def _reset_api_state() -> None:
     api_module._RAW_DECK_SPECS.clear()
     api_module._CHAT_SESSIONS.clear()
     api_module._EMBEDDER = None
+    api_module._STRUCTURED_LLM_CLIENT = False
 
 
 def _ingest_fixture(client: TestClient, sample_pdf_path) -> str:
@@ -259,6 +260,28 @@ def test_api_different_prompt_inputs_change_generated_result(monkeypatch, sample
     assert any(slide["template_id"] in {"content.3col.cards", "architecture.grid"} for slide in analytical_plan["slides"])
 
 
+def test_api_plan_from_prompt_infers_planning_inputs(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
+    _reset_api_state()
+    monkeypatch.setattr(api_module, "_get_embedder", lambda: deterministic_embedder)
+    client = TestClient(api_module.app)
+    doc_id = _ingest_fixture(client, sample_pdf_path)
+
+    response = client.post(
+        "/api/plan/prompt",
+        json={
+            "doc_ids": [doc_id],
+            "prompt": "Create a 6 slide architecture deck for Oracle consultants focused on pipeline design.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["audience"] == "Oracle consultants"
+    assert payload["goal"].lower().startswith("create a 6 slide architecture")
+    assert len(payload["slides"]) == 6
+    assert payload["slides"][0]["template_id"] == "title.hero"
+
+
 def test_api_chat_generate_runs_pipeline(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
     _reset_api_state()
     monkeypatch.setattr(api_module, "_get_embedder", lambda: deterministic_embedder)
@@ -279,6 +302,80 @@ def test_api_chat_generate_runs_pipeline(monkeypatch, sample_pdf_path, determini
     overview_slide = next(slide for slide in payload["deck"]["slides"] if slide["archetype"] == "executive_overview")
     assert any(block.get("data", {}).get("cards") for block in overview_slide["blocks"] if isinstance(block.get("data"), dict))
     assert any(slide["template_id"] == "architecture.grid" for slide in payload["deck"]["slides"])
+
+
+def test_api_slide_preview_calls_llm_and_returns_consulting_style() -> None:
+    _reset_api_state()
+
+    class FakeClient:
+        def generate_json(self, *, system_prompt: str, user_prompt: str, schema_name: str) -> dict:
+            assert schema_name == "PresentationSpec"
+            assert "consulting-style" in user_prompt.lower() or "consulting" in user_prompt.lower()
+            return {
+                "schema_version": "1.0.0",
+                "title": "Executive Overview",
+                "audience": "Oracle consultants",
+                "language": "en-US",
+                "theme": {
+                    "name": "Preview Theme",
+                    "style_tokens": api_module.StyleTokens(**api_module.pipeline_module.DEFAULT_STYLE_TOKENS).model_dump(),
+                },
+                "slides": [
+                    {
+                        "slide_id": "slide-preview-1",
+                        "purpose": "content",
+                        "layout_intent": {"template_key": "executive.overview", "strict_template": True},
+                        "headline": "Executive Overview",
+                        "speaker_notes": "Consulting style preview",
+                        "blocks": [
+                            {
+                                "block_id": "b1",
+                                "kind": "text",
+                                "content": {"text": "Consulting-style summary for Oracle delivery leaders."},
+                                "source_citations": [{"source_id": "editor-preview", "locator": "editor-preview:manual"}],
+                                "asset_refs": [],
+                            },
+                            {
+                                "block_id": "b2",
+                                "kind": "callout",
+                                "content": {
+                                    "cards": [
+                                        {"title": "Ingestion", "text": "Normalize enterprise inputs"},
+                                        {"title": "Retrieval", "text": "Ground claims in evidence"},
+                                        {"title": "Layout", "text": "Apply deterministic templates"},
+                                    ]
+                                },
+                                "source_citations": [{"source_id": "editor-preview", "locator": "editor-preview:manual"}],
+                                "asset_refs": [],
+                            },
+                        ],
+                    }
+                ],
+                "questions_for_user": [],
+            }
+
+    api_module._STRUCTURED_LLM_CLIENT = FakeClient()
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/api/slide/preview",
+        json={
+            "slide_id": "slide-preview-1",
+            "title": "Executive Overview",
+            "purpose": "content",
+            "template_id": "executive.overview",
+            "content": "Current draft text about ingestion, retrieval, layout, and export.",
+            "audience": "Oracle consultants",
+            "goal": "Explain the delivery architecture",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "slide-preview-1"
+    assert payload["title"] == "Executive Overview"
+    assert payload["template_id"] == "executive.overview"
+    assert any(block.get("data", {}).get("cards") for block in payload["blocks"] if isinstance(block.get("data"), dict))
 
 
 def test_api_serves_built_frontend(monkeypatch, tmp_path) -> None:

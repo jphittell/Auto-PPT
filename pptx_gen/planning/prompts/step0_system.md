@@ -23,7 +23,7 @@ CONTENT
 SLIDE DESIGN
 - Headlines must be 8 words or fewer. Prefer 5-6 words.
 - Each slide communicates a single point. Do not combine two arguments on one slide.
-- Body text per content slide: 40 words maximum. Appendix slides may exceed this.
+- Body text per content slide: 80 words maximum. Appendix slides may exceed this.
 - Prefer 3-5 bullets per slide. Never exceed 7. Never use a single bullet.
 - Avoid dense paragraphs. If content cannot fit in bullets, use a table or callout block.
 - Prefer specific visuals (chart, table, card, image) over generic ones wherever the content

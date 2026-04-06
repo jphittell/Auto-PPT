@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "audience": "Executive leadership team and board observers",
+  "goal": "Align leadership on Q1 performance, surface two operational risks, and secure approval for the H1 hiring plan.",
+  "tone": "executive",
+  "slide_count_target": 8,
+  "source_corpus_ids": [
+    "doc_q1_pdf",
+    "doc_finance_model_xlsx",
+    "doc_apac_pipeline_report"
+  ],
+  "questions_for_user": [],
+  "extensions": {
+    "document_title": "Q1 2026 Business Review — Consolidated Results and Board Actions",
+    "one_sentence_thesis": "Q1 exceeded revenue and margin targets, but two operational risks require immediate board action alongside the H1 hiring approval.",
+    "key_takeaways": [
+      "Revenue hit $29.3M, beating plan by 4% and accelerating YoY growth to 18%",
+      "Gross margin expanded 210bps to 64.4% driven by infrastructure optimization",
+      "APAC pipeline grew 31% QoQ, now the fastest-growing segment",
+      "Supplier concentration risk requires dual-vendor plan by May 1",
+      "EMEA CAC rose 23% over two months with root cause unconfirmed",
+      "H1 hiring plan of 18 roles at $2.4M requires board ratification today"
+    ],
+    "deck_archetype": "executive_summary"
+  }
+}

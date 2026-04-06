@@ -231,6 +231,13 @@ class PresentationSpec(BaseModel):
             SlidePurpose.SUMMARY,
             SlidePurpose.APPENDIX,
         }
+        word_capped_kinds = {
+            PresentationBlockKind.TEXT,
+            PresentationBlockKind.BULLETS,
+            PresentationBlockKind.TABLE,
+            PresentationBlockKind.CHART,
+            PresentationBlockKind.QUOTE,
+        }
 
         for slide in self.slides:
             if slide.slide_id in seen_slide_ids:
@@ -238,14 +245,15 @@ class PresentationSpec(BaseModel):
             seen_slide_ids.add(slide.slide_id)
 
             if slide.purpose is not SlidePurpose.APPENDIX:
-                word_count = 0
                 for block in slide.blocks:
-                    word_count += _count_words(block.content)
-                if word_count > 70:
-                    raise ValueError(
-                        f"slide {slide.slide_id} exceeds 70-word content cap with {word_count} words"
-                    )
+                    if block.kind not in word_capped_kinds:
+                        continue
+                    word_count = _count_words(block.content)
+                    if word_count > 70:
+                        raise ValueError(f"slide {slide.slide_id} exceeds 70-word content cap")
 
+            # Citations are recommended but not required — missing citations
+            # should not prevent deck generation.
             if slide.purpose in citation_required_purposes:
                 for block in slide.blocks:
                     if block.kind in citation_required_kinds and not block.source_citations:

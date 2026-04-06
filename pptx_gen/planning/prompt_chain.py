@@ -329,7 +329,9 @@ def generate_presentation_spec(
     for item in outline.outline:
         slide_chunks = retrieved_chunks_by_slide.get(item.slide_id, [])
         if item.purpose is SlidePurpose.TITLE:
-            slides.append(_build_title_slide(item=item, brief=brief, tone_label=tone_label))
+            # Gather all chunks for a richer title subtitle
+            all_chunks = [c for cs in retrieved_chunks_by_slide.values() for c in cs]
+            slides.append(_build_title_slide(item=item, brief=brief, tone_label=tone_label, chunks=all_chunks[:10]))
             continue
 
         if item.purpose is SlidePurpose.AGENDA:
@@ -337,7 +339,13 @@ def generate_presentation_spec(
             continue
 
         if item.purpose is SlidePurpose.SUMMARY:
-            summary_items = [_trim_words(text, 6) for text in (takeaways or [brief.goal])][:3]
+            # Derive takeaways from all accumulated chunks if none were provided
+            if takeaways:
+                summary_items = [_trim_words(text, 20) for text in takeaways][:6]
+            else:
+                all_chunk_texts = [chunk.text for chunks in retrieved_chunks_by_slide.values() for chunk in chunks]
+                derived = _derive_takeaways(all_chunk_texts, brief.goal)
+                summary_items = [_trim_words(text, 20) for text in derived][:6]
             summary_block_citations = summary_citations[:1] or _citations_from_chunks(slide_chunks)[:1] or _fallback_citation(brief.source_corpus_ids)
             summary_template = item.template_key or "content.3col.cards"
             if summary_template == "content.3col.cards":
@@ -659,7 +667,8 @@ def _enforce_authoritative_fields(
 
         slide_chunks = retrieved_chunks_by_slide.get(slide.slide_id, [])
         if outline_item is not None and slide.purpose is SlidePurpose.TITLE:
-            slides.append(_build_title_slide(item=outline_item, brief=brief, tone_label=tone_label))
+            all_chunks = [c for cs in retrieved_chunks_by_slide.values() for c in cs]
+            slides.append(_build_title_slide(item=outline_item, brief=brief, tone_label=tone_label, chunks=all_chunks[:10]))
             continue
         if outline_item is not None and slide.purpose is SlidePurpose.AGENDA:
             slides.append(_build_agenda_slide(item=outline_item, outline=outline))
@@ -994,14 +1003,21 @@ def _cards_from_points(items: list[str], *, title_prefix: str) -> list[dict[str,
     cards: list[dict[str, str]] = []
     for index, item in enumerate(items[:3], start=1):
         title = _card_title_from_point(item, fallback=f"{title_prefix} {index}")
-        cards.append({"title": title, "text": _trim_words(item, 6)})
+        cards.append({"title": title, "text": _trim_words(item, 20)})
     while len(cards) < 3:
         index = len(cards) + 1
         cards.append({"title": f"{title_prefix} {index}", "text": f"Detail {index}"})
     return cards
 
 
-def _build_title_slide(*, item: OutlineItem, brief: DeckBrief, tone_label: str) -> SlideSpec:
+def _build_title_slide(
+    *,
+    item: OutlineItem,
+    brief: DeckBrief,
+    tone_label: str,
+    chunks: list[RetrievedChunk] | None = None,
+) -> SlideSpec:
+    subtitle = _title_subtitle_from_content(brief, item, chunks or [])
     return SlideSpec(
         slide_id=item.slide_id,
         purpose=item.purpose,
@@ -1013,7 +1029,7 @@ def _build_title_slide(*, item: OutlineItem, brief: DeckBrief, tone_label: str) 
                 block_id="b1",
                 kind=PresentationBlockKind.TEXT,
                 content={
-                    "subtitle": _title_subtitle(brief),
+                    "subtitle": subtitle,
                     "presenter": _trim_words(brief.audience, 6),
                     "date": date.today().isoformat(),
                     "tagline": tone_label,
@@ -1025,10 +1041,10 @@ def _build_title_slide(*, item: OutlineItem, brief: DeckBrief, tone_label: str) 
 
 def _build_agenda_slide(*, item: OutlineItem, outline: OutlineSpec) -> SlideSpec:
     agenda_items = [
-        _trim_words(outline_item.headline, 4)
+        _trim_words(outline_item.headline, 10)
         for outline_item in outline.outline
         if outline_item.purpose in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY}
-    ][:4]
+    ][:6]
     return SlideSpec(
         slide_id=item.slide_id,
         purpose=item.purpose,
@@ -1045,11 +1061,34 @@ def _build_agenda_slide(*, item: OutlineItem, outline: OutlineSpec) -> SlideSpec
     )
 
 
-def _title_subtitle(brief: DeckBrief) -> str:
-    audience_focus = str((brief.extensions or {}).get("audience_focus") or _audience_focus_label(brief.audience)).strip()
-    if audience_focus:
-        return _trim_words(f"{audience_focus} | {brief.goal}", 12)
-    return _trim_words(brief.goal, 10)
+def _title_subtitle_from_content(
+    brief: DeckBrief,
+    item: OutlineItem,
+    chunks: list[RetrievedChunk],
+) -> str:
+    """Build a meaningful subtitle from document content, not internal metadata."""
+    # Try to extract a real summary sentence from chunks
+    for chunk in chunks:
+        for sentence in re.split(r"(?<=[.!?])\s+", chunk.text):
+            words = sentence.split()
+            if 8 <= len(words) <= 30:
+                subtitle = _trim_words(sentence.strip(), 25)
+                if "oracle" in brief.audience.lower() and "oracle" not in subtitle.lower():
+                    subtitle = _trim_words(f"{subtitle} For {brief.audience}.", 25)
+                return subtitle
+
+    # Use the outline item's message if it's substantive
+    if item.message and len(item.message.split()) >= 5:
+        subtitle = _trim_words(item.message, 25)
+        if "oracle" in brief.audience.lower() and "oracle" not in subtitle.lower():
+            subtitle = _trim_words(f"{subtitle} For {brief.audience}.", 25)
+        return subtitle
+
+    # Use the goal as last resort, but frame it better
+    subtitle = _trim_words(brief.goal, 20)
+    if "oracle" in brief.audience.lower() and "oracle" not in subtitle.lower():
+        subtitle = _trim_words(f"{subtitle} For {brief.audience}.", 20)
+    return subtitle
 
 
 def _audience_focus_label(audience: str) -> str:
@@ -1067,12 +1106,12 @@ def _audience_focus_label(audience: str) -> str:
 
 def _card_title_from_point(item: str, *, fallback: str) -> str:
     words = [word.strip(",.:;") for word in str(item).split() if word]
-    title = " ".join(words[:3]).strip()
+    title = " ".join(words[:6]).strip()
     return title or fallback
 
 
 def _kpi_points_from_bullets(items: list[str]) -> list[str]:
-    values = [_trim_words(item, 4) for item in items[:3]]
+    values = [_trim_words(item, 8) for item in items[:3]]
     while len(values) < 3:
         values.append(f"Insight {len(values) + 1}")
     return values
@@ -1171,12 +1210,12 @@ def _overview_summary_text(item: OutlineItem, brief: DeckBrief, slide_chunks: li
     phrases = []
     for chunk in slide_chunks:
         phrases.extend(_candidate_phrases(chunk.text))
-        if len(phrases) >= 2:
+        if len(phrases) >= 3:
             break
     if phrases:
-        return _trim_words(f"{' '.join(phrases[:2])}. {_audience_summary_suffix(brief)}", 10)
+        return _trim_words(". ".join(phrases[:3]), 40)
     thesis = str((brief.extensions or {}).get("one_sentence_thesis", brief.goal))
-    return _trim_words(f"{thesis}. {_audience_summary_suffix(brief)}", 10)
+    return _trim_words(thesis, 30)
 
 
 def _overview_cards(slide_chunks: list[RetrievedChunk], summary_items: list[str]) -> list[dict[str, str]]:
@@ -1197,12 +1236,12 @@ def _architecture_summary_text(item: OutlineItem, brief: DeckBrief, slide_chunks
     phrases = []
     for chunk in slide_chunks:
         phrases.extend(_candidate_phrases(chunk.text))
-        if len(phrases) >= 1:
+        if len(phrases) >= 2:
             break
     if phrases:
-        return _trim_words(f"{phrases[0]} supports {_audience_summary_suffix(brief)}", 10)
+        return _trim_words(". ".join(phrases[:2]), 30)
     thesis = str((brief.extensions or {}).get("one_sentence_thesis", brief.goal))
-    return _trim_words(f"{thesis}. {_audience_summary_suffix(brief)}", 10)
+    return _trim_words(thesis, 25)
 
 
 def _architecture_cards(slide_chunks: list[RetrievedChunk], summary_items: list[str]) -> list[dict[str, str]]:
@@ -1240,16 +1279,13 @@ def _specialist_callout(
     fallback: str,
     tone_label: str,
 ) -> str:
-    normalized = brief.audience.lower()
-    if "oracle" in normalized and "consult" in normalized:
-        return f"Oracle consulting lens | {tone_label}"
-    if "consult" in normalized:
-        return f"Consulting lens | {tone_label}"
+    # Extract a real insight from chunks rather than returning metadata labels
     for chunk in slide_chunks:
         for candidate in _candidate_phrases(chunk.text):
             if _normalize_phrase(candidate) != _normalize_phrase(fallback):
-                return f"{_trim_words(candidate, 2)} | {tone_label}"
-    return f"Supported evidence | {tone_label}"
+                return f"{_trim_words(candidate, 20)} | {tone_label}"
+    insight = _trim_words(fallback, 20) if fallback else "Key insight from the source material"
+    return f"{insight} | {tone_label}"
 
 
 def _footer_metric_label(slide_chunks: list[RetrievedChunk], brief: DeckBrief) -> str:
@@ -1267,8 +1303,8 @@ def _compact_cards(items: list[str], *, title_prefix: str, desired_count: int = 
     cards: list[dict[str, str]] = []
     for index, item in enumerate(items[:desired_count], start=1):
         words = [word.strip(",.:;") for word in str(item).split() if word]
-        title = " ".join(words[:2]).strip() or f"{title_prefix} {index}"
-        cards.append({"title": title, "text": _trim_words(item, 2)})
+        title = " ".join(words[:5]).strip() or f"{title_prefix} {index}"
+        cards.append({"title": title, "text": _trim_words(item, 20)})
     while len(cards) < desired_count:
         index = len(cards) + 1
         cards.append({"title": f"{title_prefix} {index}", "text": f"Detail {index}"})
@@ -1479,10 +1515,10 @@ def _normalize_card_records(
         if isinstance(record, dict):
             title = str(record.get("title") or record.get("label") or f"{title_prefix} {index}").strip()
             text_parts = [str(record.get(key)).strip() for key in ("text", "value", "description") if record.get(key)]
-            text = _trim_words(" ".join(text_parts) or title, 10)
+            text = _trim_words(" ".join(text_parts) or title, 25)
             cards.append({"title": title, "text": text})
         elif record is not None:
-            cards.append({"title": f"{title_prefix} {index}", "text": _trim_words(str(record), 10)})
+            cards.append({"title": f"{title_prefix} {index}", "text": _trim_words(str(record), 25)})
     while len(cards) < desired_count:
         index = len(cards) + 1
         cards.append({"title": f"{title_prefix} {index}", "text": f"Detail {index}"})
@@ -1520,22 +1556,22 @@ def _semantic_cards_from_chunks(
             (
                 ("template-first", "template driven", "template-driven"),
                 "Template-First",
-                "Fixed layouts.",
+                "Uses fixed, pre-designed layouts to ensure visual consistency and professional formatting across all slides.",
             ),
             (
                 ("rule-based", "auto-layout", "auto layout", "constraint"),
                 "Rule-Based Layout",
-                "Constraints and resize.",
+                "Applies constraint-based rules to automatically resize and reposition elements within the slide canvas.",
             ),
             (
                 ("free-form", "free form", "generated from scratch"),
                 "Free-Form Generation",
-                "Model proposes structure.",
+                "The model proposes structure and layout from scratch when no template constraint is specified.",
             ),
             (
                 ("qa", "validation", "overlap", "contrast"),
                 "QA and Validation",
-                "Checks catch issues.",
+                "Automated checks catch text overflow, element overlap, and color contrast issues before export.",
             ),
         ]
     else:
@@ -1543,59 +1579,73 @@ def _semantic_cards_from_chunks(
             (
                 ("structured data", "connector", "connectors", "records"),
                 "Structured Data Ingestion",
-                "Documents and records.",
+                "Parses structured documents and records into a normalized format for downstream slide generation.",
             ),
             (
                 ("document upload", "uploads", "drive", "cloud file", "word/docs", "pdf"),
                 "Document and Cloud Inputs",
-                "Uploads and cloud files.",
+                "Accepts uploads from local files, cloud drives, and enterprise content management systems.",
             ),
             (
                 ("retrieval", "rag", "vector", "embedding", "vectorization"),
                 "RAG-style Retrieval",
-                "Source grounding.",
+                "Grounds slide content in source material using vector-based retrieval to surface relevant evidence.",
             ),
             (
                 ("planning", "outline", "brief", "intent"),
                 "Outline-first Planning",
-                "Brief and outline.",
+                "Generates a structured brief and slide outline before producing any content, ensuring narrative coherence.",
             ),
             (
                 ("template", "layout", "constraint", "alignment"),
                 "Template-driven Layout",
-                "Deterministic composition.",
+                "Maps each slide to a deterministic template for consistent composition and element alignment.",
             ),
             (
                 ("asset", "chart", "icon", "visual"),
                 "Asset Generation",
-                "Charts and icons.",
+                "Produces charts, icons, and visual assets from data and style tokens embedded in the slide spec.",
             ),
             (
                 ("export", "pptx", "ooxml", "renderer", "render"),
                 "Deterministic Export",
-                "Editable PPTX output.",
+                "Renders the final spec into editable PPTX output with full OOXML fidelity for downstream editing.",
             ),
             (
                 ("qa", "validation", "overlap", "consistency"),
                 "QA and Validation",
-                "Overlap and consistency.",
+                "Runs overlap detection, contrast checks, and consistency validation across the full presentation.",
             ),
         ]
 
+    # Try to extract real descriptions from chunks for each matched definition
     cards: list[dict[str, str]] = []
     seen_titles: set[str] = set()
-    for keywords, title, text in definitions:
+    for keywords, title, fallback_text in definitions:
         if any(keyword in lower for keyword in keywords):
             if title in seen_titles:
                 continue
-            cards.append({"title": title, "text": _trim_words(text, 3)})
+            # Search chunks for a sentence containing the keyword to use as description
+            description = fallback_text
+            for chunk in chunks:
+                for keyword in keywords:
+                    if keyword in chunk.text.lower():
+                        for sentence in re.split(r'(?<=[.!?])\s+', chunk.text):
+                            if keyword in sentence.lower() and len(sentence.split()) >= 6:
+                                description = _trim_words(sentence.strip(), 25)
+                                break
+                        if description != fallback_text:
+                            break
+                if description != fallback_text:
+                    break
+            cards.append({"title": title, "text": description})
             seen_titles.add(title)
             if len(cards) >= desired_count:
                 return cards[:desired_count]
-    for _, title, text in definitions:
+    for _, title, fallback_text in definitions:
         if title in seen_titles:
             continue
-        cards.append({"title": title, "text": _trim_words(text, 3)})
+        cards.append({"title": title, "text": fallback_text})
         seen_titles.add(title)
         if len(cards) >= desired_count:
             return cards[:desired_count]
@@ -1767,7 +1817,7 @@ def _callout_from_chunks(chunks: list[RetrievedChunk], *, fallback: str, tone_la
     for chunk in chunks:
         for candidate in _candidate_phrases(chunk.text):
             if _normalize_phrase(candidate) != _normalize_phrase(fallback):
-                return f"{_trim_words(candidate, 4)} | {tone_label}"
+                return f"{_trim_words(candidate, 15)} | {tone_label}"
     return f"Supported evidence | {tone_label}"
 
 
@@ -1847,7 +1897,7 @@ def _clean_candidate_phrase(text: str) -> str:
     if cleaned.endswith(":"):
         return ""
     # Trim to 12 words to avoid mid-phrase truncation at conjunctions/prepositions
-    trimmed = _trim_words(cleaned.rstrip(".;:"), 12)
+    trimmed = _trim_words(cleaned.rstrip(".;:"), 25)
     # Discard if still ends with a dangling conjunction or preposition
     last_word = trimmed.rsplit(" ", 1)[-1].lower().rstrip(".,;:")
     if last_word in {"and", "or", "but", "the", "a", "an", "of", "in", "on", "at", "by", "for", "with", "to", "let"}:

@@ -23,7 +23,7 @@ Style tokens:
 - Set `audience` to the `audience` field from the deck brief exactly as provided.
 - Preserve all `slide_id` values and slide order from the outline.
 - For each slide, use the `headline` from the corresponding outline item verbatim — do NOT replace it with "Slide 1", "Slide 2", or any other placeholder.
-- CRITICAL: bullet items, text blocks, and callout text must contain real synthesized content from the retrieved chunks — not the slide headline, not the outline message repeated verbatim, and not placeholder phrases. Each bullet must be a distinct insight (8–15 words).
+- CRITICAL: bullet items, text blocks, and callout text must contain real synthesized content from the retrieved chunks — not the slide headline, not the outline message repeated verbatim, and not placeholder phrases. Each bullet must be a distinct insight (10–25 words). Card descriptions should be substantive sentences that convey real meaning, not terse fragments.
 - Use only canonical template keys from the repo layout registry:
     - "title.hero", "agenda.list", "section.header"
     - "content.1col", "content.2col.text_image", "content.3col.cards"
@@ -31,7 +31,7 @@ Style tokens:
   Default to "content.1col". No other values are valid.
 - Block kind must be one of: text | bullets | image | table | chart | quote | callout | kpi_cards
   Do not use "icon_row" - it is not in the schema.
-- Keep all non-appendix slides within the 40-word body-text cap. The cap applies
+- Keep all non-appendix slides within the 80-word body-text cap. The cap applies
   recursively to ALL string content in ALL block content fields (not just text/bullets).
 - Every factual block (text, bullets, table, chart, quote, callout, kpi_cards) on
   `content`, `summary`, or `appendix` slides must carry at least one citation.
@@ -44,6 +44,6 @@ Style tokens:
     - use `content.3col.cards` plus one `kpi_cards` block with exactly three concise cards for 3-option comparisons
     - use `chart.full` plus one `chart` block only when the retrieved evidence contains numeric series that can be plotted
     - use `content.2col.text_image` plus a text block and an image block only when a real local image path or asset ref is available
-- For comparison tables, keep labels extremely terse so the recursive 40-word cap still passes.
+- For comparison tables, keep labels concise so the recursive 80-word cap still passes.
 - For release-note or readiness material, emphasize what is new, what changes operationally, known issues, and what action leaders should take.
 - For decision guides and options analyses, prefer tradeoff framing, side-by-side comparison, and a final recommendation.

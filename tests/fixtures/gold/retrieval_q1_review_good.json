@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "retrieval_plan": [
+    {
+      "slide_id": "s3",
+      "queries": [
+        { "query": "Q1 2026 total revenue figure in dollars and year-over-year percentage growth", "doc_ids": ["doc_q1_pdf"], "min_date": null },
+        { "query": "Q1 2026 revenue versus plan variance percentage and explanation", "doc_ids": ["doc_finance_model_xlsx"], "min_date": null },
+        { "query": "Q4 2025 revenue growth rate for sequential quarter comparison", "doc_ids": ["doc_q1_pdf"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "queries": [
+        { "query": "Q1 2026 gross margin percentage and basis point change from Q4 2025", "doc_ids": ["doc_q1_pdf"], "min_date": null },
+        { "query": "NA and EMEA infrastructure optimization cost savings Q1 2026", "doc_ids": ["doc_q1_pdf"], "min_date": null },
+        { "query": "APAC investment spend impact on consolidated gross margin Q1 2026", "doc_ids": ["doc_q1_pdf", "doc_finance_model_xlsx"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "queries": [
+        { "query": "APAC pipeline growth rate Q1 2026 quarter-over-quarter percentage", "doc_ids": ["doc_apac_pipeline_report"], "min_date": null },
+        { "query": "APAC new enterprise customer logos signed in Q1 2026 with names or count", "doc_ids": ["doc_apac_pipeline_report"], "min_date": null },
+        { "query": "APAC revenue growth compared to NA and EMEA Q1 2026", "doc_ids": ["doc_apac_pipeline_report", "doc_q1_pdf"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "queries": [
+        { "query": "Data pipeline supplier concentration percentage and vendor contract renewal date", "doc_ids": ["doc_q1_pdf"], "min_date": null },
+        { "query": "EMEA customer acquisition cost increase percentage over past two months and root cause", "doc_ids": ["doc_q1_pdf"], "min_date": null },
+        { "query": "Proposed mitigation actions for supplier diversification with deadlines and owners", "doc_ids": ["doc_q1_pdf"], "min_date": null }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "queries": [
+        { "query": "H1 2026 hiring plan headcount breakdown by department engineering data science sales", "doc_ids": ["doc_finance_model_xlsx"], "min_date": null },
+        { "query": "Total H1 2026 hiring plan cost and approved operating expense budget status", "doc_ids": ["doc_finance_model_xlsx"], "min_date": null },
+        { "query": "APAC sales team expansion justification and revenue per headcount targets", "doc_ids": ["doc_apac_pipeline_report", "doc_finance_model_xlsx"], "min_date": null }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "extensions": null
+}

@@ -1,0 +1,97 @@
+{
+  "$_comment": "BAD EXAMPLE: Slides are too dense, headlines are topics, citations are missing, template choices are wrong.",
+  "schema_version": "1.0.0",
+  "title": "Business Update",
+  "audience": "Leadership",
+  "language": "en-US",
+  "theme": {
+    "name": "Corporate 2026",
+    "style_tokens": {
+      "fonts": { "heading": "Aptos Display", "body": "Aptos", "mono": "Cascadia Code" },
+      "colors": { "bg": "#FFFFFF", "text": "#1A1A1A", "accent": "#2F6BFF", "muted": "#6B7280" },
+      "spacing": { "margin_in": 0.75, "gutter_in": 0.20 },
+      "images": { "source_policy": "provided_only", "style_prompt": "" }
+    }
+  },
+  "slides": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "layout_intent": { "template_key": "title.hero", "strict_template": true },
+      "headline": "Business Update",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": { "text": "Update" },
+          "source_citations": [],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "content",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Financial Overview Including Revenue Margins Costs Headcount and Regional Breakdowns",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Total revenue for the quarter came in at twenty nine point three million dollars which represents an eighteen percent increase compared to the same quarter last year and exceeded the plan by four percentage points",
+              "Gross margins expanded by two hundred and ten basis points reaching sixty four point four percent driven primarily by infrastructure optimization projects completed in North America and the EMEA region",
+              "Operating expenses increased by twelve percent due to headcount additions in engineering and the APAC sales team expansion that was approved in the previous quarter",
+              "APAC region pipeline grew thirty one percent quarter over quarter making it the fastest growing segment for the second consecutive quarter",
+              "Customer acquisition cost in EMEA increased twenty three percent over two months with root cause still under investigation by the go to market team",
+              "The data pipeline currently relies on a single supplier handling seventy one percent of volume with contract renewal in August requiring immediate attention",
+              "We are requesting board approval for eighteen new roles across engineering data science and APAC sales at a total annual cost of two point four million dollars"
+            ]
+          },
+          "source_citations": [],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "summary",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Summary",
+      "speaker_notes": "",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Good quarter overall",
+              "Some risks to watch",
+              "Need to hire more people"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_q1_pdf", "locator": "doc_q1_pdf:page1", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    }
+  ],
+  "questions_for_user": [],
+  "$_failures": [
+    "slide s2: headline is 13 words — exceeds 10-word max and reads like a table of contents, not a takeaway",
+    "slide s2: 7 bullets with 30+ words each — body text far exceeds 70-word cap (actual: ~180 words)",
+    "slide s2: no source_citations on a content slide — schema validation should reject this",
+    "slide s2: all information crammed into one slide instead of 4-5 slides with focused messaging",
+    "slide s2: no template variety — KPIs should use kpi.3up, risks should use content.1col, hiring should use table.full",
+    "slide s3: headline='Summary' is a topic label, not a takeaway. Should state the closing action.",
+    "slide s3: summary bullets are vague platitudes ('Good quarter', 'Some risks') — not actionable",
+    "All slides: speaker_notes are empty — violates the rubric for content and summary slides",
+    "Title slide: subtitle is just 'Update' — provides no context about the meeting or date",
+    "Only 3 slides total for an 8-slide brief — massive underdelivery on content"
+  ]
+}

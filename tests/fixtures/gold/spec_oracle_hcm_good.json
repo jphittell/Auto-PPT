@@ -1,0 +1,255 @@
+{
+  "schema_version": "1.0.0",
+  "title": "Oracle HCM 26B Integration Options",
+  "audience": "IT steering committee and HR leadership",
+  "language": "en-US",
+  "theme": {
+    "name": "Corporate 2026",
+    "style_tokens": {
+      "fonts": { "heading": "Aptos Display", "body": "Aptos", "mono": "Cascadia Code" },
+      "colors": { "bg": "#FFFFFF", "text": "#1A1A1A", "accent": "#2F6BFF", "muted": "#6B7280" },
+      "spacing": { "margin_in": 0.75, "gutter_in": 0.20 },
+      "images": { "source_policy": "provided_only", "style_prompt": "" }
+    }
+  },
+  "slides": [
+    {
+      "slide_id": "s1",
+      "purpose": "title",
+      "layout_intent": { "template_key": "title.hero", "strict_template": true },
+      "headline": "Oracle HCM 26B Integration Options",
+      "speaker_notes": "Welcome the steering committee. Today we present three integration approaches for Oracle HCM 26B and our recommendation.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": { "text": "Options Analysis — April 2026" },
+          "source_citations": [],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s2",
+      "purpose": "agenda",
+      "layout_intent": { "template_key": "agenda.list", "strict_template": true },
+      "headline": "What We'll Cover",
+      "speaker_notes": "Five sections. The comparison matrix on slide 9 is the key decision input.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "26B release context and new API coverage",
+              "Positions-vs-Jobs model migration",
+              "Three integration options deep-dive",
+              "Side-by-side evaluation matrix",
+              "Recommendation and next steps"
+            ]
+          },
+          "source_citations": [],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s3",
+      "purpose": "content",
+      "layout_intent": { "template_key": "content.2col.text_image", "strict_template": true },
+      "headline": "26B Introduces 14 New REST Endpoints",
+      "speaker_notes": "The new endpoints cover position management, workforce structures, and absence management. This reduces our custom extract dependency from 80% to under 30%.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "14 new REST endpoints for position management",
+              "API coverage rises from 45% to 82% of HR data",
+              "Three legacy extract jobs eligible for retirement"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_oracle_hcm_release_notes", "locator": "doc_oracle_hcm_release_notes:page3", "quote": null }
+          ],
+          "asset_refs": []
+        },
+        {
+          "block_id": "b2",
+          "kind": "image",
+          "content": { "alt_text": "Diagram showing Oracle HCM 26B API coverage expansion" },
+          "source_citations": [
+            { "source_id": "doc_oracle_hcm_release_notes", "locator": "doc_oracle_hcm_release_notes:page5", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s4",
+      "purpose": "content",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Positions vs Jobs Requires Migration",
+      "speaker_notes": "This is a one-time migration but it blocks all three integration options. The migration script has been tested in sandbox but not in production.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "26B restructures org hierarchy: positions are now first-class entities",
+              "One-time migration of 12,000 job records to position model",
+              "Downstream payroll and benefits integrations require re-mapping"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_positions_vs_jobs_guide", "locator": "doc_positions_vs_jobs_guide:page1", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s5",
+      "purpose": "section",
+      "layout_intent": { "template_key": "section.header", "strict_template": true },
+      "headline": "Three Integration Options",
+      "speaker_notes": "Moving into the core analysis. Each option was evaluated by the integration team over the past three weeks.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "text",
+          "content": { "tagline": "Full API, HCM Extract, and Hybrid — evaluated on cost, risk, and timeline" },
+          "source_citations": [],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s6",
+      "purpose": "content",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Option A: Full API — Lowest Cost, Highest Effort",
+      "speaker_notes": "Full API gives us real-time data but the 12-week build is the longest path. Rate limiting at 500 req/min is manageable for our volume.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Real-time position sync via REST, no batch lag",
+              "12-week implementation for custom position orchestration",
+              "Lowest ongoing cost: $8K/year infrastructure"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_oracle_integration_options", "locator": "doc_oracle_integration_options:page4", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s7",
+      "purpose": "content",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Option B: HCM Extract — Fastest, 24h Lag",
+      "speaker_notes": "HCM Extract is Oracle's out-of-box solution. Four-week deploy, but the 24-hour lag on position changes means managers see stale org charts.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Batch file extracts deployed in 4 weeks",
+              "Up to 24-hour data freshness lag on position changes",
+              "Moderate ongoing cost: $15K/year due to storage and scheduling"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_oracle_integration_options", "locator": "doc_oracle_integration_options:page6", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s8",
+      "purpose": "content",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Option C: Hybrid — Best Balance",
+      "speaker_notes": "The hybrid approach uses real-time API for position data (which changes frequently) and batch extract for payroll (which is inherently periodic). This matches the natural cadence of each data type.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Real-time API for positions, batch extract for payroll",
+              "8-week implementation: API first, extract parallel",
+              "Best long-term flexibility for future 27A features"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_oracle_integration_options", "locator": "doc_oracle_integration_options:page8", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s9",
+      "purpose": "content",
+      "layout_intent": { "template_key": "table.full", "strict_template": true },
+      "headline": "Hybrid Wins on 4 of 5 Criteria",
+      "speaker_notes": "The only criterion where hybrid loses is initial timeline — 8 weeks vs 4 for extract. But the 4-week gap is recovered within the first year through lower maintenance.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "table",
+          "content": {
+            "columns": ["Criterion", "Full API", "HCM Extract", "Hybrid"],
+            "rows": [
+              ["Data fidelity", "High", "Medium", "High"],
+              ["Initial timeline", "12 weeks", "4 weeks", "8 weeks"],
+              ["Ongoing cost/year", "$8K", "$15K", "$11K"],
+              ["Flexibility for 27A", "High", "Low", "High"],
+              ["Implementation risk", "High", "Low", "Medium"]
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_oracle_integration_options", "locator": "doc_oracle_integration_options:page10", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    },
+    {
+      "slide_id": "s10",
+      "purpose": "summary",
+      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "headline": "Recommend Hybrid — Approve by April 30",
+      "speaker_notes": "If we get approval today, the integration team starts May 1. The org migration runs in parallel during May. Target go-live is aligned with Oracle's August 26B GA window.",
+      "blocks": [
+        {
+          "block_id": "b1",
+          "kind": "bullets",
+          "content": {
+            "items": [
+              "Proceed with hybrid: API for positions, extract for payroll",
+              "Begin org migration May 1, target August go-live",
+              "Budget: $11K/year ongoing, $45K one-time implementation"
+            ]
+          },
+          "source_citations": [
+            { "source_id": "doc_oracle_integration_options", "locator": "doc_oracle_integration_options:page12", "quote": null },
+            { "source_id": "doc_oracle_hcm_release_notes", "locator": "doc_oracle_hcm_release_notes:page1", "quote": null }
+          ],
+          "asset_refs": []
+        }
+      ]
+    }
+  ],
+  "questions_for_user": []
+}
