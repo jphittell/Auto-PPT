@@ -173,11 +173,7 @@ def generate_outline(
             headline = "Executive Overview"
             message = overview_message
             template_key = "exec.summary"
-            evidence_queries = [
-                "hybrid architecture ingestion retrieval planning layout assets deterministic export",
-                "executive summary hybrid architecture visually polished pptx decks",
-                "design quality strategies template first rule based free form",
-            ]
+            evidence_queries = _evidence_queries_for_message(overview_message)
         else:
             evidence_queries = _evidence_queries_for_message(message)
         normalized_headline = _normalize_phrase(headline)
@@ -1512,7 +1508,7 @@ def _maybe_upgrade_slide_to_cards(slide: SlideSpec, chunks: list[RetrievedChunk]
     )
     return slide.model_copy(
         update={
-            "layout_intent": LayoutIntent(template_key="compare.2col", strict_template=True),
+            "layout_intent": LayoutIntent(template_key="headline.evidence", strict_template=True),
             "blocks": [card_block],
         }
     )

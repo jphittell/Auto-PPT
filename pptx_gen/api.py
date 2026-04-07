@@ -921,12 +921,6 @@ def _coerce_slide_for_template(slide: SlideSpec, template_key: str) -> SlideSpec
         ]
         canonical = "closing.actions" if canonical == "closing.actions" else "headline.evidence"
 
-    if canonical == "closing.actions":
-        blocks = [
-            PresentationBlock(block_id="b1", kind=PresentationBlockKind.BULLETS, content={"items": text_items}, source_citations=citations),
-            PresentationBlock(block_id="b2", kind=PresentationBlockKind.CALLOUT, content={"text": _fallback_callout()}, source_citations=citations),
-        ]
-
     return slide.model_copy(update={"layout_intent": LayoutIntent(template_key=canonical, strict_template=True), "blocks": blocks})
 
 

@@ -1101,7 +1101,7 @@ def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_
     assert overview_slide.layout_intent.template_key == "exec.summary"
     assert overview_slide.archetype.value == "executive_summary"
     assert len(overview_slide.blocks[2].content["cards"]) == 3
-    assert strategies_slide.layout_intent.template_key == "compare.2col"
+    assert strategies_slide.layout_intent.template_key == "headline.evidence"
     assert strategies_slide.blocks[0].kind.value == "callout"
     assert strategies_slide.blocks[0].content["cards"][0]["title"] == "Template-First"
 
