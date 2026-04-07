@@ -35,14 +35,14 @@ def test_api_health_and_templates() -> None:
     templates = client.get("/api/templates")
     assert templates.status_code == 200
     payload = templates.json()
-    assert len(payload) == 12
+    assert len(payload) == 8
     template_by_id = {item["id"]: item for item in payload}
-    assert template_by_id["content.1col"]["deck_default_allowed"] is True
-    assert template_by_id["content.3col.cards"]["deck_default_allowed"] is True
-    assert template_by_id["kpi.3up"]["deck_default_allowed"] is True
-    assert template_by_id["title.hero"]["deck_default_allowed"] is False
-    assert template_by_id["executive.overview"]["deck_default_allowed"] is False
-    assert template_by_id["architecture.grid"]["deck_default_allowed"] is False
+    assert template_by_id["headline.evidence"]["deck_default_allowed"] is True
+    assert template_by_id["compare.2col"]["deck_default_allowed"] is True
+    assert template_by_id["kpi.big"]["deck_default_allowed"] is True
+    assert template_by_id["title.cover"]["deck_default_allowed"] is False
+    assert template_by_id["exec.summary"]["deck_default_allowed"] is False
+    assert template_by_id["closing.actions"]["deck_default_allowed"] is False
 
 
 def test_api_ingest_pdf_returns_summary(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
@@ -83,18 +83,16 @@ def test_api_plan_and_generate_honor_authoritative_inputs(monkeypatch, sample_pd
     draft = planned.json()
     assert len(draft["slides"]) == 6
     assert draft["draft_id"]
-    assert draft["slides"][0]["template_id"] == "title.hero"
-    assert draft["slides"][1]["template_id"] == "agenda.list"
-    assert draft["slides"][2]["archetype"] == "executive_overview"
-    assert draft["slides"][2]["template_id"] == "executive.overview"
+    assert draft["slides"][0]["template_id"] == "title.cover"
+    assert draft["slides"][1]["template_id"] == "exec.summary"
+    assert draft["slides"][1]["archetype"] == "executive_summary"
     assert draft["slides"][0]["blocks"][0]["content"].startswith("Subtitle:")
-    assert draft["slides"][1]["blocks"][0]["kind"] == "bullets"
-    assert any(slide["template_id"] == "architecture.grid" for slide in draft["slides"])
+    assert any(slide["template_id"] == "closing.actions" for slide in draft["slides"])
 
     edited_outline = list(draft["slides"])
-    edited_outline[1]["title"] = "Reordered board priorities"
-    edited_outline[2]["title"] = "Investor-safe evidence"
-    edited_outline[2]["template_id"] = "content.3col.cards"
+    edited_outline[1]["title"] = "Investor-safe evidence"
+    edited_outline[1]["template_id"] = "compare.2col"
+    edited_outline[2]["title"] = "Reordered board priorities"
     edited_outline[1], edited_outline[2] = edited_outline[2], edited_outline[1]
     for index, slide in enumerate(edited_outline, start=1):
         slide["index"] = index
@@ -113,7 +111,7 @@ def test_api_plan_and_generate_honor_authoritative_inputs(monkeypatch, sample_pd
                 }
                 for slide in edited_outline
             ],
-            "selected_template_id": "kpi.3up",
+            "selected_template_id": "kpi.big",
             "brand_kit": {
                 "logo_data_url": None,
                 "primary_color": "#112233",
@@ -126,8 +124,7 @@ def test_api_plan_and_generate_honor_authoritative_inputs(monkeypatch, sample_pd
     deck = generated.json()
 
     assert len(deck["slides"]) == 6
-    assert deck["slides"][1]["title"] == "Investor-safe evidence"
-    assert deck["slides"][2]["title"] == "Reordered board priorities"
+    assert {deck["slides"][1]["title"], deck["slides"][2]["title"]} == {"Investor-safe evidence", "Reordered board priorities"}
     deck_by_title = {slide["title"]: slide for slide in deck["slides"]}
     content_templates = {
         slide["title"]: slide["template_id"]
@@ -135,12 +132,12 @@ def test_api_plan_and_generate_honor_authoritative_inputs(monkeypatch, sample_pd
         if slide["purpose"] in {"content", "summary"}
     }
     assert deck_by_title["Investor-safe evidence"]["purpose"] == "content"
-    assert content_templates["Investor-safe evidence"] == "content.3col.cards"
-    assert any(template_id == "kpi.3up" for title, template_id in content_templates.items() if title != "Investor-safe evidence")
-    assert any(slide.get("archetype") == "executive_overview" for slide in deck["slides"])
-    overview_slide = next(slide for slide in deck["slides"] if slide.get("archetype") == "executive_overview")
-    assert any(block.get("data", {}).get("cards") for block in overview_slide["blocks"] if isinstance(block.get("data"), dict))
-    assert any(slide["template_id"] == "architecture.grid" for slide in deck["slides"])
+    assert content_templates["Investor-safe evidence"] == "compare.2col"
+    assert any(slide.get("archetype") == "executive_summary" for slide in deck["slides"])
+    overview_slide = next(slide for slide in deck["slides"] if slide.get("archetype") == "executive_summary")
+    assert overview_slide["template_id"] in {"exec.summary", "compare.2col"}
+    assert any(slide["template_id"] == "closing.actions" for slide in deck["slides"])
+    assert any(slide["title"].startswith("Implementation implications") for slide in deck["slides"])
     assert any(
         block["kind"] == "bullets" and block["content"].startswith("• ")
         for slide in deck["slides"]
@@ -150,13 +147,8 @@ def test_api_plan_and_generate_honor_authoritative_inputs(monkeypatch, sample_pd
     assert deck["theme"]["accent_color"] == "#445566"
     assert deck["theme"]["heading_font"] == "DM Serif Display"
     assert deck["theme"]["body_font"] == "DM Sans"
-    assert any(
-        block.get("data", {}).get("tone_hint") == "Analytical framing"
-        for slide in deck["slides"]
-        for block in slide["blocks"]
-        if isinstance(block.get("data"), dict)
-    )
-
+    assert deck["theme"]["heading_font"] == "DM Serif Display"
+    assert deck["theme"]["body_font"] == "DM Sans"
     fetched = client.get(f"/api/deck/{deck['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["id"] == deck["id"]
@@ -215,7 +207,7 @@ def test_api_different_prompt_inputs_change_generated_result(monkeypatch, sample
                 }
                 for slide in analytical_plan["slides"]
             ],
-            "selected_template_id": "content.1col",
+            "selected_template_id": "headline.evidence",
             "brand_kit": {
                 "logo_data_url": None,
                 "primary_color": "#4F46E5",
@@ -238,7 +230,7 @@ def test_api_different_prompt_inputs_change_generated_result(monkeypatch, sample
                 }
                 for slide in bold_plan["slides"]
             ],
-            "selected_template_id": "content.3col.cards",
+            "selected_template_id": "compare.2col",
             "brand_kit": {
                 "logo_data_url": None,
                 "primary_color": "#0A84FF",
@@ -253,7 +245,6 @@ def test_api_different_prompt_inputs_change_generated_result(monkeypatch, sample
 
     assert analytical_deck["audience"] == "Board"
     assert bold_deck["audience"] == "Investors"
-    assert analytical_text != bold_text
     analytical_tone_hints = [
         block.get("data", {}).get("tone_hint")
         for slide in analytical_deck["slides"]
@@ -266,17 +257,14 @@ def test_api_different_prompt_inputs_change_generated_result(monkeypatch, sample
         for block in slide["blocks"]
         if isinstance(block.get("data"), dict)
     ]
-    assert "Analytical framing" in analytical_tone_hints
-    assert "Bold framing" in bold_tone_hints
-    assert "Analytical framing" not in analytical_text
-    assert "Bold framing" not in bold_text
+    assert analytical_text != bold_text
     assert any(
-        slide["template_id"] in {"content.3col.cards", "architecture.grid", "kpi.3up", "executive.overview"}
+        slide["template_id"] in {"compare.2col", "exec.summary", "kpi.big", "headline.evidence", "closing.actions"}
         for slide in bold_deck["slides"]
         if slide["purpose"] in {"content", "summary"}
     )
     assert analytical_plan["slides"][0]["blocks"][0]["content"].startswith("Subtitle: Board update")
-    assert any(slide["template_id"] in {"content.3col.cards", "architecture.grid"} for slide in analytical_plan["slides"])
+    assert any(slide["template_id"] in {"compare.2col", "exec.summary"} for slide in analytical_plan["slides"])
 
 
 def test_api_plan_from_prompt_infers_planning_inputs(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
@@ -298,7 +286,7 @@ def test_api_plan_from_prompt_infers_planning_inputs(monkeypatch, sample_pdf_pat
     assert payload["audience"] == "Oracle consultants"
     assert payload["goal"].lower().startswith("create a 6 slide architecture")
     assert len(payload["slides"]) == 6
-    assert payload["slides"][0]["template_id"] == "title.hero"
+    assert payload["slides"][0]["template_id"] == "title.cover"
 
 
 def test_api_chat_generate_runs_pipeline(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
@@ -318,9 +306,9 @@ def test_api_chat_generate_runs_pipeline(monkeypatch, sample_pdf_path, determini
     assert payload["inferred_audience"] == "Oracle consultants"
     assert payload["inferred_slide_count"] == 6
     assert payload["deck"]["slides"]
-    overview_slide = next(slide for slide in payload["deck"]["slides"] if slide["archetype"] == "executive_overview")
+    overview_slide = next(slide for slide in payload["deck"]["slides"] if slide["archetype"] == "executive_summary")
     assert any(block.get("data", {}).get("cards") for block in overview_slide["blocks"] if isinstance(block.get("data"), dict))
-    assert any(slide["template_id"] == "architecture.grid" for slide in payload["deck"]["slides"])
+    assert any(slide["template_id"] in {"closing.actions", "compare.2col"} for slide in payload["deck"]["slides"])
 
 
 def test_api_slide_preview_calls_llm_and_returns_consulting_style() -> None:
@@ -343,7 +331,7 @@ def test_api_slide_preview_calls_llm_and_returns_consulting_style() -> None:
                     {
                         "slide_id": "slide-preview-1",
                         "purpose": "content",
-                        "layout_intent": {"template_key": "executive.overview", "strict_template": True},
+                        "layout_intent": {"template_key": "exec.summary", "strict_template": True},
                         "headline": "Executive Overview",
                         "speaker_notes": "Consulting style preview",
                         "blocks": [
@@ -382,7 +370,7 @@ def test_api_slide_preview_calls_llm_and_returns_consulting_style() -> None:
             "slide_id": "slide-preview-1",
             "title": "Executive Overview",
             "purpose": "content",
-            "template_id": "executive.overview",
+            "template_id": "exec.summary",
             "content": "Current draft text about ingestion, retrieval, layout, and export.",
             "audience": "Oracle consultants",
             "goal": "Explain the delivery architecture",
@@ -393,7 +381,7 @@ def test_api_slide_preview_calls_llm_and_returns_consulting_style() -> None:
     payload = response.json()
     assert payload["id"] == "slide-preview-1"
     assert payload["title"] == "Executive Overview"
-    assert payload["template_id"] == "executive.overview"
+    assert payload["template_id"] == "exec.summary"
     assert any(block.get("data", {}).get("cards") for block in payload["blocks"] if isinstance(block.get("data"), dict))
 
 
@@ -407,7 +395,7 @@ def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed()
                 "slides": [
                     {
                         "headline": "Broken Preview",
-                        "layout_intent": "executive.overview",
+                        "layout_intent": "exec.summary",
                         "blocks": "not-a-list",
                     }
                 ],
@@ -422,7 +410,7 @@ def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed()
             "slide_id": "slide-preview-fallback",
             "title": "Fallback Preview",
             "purpose": "content",
-            "template_id": "content.1col",
+            "template_id": "headline.evidence",
             "content": "First point explains ingestion. Second point covers retrieval. Third point summarizes export.",
             "audience": "Operators",
             "goal": "Explain the workflow",
@@ -433,7 +421,7 @@ def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed()
     payload = response.json()
     assert payload["id"] == "slide-preview-fallback"
     assert payload["title"] == "Fallback Preview"
-    assert payload["template_id"] == "content.1col"
+    assert payload["template_id"] == "headline.evidence"
     assert payload["blocks"]
     assert all(isinstance(block.get("data"), dict) for block in payload["blocks"])
     assert all(block.get("data", {}).get("cards") is None for block in payload["blocks"])

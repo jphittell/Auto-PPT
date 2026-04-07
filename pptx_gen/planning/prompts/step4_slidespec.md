@@ -28,25 +28,26 @@ Style tokens:
 - CRITICAL: No two blocks on the same slide may repeat the same information. Each block must contribute a distinct piece of content drawn from different parts of the retrieved evidence.
 - If any retrieved chunk contains internal planning language (for example, "should implement", "TODO", or "the model needs to"), do not use that chunk's text as slide content. Rephrase it into audience-facing language or skip it entirely.
 - Use only canonical template keys from the repo layout registry:
-    - "title.hero", "agenda.list", "section.header"
-    - "content.1col", "content.2col.text_image", "content.3col.cards"
-    - "kpi.3up", "chart.full", "table.full", "appendix.details"
-  Default to "content.1col". No other values are valid.
+    - "title.cover", "section.divider", "exec.summary"
+    - "headline.evidence", "kpi.big", "compare.2col"
+    - "chart.takeaway", "closing.actions"
+  Default to "headline.evidence". No other values are valid.
 - Block kind must be one of: text | bullets | image | table | chart | quote | callout | kpi_cards
   Do not use "icon_row" - it is not in the schema.
-- Keep all non-appendix slides within the 80-word body-text cap. The cap applies
+- Keep all non-closing slides within the 80-word body-text cap. The cap applies
   recursively to ALL string content in ALL block content fields (not just text/bullets).
 - Every factual block (text, bullets, table, chart, quote, callout, kpi_cards) on
-  `content`, `summary`, or `appendix` slides must carry at least one citation.
+  `content`, `summary`, or `closing` slides must carry at least one citation.
 - Use only citations present in the retrieved chunks.
 - The theme field must use "style_tokens" (not "tokens") as the key.
 - Include `schema_version` and `questions_for_user` at the top level.
 - Do not add unsupported fields.
 - Prefer the most visual schema-valid block that the evidence supports:
-    - use `table.full` plus one `table` block for compact comparisons or decision criteria
-    - use `content.3col.cards` plus one `kpi_cards` block with exactly three concise cards for 3-option comparisons
-    - use `chart.full` plus one `chart` block only when the retrieved evidence contains numeric series that can be plotted
-    - use `content.2col.text_image` plus a text block and an image block only when a real local image path or asset ref is available
+    - use `compare.2col` for side-by-side comparisons or decision criteria
+    - use `kpi.big` for 3 key metrics or performance indicators
+    - use `chart.takeaway` only when the retrieved evidence contains numeric series that can be plotted
+    - use `exec.summary` for dense multi-point content with a key insight
+    - use `closing.actions` for recommendations, next steps, or action items
 - For comparison tables, keep labels concise so the recursive 80-word cap still passes.
 - For release-note or readiness material, emphasize what is new, what changes operationally, known issues, and what action leaders should take.
 - For decision guides and options analyses, prefer tradeoff framing, side-by-side comparison, and a final recommendation.

@@ -21,18 +21,14 @@ from pptx_gen.planning.schemas import PresentationSpec
 
 
 EXPECTED_TEMPLATE_KEYS = (
-    "title.hero",
-    "agenda.list",
-    "section.header",
-    "executive.overview",
-    "architecture.grid",
-    "content.1col",
-    "content.2col.text_image",
-    "content.3col.cards",
-    "kpi.3up",
-    "chart.full",
-    "table.full",
-    "appendix.details",
+    "title.cover",
+    "section.divider",
+    "exec.summary",
+    "headline.evidence",
+    "kpi.big",
+    "compare.2col",
+    "chart.takeaway",
+    "closing.actions",
 )
 
 
@@ -45,37 +41,37 @@ def test_all_canonical_template_keys_resolve() -> None:
 @pytest.mark.parametrize(
     ("alias", "canonical"),
     [
-        ("title", "title.hero"),
-        ("hero", "title.hero"),
-        ("title_slide", "title.hero"),
-        ("agenda", "agenda.list"),
-        ("section", "section.header"),
-        ("section.divider", "section.header"),
-        ("executive", "executive.overview"),
-        ("overview", "executive.overview"),
-        ("executive_overview", "executive.overview"),
-        ("architecture", "architecture.grid"),
-        ("architecture_grid", "architecture.grid"),
-        ("content", "content.1col"),
-        ("1col", "content.1col"),
-        ("single_col", "content.1col"),
-        ("2col.text_image", "content.2col.text_image"),
-        ("content.2col.text", "content.2col.text_image"),
-        ("content.2col", "content.2col.text_image"),
-        ("text_image", "content.2col.text_image"),
-        ("summary.basic", "content.1col"),
-        ("summary", "content.1col"),
-        ("3col.cards", "content.3col.cards"),
-        ("cards.3up", "content.3col.cards"),
-        ("compare.3up", "content.3col.cards"),
-        ("kpi", "kpi.3up"),
-        ("kpi_cards", "kpi.3up"),
-        ("chart", "chart.full"),
-        ("chart_focus", "chart.full"),
-        ("table", "table.full"),
-        ("appendix", "appendix.details"),
-        ("details", "appendix.details"),
-        ("backup", "appendix.details"),
+        ("title", "title.cover"),
+        ("hero", "title.cover"),
+        ("title_slide", "title.cover"),
+        ("agenda", "closing.actions"),
+        ("section", "section.divider"),
+        ("section.divider", "section.divider"),
+        ("executive", "exec.summary"),
+        ("overview", "exec.summary"),
+        ("executive_summary", "exec.summary"),
+        ("architecture", "exec.summary"),
+        ("architecture_grid", "exec.summary"),
+        ("content", "headline.evidence"),
+        ("1col", "headline.evidence"),
+        ("single_col", "headline.evidence"),
+        ("2col.text_image", "compare.2col"),
+        ("content.2col.text", "compare.2col"),
+        ("content.2col", "compare.2col"),
+        ("text_image", "compare.2col"),
+        ("summary.basic", "headline.evidence"),
+        ("summary", "headline.evidence"),
+        ("3col.cards", "compare.2col"),
+        ("cards.3up", "compare.2col"),
+        ("compare.3up", "compare.2col"),
+        ("kpi", "kpi.big"),
+        ("kpi_cards", "kpi.big"),
+        ("chart", "chart.takeaway"),
+        ("chart_focus", "chart.takeaway"),
+        ("table", "headline.evidence"),
+        ("appendix", "headline.evidence"),
+        ("details", "headline.evidence"),
+        ("backup", "headline.evidence"),
     ],
 )
 def test_aliases_normalize_to_expected_template(alias: str, canonical: str) -> None:
@@ -117,9 +113,9 @@ def test_resolver_integrates_with_richer_template_registry(make_presentation_spe
     spec = PresentationSpec(
         **make_presentation_spec(
             slides=[
-                make_slide(
-                    purpose="agenda",
-                    template_key="agenda",
+                    make_slide(
+                        purpose="closing",
+                        template_key="closing.actions",
                     blocks=[
                         make_block(
                             kind="bullets",
@@ -138,8 +134,9 @@ def test_resolver_integrates_with_richer_template_registry(make_presentation_spe
     assert len(layout.slides) == 1
     assert [element.element_id for element in layout.slides[0].elements] == [
         "s1:headline",
-        "s1:agenda_body",
-        "s1:progress_bar",
+        "s1:action_items",
+        "s1:closing_callout",
+        "s1:accent_bar",
     ]
     assert layout.slides[0].elements[1].data_ref == "block:b1"
     assert layout.slides[0].elements[2].kind.value == "shape"

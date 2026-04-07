@@ -273,7 +273,7 @@ def _normalize_slide_payload(slide: Any, index: int) -> dict[str, Any]:
         return {
             "slide_id": f"s{index}",
             "purpose": "content",
-            "layout_intent": {"template_key": "content.1col", "strict_template": True},
+            "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
             "headline": f"Slide {index}",
             "speaker_notes": "",
             "blocks": [
@@ -288,7 +288,7 @@ def _normalize_slide_payload(slide: Any, index: int) -> dict[str, Any]:
         }
 
     template_key = _normalize_template_key(
-        str(slide.get("template_key") or slide.get("layout_intent", {}).get("template_key") or "content.1col")
+        str(slide.get("template_key") or slide.get("layout_intent", {}).get("template_key") or "headline.evidence")
     )
     purpose = slide.get("purpose") or _infer_slide_purpose(index, template_key, slide)
     headline = slide.get("headline") or slide.get("title") or slide.get("message") or f"Slide {index}"
@@ -362,12 +362,12 @@ def _normalize_block_payload(block: Any, index: int) -> dict[str, Any]:
 
 
 def _infer_slide_purpose(index: int, template_key: str, slide: dict[str, Any]) -> str:
-    if index == 1 or template_key == "title.hero":
+    if index == 1 or template_key == "title.cover":
         return "title"
-    if "agenda" in template_key:
-        return "agenda"
-    if "appendix" in template_key:
-        return "appendix"
+    if "closing" in template_key:
+        return "closing"
+    if "section" in template_key:
+        return "section"
     if "summary" in template_key or str(slide.get("headline", "")).lower().startswith("key takeaway"):
         return "summary"
     return "content"
@@ -399,16 +399,12 @@ def _fallback_deck_title(payload: dict[str, Any]) -> str:
 
 def _fit_template_to_blocks(template_key: str, blocks: list[dict[str, Any]]) -> str:
     kinds = {str(block.get("kind")) for block in blocks}
-    if template_key == "content.2col.text_image" and not {"image", "chart"} & kinds:
-        return "content.1col"
-    if template_key == "chart.full" and "chart" not in kinds:
-        return "content.1col"
-    if template_key == "table.full" and "table" not in kinds:
-        return "content.1col"
-    if template_key == "content.3col.cards" and "kpi_cards" not in kinds:
-        return "content.1col"
-    if template_key == "kpi.3up" and len(blocks) < 3:
-        return "content.1col"
+    if template_key == "compare.2col" and len(blocks) < 2:
+        return "headline.evidence"
+    if template_key == "chart.takeaway" and "chart" not in kinds:
+        return "headline.evidence"
+    if template_key == "kpi.big" and len(blocks) < 3:
+        return "headline.evidence"
     return template_key
 
 
@@ -451,16 +447,16 @@ def _normalize_template_key(value: str) -> str:
 
     lowered = value.strip().lower()
     if lowered.startswith("summary"):
-        return "content.1col"
+        return "headline.evidence"
     if lowered.startswith("content") or lowered.startswith("body"):
-        return "content.1col"
+        return "headline.evidence"
     if "comparison" in lowered or "matrix" in lowered:
-        return "table.full"
+        return "compare.2col"
     if lowered.startswith("title"):
-        return "title.hero"
-    if lowered.startswith("agenda"):
-        return "agenda.list"
-    return "content.1col"
+        return "title.cover"
+    if lowered.startswith("closing") or lowered.startswith("agenda"):
+        return "closing.actions"
+    return "headline.evidence"
 
 
 def _backfill_missing_citations(slides: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -474,7 +470,7 @@ def _backfill_missing_citations(slides: list[dict[str, Any]]) -> list[dict[str, 
                         if citation not in deck_citations:
                             deck_citations.append(citation)
 
-    citation_required_purposes = {"content", "summary", "appendix"}
+    citation_required_purposes = {"content", "summary", "closing"}
     citation_required_kinds = {"text", "bullets", "table", "chart", "quote", "callout", "kpi_cards"}
 
     updated_slides: list[dict[str, Any]] = []

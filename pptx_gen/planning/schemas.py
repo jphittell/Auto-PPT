@@ -17,19 +17,22 @@ SCHEMA_VERSION_PATTERN = r"^\d+\.\d+\.\d+$"
 
 class SlidePurpose(str, Enum):
     TITLE = "title"
-    AGENDA = "agenda"
     SECTION = "section"
     CONTENT = "content"
     SUMMARY = "summary"
+    CLOSING = "closing"
+    AGENDA = "agenda"
     APPENDIX = "appendix"
 
 
 class SlideArchetype(str, Enum):
     GENERIC = "generic"
+    EXECUTIVE_SUMMARY = "executive_summary"
     EXECUTIVE_OVERVIEW = "executive_overview"
     ARCHITECTURE_GRID = "architecture_grid"
     COMPARISON = "comparison"
     METRICS = "metrics"
+    CHART = "chart"
 
 
 class PresentationBlockKind(str, Enum):
@@ -229,7 +232,7 @@ class PresentationSpec(BaseModel):
         citation_required_purposes = {
             SlidePurpose.CONTENT,
             SlidePurpose.SUMMARY,
-            SlidePurpose.APPENDIX,
+            SlidePurpose.CLOSING,
         }
         word_capped_kinds = {
             PresentationBlockKind.TEXT,
@@ -244,7 +247,7 @@ class PresentationSpec(BaseModel):
                 raise ValueError(f"duplicate slide_id in presentation: {slide.slide_id}")
             seen_slide_ids.add(slide.slide_id)
 
-            if slide.purpose is not SlidePurpose.APPENDIX:
+            if slide.purpose is not SlidePurpose.CLOSING:
                 for block in slide.blocks:
                     if block.kind not in word_capped_kinds:
                         continue

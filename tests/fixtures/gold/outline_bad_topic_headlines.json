@@ -8,7 +8,7 @@
       "headline": "Quarterly Update",
       "message": "Quarterly update for the team.",
       "evidence_queries": [],
-      "template_key": "title.hero"
+      "template_key": "title.cover"
     },
     {
       "slide_id": "s2",
@@ -18,7 +18,7 @@
       "evidence_queries": [
         "revenue"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s3",
@@ -28,7 +28,7 @@
       "evidence_queries": [
         "margins"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s4",
@@ -38,7 +38,7 @@
       "evidence_queries": [
         "regions"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s5",
@@ -46,7 +46,7 @@
       "headline": "Summary",
       "message": "Summary of the above.",
       "evidence_queries": [],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     }
   ],
   "questions_for_user": [],
@@ -58,7 +58,7 @@
     "message='This slide covers revenue' is a meta-description. Should summarize the actual content.",
     "evidence_queries=['revenue'] is a single vague word. Should specify metric, period, and comparison.",
     "No agenda slide — deck jumps from title to content without framing the narrative",
-    "All content slides use content.1col — no variety. Revenue metrics should use kpi.3up.",
+    "All content slides use headline.evidence — no variety. Revenue metrics should use kpi.big.",
     "No template_key diversity suggests the planner ignored content shape entirely"
   ]
 }

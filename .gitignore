@@ -14,6 +14,9 @@ htmlcov/
 /ui/*.tsbuildinfo
 /ui/vite.config.js
 /ui/vite.config.d.ts
+/.tools/
+/out/
+/tmp_mixed_visual_check.md
 
 pptx_gen.zip
 Skills.zip

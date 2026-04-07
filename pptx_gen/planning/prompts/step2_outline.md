@@ -22,4 +22,4 @@ Deck brief:
 - If `extensions.deck_archetype` indicates a decision guide, favor a flow like:
   model overview -> tradeoffs -> implementation guidance -> recommendation.
 - If `extensions.deck_archetype` indicates an options analysis, include at least one comparison-oriented slide
-  that can use `content.3col.cards` or `table.full`, plus a recommendation slide.
+  that can use `compare.2col` or `headline.evidence`, plus a closing slide.

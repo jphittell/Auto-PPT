@@ -1,14 +1,16 @@
-import type { SlideSpec } from '../types'
+import type { Template, SlideSpec } from '../types'
 import { BlockRenderer } from './BlockRenderer'
 
 interface SlideCanvasProps {
   slide: SlideSpec
+  templates: Template[]
   previewSlide?: SlideSpec | null
   deckTitle?: string
   audience?: string
   themeName?: string | null
   promptText: string
   onPromptTextChange: (value: string) => void
+  onSlideTypeChange: (templateId: string) => void
   onGeneratePreview: () => void
   previewLoading?: boolean
 }
@@ -59,7 +61,7 @@ function SlidePreviewSurface({
   const textBlocks = previewPlainText(slide)
   const lead = textBlocks[0] ?? ''
 
-  if (slide.template_id === 'title.hero') {
+  if (slide.template_id === 'title.cover') {
     return (
       <div className="flex h-full flex-col rounded-[28px] border border-stone-200 bg-[radial-gradient(circle_at_top,_rgba(199,70,52,0.14),_transparent_38%),linear-gradient(180deg,_#fff_0%,_#fff8f6_100%)] p-10 shadow-[0_24px_80px_rgba(120,67,52,0.12)]">
         <div className="flex items-center justify-between text-xs uppercase tracking-[0.24em] text-stone-500">
@@ -79,25 +81,6 @@ function SlidePreviewSurface({
             {lead || 'A consulting-grade architecture for polished presentation generation and enterprise delivery.'}
           </p>
         </div>
-
-        <div className="mt-12 grid max-w-4xl grid-cols-4 gap-5">
-          {(kpis.length > 0
-            ? kpis.slice(0, 4)
-            : [
-                { value: '6', label: 'Architecture components' },
-                { value: '3', label: 'Design strategies' },
-                { value: 'PPTX', label: 'Export format' },
-                { value: '95%', label: 'Success rate' },
-              ]
-          ).map((item, index) => (
-            <div key={`${item.label}-${index}`} className="rounded-3xl border border-stone-200 bg-white/90 p-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)]">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-stone-400">{item.label}</div>
-              <div className="mt-3 text-4xl font-semibold text-stone-900">{item.value}</div>
-              <div className="mt-2 text-sm text-emerald-600">Consulting-ready</div>
-            </div>
-          ))}
-        </div>
-
         <div className="mt-auto flex items-end justify-between pt-10 text-sm text-stone-500">
           <div>
             <div className="font-medium text-stone-800">[Presenter Name]</div>
@@ -112,10 +95,10 @@ function SlidePreviewSurface({
     )
   }
 
-  if (slide.template_id === 'executive.overview') {
+  if (slide.template_id === 'exec.summary') {
     const leftSummary = textBlocks[0] ?? 'Executive summary'
     const insight = textBlocks[1] ?? 'Outline-first, template-driven systems improve polish, speed, and governance.'
-    const footer = textBlocks[textBlocks.length - 1] ?? `${cards.length || 6} Components`
+    const footer = `${cards.length || 3} summary cards`
     return (
       <div className="flex h-full flex-col rounded-[28px] border border-stone-200 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
         <div className="flex items-center justify-between border-b border-stone-200 pb-5">
@@ -139,12 +122,12 @@ function SlidePreviewSurface({
             </div>
             <div className="mt-auto flex gap-6 pt-8 text-sm text-stone-500">
               <span>{footer}</span>
-              <span>{cards.length || 6} cards</span>
+              <span>{cards.length || 3} cards</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {(cards.length > 0 ? cards : Array.from({ length: 6 }, (_, index) => ({ title: `Capability ${index + 1}`, text: 'Add consulting-style detail' }))).slice(0, 6).map((card, index) => (
+          <div className="grid grid-cols-1 gap-4">
+            {(cards.length > 0 ? cards : Array.from({ length: 3 }, (_, index) => ({ title: `Point ${index + 1}`, text: 'Add consulting-style detail' }))).slice(0, 3).map((card, index) => (
               <div key={`${card.title}-${index}`} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <div className="text-sm font-semibold text-stone-900">{card.title}</div>
                 <div className="mt-2 text-sm leading-6 text-stone-600">{card.text}</div>
@@ -156,24 +139,24 @@ function SlidePreviewSurface({
     )
   }
 
-  if (slide.template_id === 'architecture.grid') {
+  if (slide.template_id === 'compare.2col') {
     return (
       <div className="flex h-full flex-col rounded-[28px] border border-stone-200 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs uppercase tracking-[0.24em] text-stone-400">Architecture</div>
+            <div className="text-xs uppercase tracking-[0.24em] text-stone-400">Comparison</div>
             <h2 className="mt-3 text-4xl font-semibold tracking-[-0.02em] text-stone-900">{slide.title}</h2>
             <p className="mt-4 max-w-3xl text-lg leading-relaxed text-stone-600">
-              {lead || 'A hybrid pipeline separates ingestion, retrieval, planning, layout, assets, and export into governed components.'}
+              {lead || 'Compare two perspectives, options, or decision criteria side by side.'}
             </p>
           </div>
-          <div className="rounded-full bg-stone-100 px-4 py-2 text-sm font-medium text-stone-600">{cards.length || 6} components</div>
+          <div className="rounded-full bg-stone-100 px-4 py-2 text-sm font-medium text-stone-600">2 columns</div>
         </div>
-        <div className="mt-8 grid flex-1 grid-cols-3 gap-4">
-          {(cards.length > 0 ? cards : Array.from({ length: 6 }, (_, index) => ({ title: `Component ${index + 1}`, text: 'Add architecture detail' }))).slice(0, 6).map((card, index) => (
-            <div key={`${card.title}-${index}`} className="rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,_#fff_0%,_#fafaf9_100%)] p-5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-              <div className="text-sm font-semibold text-stone-900">{card.title}</div>
-              <div className="mt-3 text-sm leading-6 text-stone-600">{card.text}</div>
+        <div className="mt-8 grid flex-1 grid-cols-2 gap-4">
+          {textBlocks.slice(0, 2).map((text, index) => (
+            <div key={index} className="rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,_#fff_0%,_#fafaf9_100%)] p-5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+              <div className="text-sm font-semibold text-stone-900">{index === 0 ? 'Perspective A' : 'Perspective B'}</div>
+              <div className="mt-3 text-sm leading-6 text-stone-600">{text}</div>
             </div>
           ))}
         </div>
@@ -181,10 +164,10 @@ function SlidePreviewSurface({
     )
   }
 
-  if (slide.template_id === 'agenda.list') {
+  if (slide.template_id === 'closing.actions') {
     return (
       <div className="flex h-full flex-col rounded-[28px] border border-stone-200 bg-white p-10 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-        <div className="text-xs uppercase tracking-[0.24em] text-stone-400">Agenda</div>
+        <div className="text-xs uppercase tracking-[0.24em] text-stone-400">Closing</div>
         <h2 className="mt-3 text-5xl font-semibold tracking-[-0.03em] text-stone-900">{slide.title}</h2>
         <div className="mt-10 grid gap-4">
           {textBlocks
@@ -205,9 +188,9 @@ function SlidePreviewSurface({
     )
   }
 
-  if (slide.template_id?.startsWith('content.') || slide.template_id === 'kpi.3up') {
-    const isKpi = slide.template_id === 'kpi.3up'
-    const cols = slide.template_id === 'content.3col.cards' || isKpi ? 3 : cards.length <= 2 ? cards.length || 1 : cards.length <= 3 ? 3 : 2
+  if (slide.template_id === 'headline.evidence' || slide.template_id === 'kpi.big' || slide.template_id === 'chart.takeaway') {
+    const isKpi = slide.template_id === 'kpi.big'
+    const cols = isKpi ? 3 : 1
     const colsClass = cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'
     return (
       <div className="flex h-full flex-col rounded-[28px] border border-stone-200 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
@@ -272,12 +255,14 @@ function SlidePreviewSurface({
 
 export function SlideCanvas({
   slide,
+  templates,
   previewSlide,
   deckTitle,
   audience,
   themeName,
   promptText,
   onPromptTextChange,
+  onSlideTypeChange,
   onGeneratePreview,
   previewLoading = false,
 }: SlideCanvasProps) {
@@ -297,7 +282,21 @@ export function SlideCanvas({
           <div className="mb-4 flex items-center justify-between gap-4">
             <div className="text-xs uppercase tracking-[0.24em] text-slate-400">Slide Preview</div>
             <div className="flex items-center gap-3">
-              <div className="text-xs text-slate-500">{themeName || slide.template_id}</div>
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <span>Slide type</span>
+                <select
+                  value={slide.template_id}
+                  onChange={(event) => onSlideTypeChange(event.target.value)}
+                  className="rounded-lg border border-slate-200 px-3 py-2"
+                >
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="text-xs text-slate-500">{themeName || 'Default'}</div>
               <button
                 type="button"
                 onClick={onGeneratePreview}

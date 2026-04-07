@@ -7,15 +7,15 @@
       "headline": "Q1 2026 Business Review",
       "message": "Board-level review of Q1 consolidated results, two escalation items, and H1 hiring plan approval request.",
       "evidence_queries": [],
-      "template_key": "title.hero"
+      "template_key": "title.cover"
     },
     {
       "slide_id": "s2",
-      "purpose": "agenda",
+      "purpose": "closing",
       "headline": "Agenda",
       "message": "Four sections: revenue and margin, APAC segment, operational risks, and hiring plan.",
       "evidence_queries": [],
-      "template_key": "agenda.list"
+      "template_key": "closing.actions"
     },
     {
       "slide_id": "s3",
@@ -29,7 +29,7 @@
         "Q1 2026 revenue versus plan variance percentage",
         "Q4 2025 revenue growth rate for sequential comparison"
       ],
-      "template_key": "kpi.3up"
+      "template_key": "kpi.big"
     },
     {
       "slide_id": "s4",
@@ -42,7 +42,7 @@
         "NA and EMEA infrastructure cost reduction savings Q1 2026",
         "APAC investment spend impact on consolidated gross margin"
       ],
-      "template_key": "content.2col.text_image"
+      "template_key": "compare.2col"
     },
     {
       "slide_id": "s5",
@@ -55,7 +55,7 @@
         "APAC growth rate compared to NA and EMEA same period",
         "APAC customer acquisition cost trend Q1 2026"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s6",
@@ -68,7 +68,7 @@
         "Proposed mitigation actions for supplier diversification with deadlines",
         "EMEA go-to-market review scope and timeline"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s7",
@@ -81,7 +81,7 @@
         "APAC sales team expansion plan and cost H1 2026",
         "Total hiring plan cost and budget envelope status"
       ],
-      "template_key": "table.full"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s8",
@@ -89,7 +89,7 @@
       "headline": "Q1 Strong — Two Actions Needed Now",
       "message": "Q1 beat revenue and margin targets; board should approve hiring and mandate supplier review.",
       "evidence_queries": [],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     }
   ],
   "questions_for_user": [],

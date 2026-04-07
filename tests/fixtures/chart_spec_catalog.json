@@ -44,7 +44,7 @@
       "show_data_labels": true,
       "show_legend": false,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full"],
+      "intended_template_keys": ["chart.takeaway"],
       "renderer_status": "supported",
       "$notes": "Core single-series bar. Vertical orientation. Data labels above bars."
     },
@@ -104,7 +104,7 @@
       "show_data_labels": false,
       "show_legend": true,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "intended_template_keys": ["chart.takeaway", "compare.2col"],
       "renderer_status": "planned",
       "$notes": "Multi-series stacked bar. Total bar height = sum of all series. Legend required to identify segments. Data labels off to reduce clutter on stacked layout."
     },
@@ -144,7 +144,7 @@
       "show_data_labels": false,
       "show_legend": true,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full"],
+      "intended_template_keys": ["chart.takeaway"],
       "renderer_status": "planned",
       "$notes": "Two-series side-by-side grouped bars. Budget always rendered first (darker blue). Pairs well with a callout block showing total variance."
     },
@@ -176,7 +176,7 @@
       "show_data_labels": false,
       "show_legend": false,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "intended_template_keys": ["chart.takeaway", "compare.2col"],
       "renderer_status": "supported",
       "$notes": "Single-series line with markers. 12-month rolling window. Data labels off to keep the trend line readable at small sizes."
     },
@@ -218,7 +218,7 @@
       "show_data_labels": false,
       "show_legend": true,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full"],
+      "intended_template_keys": ["chart.takeaway"],
       "renderer_status": "planned",
       "$notes": "Two-line YoY comparison. Current year solid, prior year dashed. Fill-between the two lines to visually encode the gap. Legend required."
     },
@@ -252,7 +252,7 @@
       "show_data_labels": false,
       "show_legend": false,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "intended_template_keys": ["chart.takeaway", "compare.2col"],
       "renderer_status": "planned",
       "$notes": "Single-series filled area chart. Fill alpha 0.20, solid line on top. Use series[0].data when rendering; data field is null for area charts."
     },
@@ -276,7 +276,7 @@
       "show_data_labels": true,
       "show_legend": true,
       "aspect_ratio": 1.0,
-      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "intended_template_keys": ["chart.takeaway", "compare.2col"],
       "renderer_status": "planned",
       "$notes": "Donut (hollow pie) with wedge_width 0.55. Data labels show % inside each wedge. Aspect ratio 1.0 because the donut is square. Current renderer treats pie as solid; this is a distinct planned type."
     },
@@ -301,7 +301,7 @@
       "show_data_labels": true,
       "show_legend": false,
       "aspect_ratio": 1.0,
-      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "intended_template_keys": ["chart.takeaway", "compare.2col"],
       "renderer_status": "supported",
       "$notes": "Solid pie. autopct labels on wedges. No legend — labels on wedges are sufficient. Aspect ratio 1.0. Palette overrides single accent_color for multi-segment fill."
     },
@@ -332,7 +332,7 @@
       "show_data_labels": true,
       "show_legend": false,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full"],
+      "intended_template_keys": ["chart.takeaway"],
       "renderer_status": "planned",
       "$notes": "Each item carries bar_type: total | positive | negative. Totals are anchored at zero; positive/negative bars float from the running subtotal. palette is a dict (not list) for this chart type. Data labels required to show the delta value on each bar."
     },
@@ -361,7 +361,7 @@
       "show_data_labels": false,
       "show_legend": false,
       "aspect_ratio": 1.33,
-      "intended_template_keys": ["chart.full", "content.2col.text_image"],
+      "intended_template_keys": ["chart.takeaway", "compare.2col"],
       "renderer_status": "supported",
       "$notes": "Current renderer uses index as x-coordinate and value as y. Future improvement: add x_value field to data items so both axes carry real data. Labels off; too many points for readable label placement."
     },
@@ -386,7 +386,7 @@
       "show_data_labels": true,
       "show_legend": false,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full"],
+      "intended_template_keys": ["chart.takeaway"],
       "renderer_status": "planned",
       "$notes": "Horizontal variant of bar. Stages on y-axis, count on x-axis. y-axis inverted so Leads is at top. Data labels to the right of each bar. No legend."
     },
@@ -430,7 +430,7 @@
       "show_data_labels": true,
       "show_legend": false,
       "aspect_ratio": 2.67,
-      "intended_template_keys": ["kpi.3up", "chart.full"],
+      "intended_template_keys": ["kpi.big", "chart.takeaway"],
       "renderer_status": "planned",
       "$notes": "Renders as a 3-panel image: large metric value + unit, smaller delta with directional color (green positive, red negative), subtitle line. Aspect ratio 2.67 fills the full 11.83-inch content width at a 4.5-inch height. delta_direction drives color: positive = green, negative = red."
     },
@@ -474,7 +474,7 @@
       "show_data_labels": false,
       "show_legend": true,
       "aspect_ratio": 1.78,
-      "intended_template_keys": ["chart.full"],
+      "intended_template_keys": ["chart.takeaway"],
       "renderer_status": "planned",
       "$notes": "Dual-axis combo: bars on primary y-axis (left), line on secondary y-axis (right). Each series carries series_type and y_axis fields. Legend required. palette[0] for bars, palette[1] for line."
     }

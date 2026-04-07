@@ -7,15 +7,15 @@
       "headline": "Oracle HCM 26B Integration Options",
       "message": "Options analysis for the IT steering committee on how to integrate Oracle HCM 26B with our existing HR systems.",
       "evidence_queries": [],
-      "template_key": "title.hero"
+      "template_key": "title.cover"
     },
     {
       "slide_id": "s2",
-      "purpose": "agenda",
+      "purpose": "closing",
       "headline": "What We'll Cover",
       "message": "Context, three integration options, comparison matrix, recommendation, and next steps.",
       "evidence_queries": [],
-      "template_key": "agenda.list"
+      "template_key": "closing.actions"
     },
     {
       "slide_id": "s3",
@@ -27,7 +27,7 @@
         "Comparison of 26B API coverage versus 25D for HR data access",
         "Position management endpoints deprecation timeline in 26B release notes"
       ],
-      "template_key": "content.2col.text_image"
+      "template_key": "compare.2col"
     },
     {
       "slide_id": "s4",
@@ -39,7 +39,7 @@
         "Org hierarchy migration steps required for positions-vs-jobs transition",
         "Impact of positions-vs-jobs change on downstream integrations"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s5",
@@ -60,7 +60,7 @@
         "Ongoing maintenance cost estimate for full API approach to Oracle HCM",
         "Technical risks of full API approach including rate limiting and error handling"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s7",
@@ -73,7 +73,7 @@
         "Data freshness lag characteristics of HCM Extract for position data",
         "Limitations of HCM Extract approach for real-time reporting needs"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s8",
@@ -86,7 +86,7 @@
         "Implementation timeline and cost estimate for hybrid approach",
         "Long-term maintainability advantages of hybrid integration pattern"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s9",
@@ -98,7 +98,7 @@
         "Data fidelity comparison across full API, HCM Extract, and hybrid approaches",
         "Total cost of ownership comparison for three integration options over 3 years"
       ],
-      "template_key": "table.full"
+      "template_key": "headline.evidence"
     },
     {
       "slide_id": "s10",
@@ -109,7 +109,7 @@
         "Recommended implementation timeline milestones for hybrid approach",
         "Dependencies and prerequisites for August go-live with Oracle HCM 26B"
       ],
-      "template_key": "content.1col"
+      "template_key": "headline.evidence"
     }
   ],
   "questions_for_user": [],

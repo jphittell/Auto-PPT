@@ -63,7 +63,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
           index: index + 2,
           purpose: 'content',
           title: 'New content slide',
-          template_id: 'content.1col',
+          template_id: 'headline.evidence',
           blocks: [{ id: `block-${Date.now()}`, kind: 'text', content: 'Add content here.' }],
       }
       const slides = [...state.currentDeck.slides]
@@ -84,7 +84,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         index: state.currentDeck.slides.length + 1,
         purpose: 'content',
         title: 'Blank content slide',
-        template_id: 'content.1col',
+        template_id: 'headline.evidence',
         blocks,
       }
       const slides = [

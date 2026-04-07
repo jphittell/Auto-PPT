@@ -140,8 +140,8 @@ def generate_outline(
 
     takeaways = _outline_takeaways(brief)
     deck_title = str((brief.extensions or {}).get("document_title", brief.goal))
-    include_agenda = brief.slide_count_target >= 5
-    reserved = 3 if include_agenda else 2
+    include_closing = brief.slide_count_target >= 5
+    reserved = 2
     content_count = max(1, brief.slide_count_target - reserved)
     content_messages = _plan_content_messages(brief, takeaways, content_count)
     overview_message = _overview_message(brief, takeaways)
@@ -153,24 +153,12 @@ def generate_outline(
             headline=_short_headline(deck_title, fallback="Deck Overview"),
             message=_trim_words(brief.goal, 14),
             evidence_queries=[],
-            template_key="title.hero",
+            template_key="title.cover",
         )
     ]
+    seen_headlines: set[str] = {_normalize_phrase(outline[0].headline)}
 
     next_index = 2
-    if include_agenda:
-        outline.append(
-            OutlineItem(
-                slide_id=f"s{next_index}",
-                purpose=SlidePurpose.AGENDA,
-                headline="Agenda",
-                message="Review goals, evidence, and next actions.",
-                evidence_queries=[],
-                template_key="agenda.list",
-            )
-        )
-        next_index += 1
-
     for content_index, message in enumerate(content_messages):
         archetype = SlideArchetype.GENERIC
         headline = _short_headline(message, fallback=f"Slide {next_index}")
@@ -181,34 +169,25 @@ def generate_outline(
             str((brief.extensions or {}).get("document_title", "")),
         )
         if content_index == 0 and content_count >= 3:
-            archetype = SlideArchetype.EXECUTIVE_OVERVIEW
+            archetype = SlideArchetype.EXECUTIVE_SUMMARY
             headline = "Executive Overview"
             message = overview_message
-            template_key = "executive.overview"
+            template_key = "exec.summary"
             evidence_queries = [
                 "hybrid architecture ingestion retrieval planning layout assets deterministic export",
                 "executive summary hybrid architecture visually polished pptx decks",
                 "design quality strategies template first rule based free form",
             ]
-        elif content_index == 1 and _is_pipeline_story(brief):
-            archetype = SlideArchetype.ARCHITECTURE_GRID
-            headline = "Architecture Components"
-            template_key = "architecture.grid"
-            evidence_queries = [
-                "ingestion retrieval planning layout asset generation validation export",
-                "six component pipeline architecture presentation systems",
-                "connectors uploads cloud files structured data rag planning layout export",
-            ]
-        elif template_key == "architecture.grid":
-            archetype = SlideArchetype.ARCHITECTURE_GRID
-            headline = "Architecture Components"
-            evidence_queries = [
-                "ingestion retrieval planning layout asset generation validation export",
-                "six component pipeline architecture presentation systems",
-                "connectors uploads cloud files structured data rag planning layout export",
-            ]
         else:
             evidence_queries = _evidence_queries_for_message(message)
+        normalized_headline = _normalize_phrase(headline)
+        if normalized_headline in seen_headlines:
+            headline = _short_headline(message, fallback=f"Slide {next_index}")
+            normalized_headline = _normalize_phrase(headline)
+            if normalized_headline in seen_headlines:
+                headline = f"{headline} (continued)"
+                normalized_headline = _normalize_phrase(headline)
+        seen_headlines.add(normalized_headline)
         outline.append(
             OutlineItem(
                 slide_id=f"s{next_index}",
@@ -222,15 +201,16 @@ def generate_outline(
         )
         next_index += 1
 
+    closing_purpose = SlidePurpose.CLOSING if include_closing else SlidePurpose.SUMMARY
     outline.append(
         OutlineItem(
             slide_id=f"s{next_index}",
-            purpose=SlidePurpose.SUMMARY,
-            archetype=SlideArchetype.EXECUTIVE_OVERVIEW,
-            headline="Key Takeaways",
+            purpose=closing_purpose,
+            archetype=SlideArchetype.GENERIC,
+            headline="Next Steps" if include_closing else "Key Takeaways",
             message="Summarize the strongest supported points and actions.",
             evidence_queries=[],
-            template_key="content.3col.cards",
+            template_key="closing.actions",
         )
     )
 
@@ -261,7 +241,7 @@ def build_retrieval_plan(
 
     items: list[RetrievalPlanItem] = []
     for item in outline.outline:
-        if item.purpose not in {SlidePurpose.CONTENT, SlidePurpose.APPENDIX}:
+        if item.purpose not in {SlidePurpose.CONTENT, SlidePurpose.CLOSING}:
             continue
         queries = item.evidence_queries or _evidence_queries_for_message(item.message)
         items.append(
@@ -366,8 +346,8 @@ def generate_presentation_spec(
             slides.append(_build_title_slide(item=item, brief=brief, tone_label=tone_label, chunks=all_chunks[:10]))
             continue
 
-        if item.purpose is SlidePurpose.AGENDA:
-            slides.append(_build_agenda_slide(item=item, outline=outline))
+        if item.purpose is SlidePurpose.CLOSING:
+            slides.append(_build_closing_slide(item=item, outline=outline))
             continue
 
         if item.purpose is SlidePurpose.SUMMARY:
@@ -384,29 +364,10 @@ def generate_presentation_spec(
                 derived = _derive_takeaways(all_chunk_texts, brief.goal)
                 summary_items = [_trim_words(text, 20) for text in derived][:6]
             summary_block_citations = summary_citations[:1] or _citations_from_chunks(slide_chunks)[:1] or _fallback_citation(brief.source_corpus_ids)
-            summary_template = item.template_key or "content.3col.cards"
-            if summary_template == "content.3col.cards":
+            summary_template = item.template_key or "closing.actions"
+            if summary_template == "exec.summary" or item.archetype is SlideArchetype.EXECUTIVE_SUMMARY:
                 slides.append(
-                    SlideSpec(
-                        slide_id=item.slide_id,
-                        purpose=item.purpose,
-                        layout_intent=LayoutIntent(template_key="content.3col.cards", strict_template=True),
-                        headline=item.headline,
-                        speaker_notes=_speaker_notes(item.message, "Close on supported actions."),
-                        blocks=[
-                            PresentationBlock(
-                                block_id="b1",
-                                kind=PresentationBlockKind.CALLOUT,
-                                content={"cards": _cards_from_points(summary_items, title_prefix="Takeaway")},
-                                source_citations=summary_block_citations,
-                            )
-                        ],
-                    )
-                )
-                continue
-            if summary_template == "executive.overview" or item.archetype is SlideArchetype.EXECUTIVE_OVERVIEW:
-                slides.append(
-                    _executive_overview_slide(
+                    _exec_summary_slide(
                         item=item,
                         brief=brief,
                         tone_label=tone_label,
@@ -416,23 +377,36 @@ def generate_presentation_spec(
                     )
                 )
                 continue
-            if summary_template == "architecture.grid" or item.archetype is SlideArchetype.ARCHITECTURE_GRID:
+            if summary_template == "kpi.big":
                 slides.append(
-                    _architecture_grid_slide(
-                        item=item,
-                        brief=brief,
-                        slide_chunks=slide_chunks,
-                        citations=summary_block_citations,
-                        summary_items=summary_items,
+                    SlideSpec(
+                        slide_id=item.slide_id,
+                        purpose=item.purpose,
+                        archetype=SlideArchetype.METRICS,
+                        layout_intent=LayoutIntent(template_key="kpi.big", strict_template=True),
+                        headline=item.headline,
+                        speaker_notes=_speaker_notes(item.message, "Close on supported actions."),
+                        blocks=[
+                            PresentationBlock(
+                                block_id=f"b{index + 1}",
+                                kind=PresentationBlockKind.TEXT,
+                                content={"text": value},
+                                source_citations=summary_block_citations,
+                            )
+                            for index, value in enumerate(_kpi_points_from_bullets(summary_items))
+                        ],
                     )
                 )
+                continue
+            if summary_template == "closing.actions":
+                slides.append(_build_closing_slide(item=item, outline=outline))
                 continue
             slides.append(
                 SlideSpec(
                     slide_id=item.slide_id,
                     purpose=item.purpose,
                     archetype=item.archetype,
-                    layout_intent=LayoutIntent(template_key="content.1col", strict_template=True),
+                    layout_intent=LayoutIntent(template_key="headline.evidence", strict_template=True),
                     headline=item.headline,
                     speaker_notes=_speaker_notes(item.message, "Close on supported actions."),
                     blocks=[
@@ -465,10 +439,10 @@ def generate_presentation_spec(
         citations = _citations_from_chunks(slide_chunks)[:2]
         if citations:
             summary_citations.extend(citations)
-        template_key = item.template_key or "content.1col"
-        if template_key == "executive.overview" or item.archetype is SlideArchetype.EXECUTIVE_OVERVIEW:
+        template_key = item.template_key or "headline.evidence"
+        if template_key == "exec.summary" or item.archetype is SlideArchetype.EXECUTIVE_SUMMARY:
             slides.append(
-                _executive_overview_slide(
+                _exec_summary_slide(
                     item=item,
                     brief=brief,
                     tone_label=tone_label,
@@ -478,43 +452,64 @@ def generate_presentation_spec(
                 )
             )
             continue
-        if template_key == "architecture.grid" or item.archetype is SlideArchetype.ARCHITECTURE_GRID:
-            slides.append(
-                _architecture_grid_slide(
-                    item=item,
-                    brief=brief,
-                    slide_chunks=slide_chunks,
-                    citations=citations or _fallback_citation(brief.source_corpus_ids),
-                    summary_items=bullets,
-                )
-            )
-            continue
-        if template_key == "content.3col.cards":
+        if template_key == "compare.2col":
             slides.append(
                 SlideSpec(
                     slide_id=item.slide_id,
                     purpose=item.purpose,
-                    archetype=item.archetype,
+                    archetype=SlideArchetype.COMPARISON,
+                    layout_intent=LayoutIntent(template_key="compare.2col", strict_template=True),
+                    headline=item.headline,
+                    speaker_notes=_speaker_notes(item.message, "Reference cited source material while presenting."),
+                    blocks=[
+                        PresentationBlock(
+                            block_id="b1",
+                            kind=PresentationBlockKind.BULLETS,
+                            content={"items": bullets[: max(1, (len(bullets) + 1) // 2)]},
+                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                        ),
+                        PresentationBlock(
+                            block_id="b2",
+                            kind=PresentationBlockKind.BULLETS,
+                            content={"items": bullets[max(1, (len(bullets) + 1) // 2):] or bullets[:1]},
+                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                        ),
+                    ],
+                )
+            )
+            continue
+        if template_key == "chart.takeaway":
+            slides.append(
+                SlideSpec(
+                    slide_id=item.slide_id,
+                    purpose=item.purpose,
+                    archetype=SlideArchetype.CHART,
                     layout_intent=LayoutIntent(template_key=template_key, strict_template=True),
                     headline=item.headline,
                     speaker_notes=_speaker_notes(item.message, "Reference cited source material while presenting."),
                     blocks=[
                         PresentationBlock(
                             block_id="b1",
-                            kind=PresentationBlockKind.CALLOUT,
-                            content={"cards": _cards_from_points(bullets, title_prefix="Capability")},
+                            kind=PresentationBlockKind.CHART,
+                            content={"chart_type": "bar", "data": [{"label": f"Point {index + 1}", "value": index + 1} for index, _ in enumerate(bullets[:3])]},
                             source_citations=citations or _fallback_citation(brief.source_corpus_ids),
-                        )
+                        ),
+                        PresentationBlock(
+                            block_id="b2",
+                            kind=PresentationBlockKind.CALLOUT,
+                            content={"text": _callout_from_chunks(slide_chunks, fallback=item.message, used=used_phrases), "tone_hint": tone_label},
+                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                        ),
                     ],
                 )
             )
             continue
-        if template_key == "kpi.3up":
+        if template_key == "kpi.big":
             slides.append(
                 SlideSpec(
                     slide_id=item.slide_id,
                     purpose=item.purpose,
-                    archetype=item.archetype,
+                    archetype=SlideArchetype.METRICS,
                     layout_intent=LayoutIntent(template_key=template_key, strict_template=True),
                     headline=item.headline,
                     speaker_notes=_speaker_notes(item.message, "Reference cited source material while presenting."),
@@ -529,6 +524,9 @@ def generate_presentation_spec(
                     ],
                 )
             )
+            continue
+        if template_key == "closing.actions":
+            slides.append(_build_closing_slide(item=item, outline=outline))
             continue
         slides.append(
             SlideSpec(
@@ -625,7 +623,7 @@ def _inject_missing_citations(
     brief: DeckBrief,
 ) -> PresentationSpec:
     """Ensure every factual block on content/summary slides has at least one citation."""
-    citation_required_purposes = {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.APPENDIX}
+    citation_required_purposes = {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.CLOSING}
     citation_required_kinds = {
         PresentationBlockKind.TEXT,
         PresentationBlockKind.BULLETS,
@@ -718,18 +716,18 @@ def _enforce_authoritative_fields(
             all_chunks = [c for cs in retrieved_chunks_by_slide.values() for c in cs]
             slides.append(_build_title_slide(item=outline_item, brief=brief, tone_label=tone_label, chunks=all_chunks[:10]))
             continue
-        if outline_item is not None and slide.purpose is SlidePurpose.AGENDA:
-            slides.append(_build_agenda_slide(item=outline_item, outline=outline))
+        if outline_item is not None and slide.purpose is SlidePurpose.CLOSING:
+            slides.append(_build_closing_slide(item=outline_item, outline=outline))
             continue
         if outline_item is not None and (
-            outline_item.template_key == "executive.overview"
+            outline_item.template_key == "exec.summary"
             or (
-                outline_item.archetype is SlideArchetype.EXECUTIVE_OVERVIEW
-                and outline_item.template_key != "content.3col.cards"
+                outline_item.archetype is SlideArchetype.EXECUTIVE_SUMMARY
+                and outline_item.template_key != "compare.2col"
             )
         ):
             slides.append(
-                _executive_overview_slide(
+                _exec_summary_slide(
                     item=outline_item,
                     brief=brief,
                     tone_label=tone_label,
@@ -739,27 +737,14 @@ def _enforce_authoritative_fields(
                 )
             )
             continue
-        if outline_item is not None and (
-            outline_item.template_key == "architecture.grid" or outline_item.archetype is SlideArchetype.ARCHITECTURE_GRID
-        ):
-            slides.append(
-                _architecture_grid_slide(
-                    item=outline_item,
-                    brief=brief,
-                    slide_chunks=slide_chunks,
-                    citations=_slide_citations(slide, slide_chunks, brief),
-                    summary_items=_slide_summary_points(slide, slide_chunks, fallback=outline_item.message, limit=6),
-                )
-            )
-            continue
-        if outline_item is not None and outline_item.template_key == "content.3col.cards" and not _slide_has_cards(slide):
+        if outline_item is not None and outline_item.template_key == "compare.2col" and not _slide_has_cards(slide):
             cards = _cards_for_slide(slide, slide_chunks, title_prefix="Capability", desired_count=3) or _cards_from_points(
                 _slide_summary_points(slide, slide_chunks, fallback=outline_item.message, limit=3),
                 title_prefix="Capability",
             )
             slide = slide.model_copy(
                 update={
-                    "layout_intent": LayoutIntent(template_key="content.3col.cards", strict_template=True),
+                    "layout_intent": LayoutIntent(template_key="compare.2col", strict_template=True),
                     "blocks": [
                         PresentationBlock(
                             block_id=slide.blocks[0].block_id if slide.blocks else "b1",
@@ -795,7 +780,7 @@ def _enforce_authoritative_fields(
                             "content": {"cards": _normalize_card_records(parsed_cards, title_prefix="Capability", desired_count=3)},
                         }
                     )
-                    slide = slide.model_copy(update={"layout_intent": LayoutIntent(template_key="content.3col.cards", strict_template=True)})
+                    slide = slide.model_copy(update={"layout_intent": LayoutIntent(template_key="compare.2col", strict_template=True)})
                 if not str(text).strip() and fallback_message:
                     block = block.model_copy(update={"content": {"text": _trim_words(fallback_message, 12)}})
             elif block.kind is PresentationBlockKind.TABLE:
@@ -814,7 +799,7 @@ def _enforce_authoritative_fields(
                             "kind": PresentationBlockKind.BULLETS,
                             "content": {"items": [_trim_words(fallback_message, 12)]},
                         })
-                        slide = slide.model_copy(update={"layout_intent": LayoutIntent(template_key="content.1col", strict_template=True)})
+                        slide = slide.model_copy(update={"layout_intent": LayoutIntent(template_key="headline.evidence", strict_template=True)})
             updated_blocks.append(block)
         if updated_blocks != list(slide.blocks):
             slide = slide.model_copy(update={"blocks": updated_blocks})
@@ -929,13 +914,32 @@ def _source_preview(source_texts: list[str]) -> str:
 def _expand_content_messages(takeaways: list[str], goal: str, count: int) -> list[str]:
     base = takeaways or [_trim_words(goal, 10)]
     messages: list[str] = []
-    for index in range(count):
-        source = base[index % len(base)]
-        if index < len(base):
-            messages.append(source)
-        else:
-            suffix = "evidence" if index % 2 == 0 else "implications"
-            messages.append(f"{source} {suffix}")
+    seen: set[str] = set()
+    for item in base:
+        normalized = _normalize_phrase(item)
+        if not normalized or normalized in seen:
+            continue
+        messages.append(item)
+        seen.add(normalized)
+        if len(messages) >= count:
+            return messages[:count]
+    goal_focus = _trim_words(goal, 8)
+    framings = [
+        f"Key drivers behind {goal_focus}",
+        f"Impact and outcomes of {goal_focus}",
+        f"Implementation roadmap for {goal_focus}",
+        f"Risk factors and mitigations for {goal_focus}",
+        f"Operating requirements for {goal_focus}",
+        f"Decision criteria for {goal_focus}",
+    ]
+    for framing in framings:
+        normalized = _normalize_phrase(framing)
+        if not normalized or normalized in seen:
+            continue
+        messages.append(framing)
+        seen.add(normalized)
+        if len(messages) >= count:
+            break
     return messages
 
 
@@ -965,7 +969,6 @@ def _plan_content_messages(brief: DeckBrief, takeaways: list[str], count: int) -
     if _is_pipeline_story(brief):
         seeded = [
             "Hybrid architecture: ingestion, retrieval, planning, layout, assets, and deterministic export",
-            "Architecture components: ingestion, retrieval, planning, layout, assets, QA, and export",
             "Design quality strategies: template-first, rule-based layout, and free-form constraints",
             "Implementation implications: connectors, cloud files, structured data, and reproducible PPTX export",
         ]
@@ -1005,50 +1008,17 @@ def _is_pipeline_story(brief: DeckBrief) -> bool:
 
 def _recommended_content_template(message: str, goal: str, audience: str = "", document_title: str = "") -> str:
     haystack = f"{message} {goal} {audience} {document_title}".lower()
-    if any(term in haystack for term in ("metric", "kpi", "score", "rate", "roi", "growth", "performance")):
-        return "kpi.3up"
-    if any(
-        term in haystack
-        for term in (
-            "architecture",
-            "pipeline",
-            "component",
-            "ingestion",
-            "retrieval",
-            "layout",
-            "asset",
-            "export",
-            "renderer",
-        )
-    ):
-        return "architecture.grid"
-    if any(
-        term in haystack
-        for term in (
-            "capability",
-            "workstream",
-            "overview",
-            "landscape",
-            "tools",
-        )
-    ):
-        return "content.3col.cards"
-    if any(
-        term in haystack
-        for term in (
-            "strategy",
-            "strategies",
-            "benefit",
-            "benefits",
-            "principle",
-            "principles",
-            "quality",
-            "practice",
-            "delivery",
-        )
-    ):
-        return "content.3col.cards"
-    return "content.1col"
+    if any(t in haystack for t in ("metric", "kpi", "score", "rate", "roi", "growth", "performance")):
+        return "kpi.big"
+    if any(t in haystack for t in ("chart", "trend", "graph", "data series", "plot")):
+        return "chart.takeaway"
+    if any(t in haystack for t in ("compare", "comparison", "option", "versus", "tradeoff", "pros", "cons")):
+        return "compare.2col"
+    if any(t in haystack for t in ("next step", "action", "closing", "recommendation", "call to action")):
+        return "closing.actions"
+    if any(t in haystack for t in ("overview", "summary", "executive", "landscape", "capability")):
+        return "exec.summary"
+    return "headline.evidence"
 
 
 def _cards_from_points(items: list[str], *, title_prefix: str) -> list[dict[str, str]]:
@@ -1056,9 +1026,6 @@ def _cards_from_points(items: list[str], *, title_prefix: str) -> list[dict[str,
     for index, item in enumerate(items[:3], start=1):
         title = _card_title_from_point(item, fallback=f"{title_prefix} {index}")
         cards.append({"title": title, "text": _trim_words(item, 20)})
-    while len(cards) < 3:
-        index = len(cards) + 1
-        cards.append({"title": f"{title_prefix} {index}", "text": f"Detail {index}"})
     return cards
 
 
@@ -1073,7 +1040,7 @@ def _build_title_slide(
     return SlideSpec(
         slide_id=item.slide_id,
         purpose=item.purpose,
-        layout_intent=LayoutIntent(template_key="title.hero", strict_template=True),
+        layout_intent=LayoutIntent(template_key="title.cover", strict_template=True),
         headline=item.headline,
         speaker_notes=_speaker_notes(item.message, brief.goal),
         blocks=[
@@ -1091,26 +1058,43 @@ def _build_title_slide(
     )
 
 
-def _build_agenda_slide(*, item: OutlineItem, outline: OutlineSpec) -> SlideSpec:
-    agenda_items = [
-        _trim_words(outline_item.headline, 10)
-        for outline_item in outline.outline
-        if outline_item.purpose in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY}
-    ][:6]
+def _build_closing_slide(*, item: OutlineItem, outline: OutlineSpec) -> SlideSpec:
+    action_items: list[str] = []
+    seen: set[str] = set()
+    for outline_item in outline.outline:
+        if outline_item.purpose not in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY}:
+            continue
+        trimmed = _trim_words(outline_item.headline, 10)
+        normalized = _normalize_phrase(trimmed)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        action_items.append(trimmed)
+        if len(action_items) >= 6:
+            break
     return SlideSpec(
         slide_id=item.slide_id,
-        purpose=item.purpose,
-        layout_intent=LayoutIntent(template_key="agenda.list", strict_template=True),
+        purpose=SlidePurpose.CLOSING,
+        layout_intent=LayoutIntent(template_key="closing.actions", strict_template=True),
         headline=item.headline,
-        speaker_notes=_speaker_notes(item.message, "Move quickly through the deck structure."),
+        speaker_notes=_speaker_notes(item.message, "Close with the recommended actions and final takeaway."),
         blocks=[
             PresentationBlock(
                 block_id="b1",
                 kind=PresentationBlockKind.BULLETS,
-                content={"items": agenda_items or ["Overview", "Evidence", "Actions"]},
-            )
+                content={"items": action_items or ["Review priorities", "Align owners", "Confirm next step"]},
+            ),
+            PresentationBlock(
+                block_id="b2",
+                kind=PresentationBlockKind.CALLOUT,
+                content={"text": _trim_words(item.message or "Drive alignment on the next decisions and actions.", 20)},
+            ),
         ],
     )
+
+
+def _build_agenda_slide(*, item: OutlineItem, outline: OutlineSpec) -> SlideSpec:
+    return _build_closing_slide(item=item, outline=outline)
 
 
 def _title_subtitle_from_content(
@@ -1168,12 +1152,10 @@ def _card_title_from_point(item: str, *, fallback: str) -> str:
 
 def _kpi_points_from_bullets(items: list[str]) -> list[str]:
     values = [_trim_words(item, 8) for item in items[:3]]
-    while len(values) < 3:
-        values.append(f"Insight {len(values) + 1}")
     return values
 
 
-def _executive_overview_slide(
+def _exec_summary_slide(
     *,
     item: OutlineItem,
     brief: DeckBrief,
@@ -1183,22 +1165,26 @@ def _executive_overview_slide(
     summary_items: list[str],
 ) -> SlideSpec:
     used = _UsedPhrases.from_phrases(summary_items)
-    summary_text = _overview_summary_text(item, brief, slide_chunks, used=used)
+    summary_points = _bullets_from_chunks(slide_chunks, fallback=item.message, used=used)[:5]
+    if not summary_points:
+        summary_points = summary_items[:5] or [_trim_words(brief.goal, 12)]
     callout_text = _specialist_callout(brief, slide_chunks, fallback=item.message, used=used)
-    cards = _overview_cards(slide_chunks, summary_items, used=used)
-    footer_text = f"{len(cards)} components | {_footer_metric_label(slide_chunks, brief)}"
+    summary_signature = _normalize_phrase(" ".join(summary_points))
+    if _phrases_are_near_duplicate(summary_signature, _normalize_phrase(callout_text)):
+        callout_text = _trim_words(item.message, 20) if item.message else "Key insight"
+    cards = _overview_cards(slide_chunks, summary_items, used=used)[:3]
     return SlideSpec(
         slide_id=item.slide_id,
         purpose=item.purpose,
-        archetype=SlideArchetype.EXECUTIVE_OVERVIEW,
-        layout_intent=LayoutIntent(template_key="executive.overview", strict_template=True),
+        archetype=SlideArchetype.EXECUTIVE_SUMMARY,
+        layout_intent=LayoutIntent(template_key="exec.summary", strict_template=True),
         headline=item.headline,
         speaker_notes=_speaker_notes(item.message, "Lead with the architecture and why it matters."),
         blocks=[
             PresentationBlock(
                 block_id="b1",
-                kind=PresentationBlockKind.TEXT,
-                content={"text": summary_text},
+                kind=PresentationBlockKind.BULLETS,
+                content={"items": summary_points},
                 source_citations=citations,
             ),
             PresentationBlock(
@@ -1216,13 +1202,45 @@ def _executive_overview_slide(
                 content={"cards": cards},
                 source_citations=citations,
             ),
-            PresentationBlock(
-                block_id="b4",
-                kind=PresentationBlockKind.TEXT,
-                content={"text": footer_text},
-                source_citations=citations,
-            ),
         ],
+    )
+
+
+def _executive_overview_slide(
+    *,
+    item: OutlineItem,
+    brief: DeckBrief,
+    tone_label: str,
+    slide_chunks: list[RetrievedChunk],
+    citations: list[SourceCitation],
+    summary_items: list[str],
+) -> SlideSpec:
+    return _exec_summary_slide(
+        item=item,
+        brief=brief,
+        tone_label=tone_label,
+        slide_chunks=slide_chunks,
+        citations=citations,
+        summary_items=summary_items,
+    )
+
+
+def _executive_summary_slide(
+    *,
+    item: OutlineItem,
+    brief: DeckBrief,
+    tone_label: str,
+    slide_chunks: list[RetrievedChunk],
+    citations: list[SourceCitation],
+    summary_items: list[str],
+) -> SlideSpec:
+    return _exec_summary_slide(
+        item=item,
+        brief=brief,
+        tone_label=tone_label,
+        slide_chunks=slide_chunks,
+        citations=citations,
+        summary_items=summary_items,
     )
 
 
@@ -1234,37 +1252,13 @@ def _architecture_grid_slide(
     citations: list[SourceCitation],
     summary_items: list[str],
 ) -> SlideSpec:
-    used = _UsedPhrases.from_phrases(summary_items)
-    summary_text = _architecture_summary_text(item, brief, slide_chunks, used=used)
-    cards = _architecture_cards(slide_chunks, summary_items, used=used)
-    footer_text = f"{len(cards)} components | {_footer_metric_label(slide_chunks, brief)}"
-    return SlideSpec(
-        slide_id=item.slide_id,
-        purpose=item.purpose,
-        archetype=SlideArchetype.ARCHITECTURE_GRID,
-        layout_intent=LayoutIntent(template_key="architecture.grid", strict_template=True),
-        headline=item.headline,
-        speaker_notes=_speaker_notes(item.message, "Walk through the components and how they connect."),
-        blocks=[
-            PresentationBlock(
-                block_id="b1",
-                kind=PresentationBlockKind.TEXT,
-                content={"text": summary_text},
-                source_citations=citations,
-            ),
-            PresentationBlock(
-                block_id="b2",
-                kind=PresentationBlockKind.CALLOUT,
-                content={"cards": cards},
-                source_citations=citations,
-            ),
-            PresentationBlock(
-                block_id="b3",
-                kind=PresentationBlockKind.TEXT,
-                content={"text": footer_text},
-                source_citations=citations,
-            ),
-        ],
+    return _exec_summary_slide(
+        item=item,
+        brief=brief,
+        tone_label=_tone_label(brief.tone),
+        slide_chunks=slide_chunks,
+        citations=citations,
+        summary_items=summary_items,
     )
 
 
@@ -1275,20 +1269,27 @@ def _overview_summary_text(
     *,
     used: "_UsedPhrases | None" = None,
 ) -> str:
-    phrases = []
+    sentences: list[str] = []
     for chunk in slide_chunks:
-        for phrase in _candidate_phrases(chunk.text):
-            if used is not None and used.is_used(phrase):
+        for sentence in re.split(r"(?<=[.!?])\s+", chunk.text):
+            stripped_sentence = sentence.strip()
+            if not stripped_sentence.endswith((".", "!", "?")):
                 continue
-            phrases.append(phrase)
-            if len(phrases) >= 3:
+            cleaned = _clean_candidate_phrase(stripped_sentence)
+            if not cleaned or len(cleaned.split()) < 8:
+                continue
+            if used is not None and used.is_used(cleaned):
+                continue
+            summary_sentence = _trim_words(cleaned, 25)
+            sentences.append(summary_sentence)
+            if used is not None:
+                used.mark(cleaned)
+            if len(sentences) >= 2:
                 break
-        if len(phrases) >= 3:
+        if len(sentences) >= 2:
             break
-    if phrases:
-        if used is not None:
-            used.mark_all(phrases[:3])
-        return _trim_words(". ".join(phrases[:3]), 40)
+    if sentences:
+        return " ".join(sentences)
     thesis = str((brief.extensions or {}).get("one_sentence_thesis", brief.goal))
     summary = _trim_words(thesis, 30)
     if used is not None:
@@ -1411,32 +1412,20 @@ def _specialist_callout(
                 if used is not None:
                     used.mark(candidate)
                 return _trim_words(candidate, 20)
-    insight = _trim_words(fallback, 20) if fallback else "Key insight from the source material"
+    audience_label = _trim_words(brief.audience, 4)
+    goal_label = _trim_words(brief.goal, 12)
+    insight = f"{goal_label} framed for {audience_label}".strip()
     if used is not None:
         used.mark(insight)
     return insight
 
 
-def _footer_metric_label(slide_chunks: list[RetrievedChunk], brief: DeckBrief) -> str:
-    joined = " ".join(chunk.text.lower() for chunk in slide_chunks)
-    if "oracle" in brief.audience.lower() and "consult" in brief.audience.lower():
-        return "governance"
-    if "vector" in joined or "retrieval" in joined:
-        return "grounded retrieval"
-    if "constraint" in joined or "layout" in joined:
-        return "layout controls"
-    return "pipeline coverage"
-
-
-def _compact_cards(items: list[str], *, title_prefix: str, desired_count: int = 6) -> list[dict[str, str]]:
+def _compact_cards(items: list[str], *, title_prefix: str, desired_count: int = 3) -> list[dict[str, str]]:
     cards: list[dict[str, str]] = []
     for index, item in enumerate(items[:desired_count], start=1):
         words = [word.strip(",.:;") for word in str(item).split() if word]
-        title = " ".join(words[:5]).strip() or f"{title_prefix} {index}"
+        title = " ".join(words[:5]).strip() or _trim_words(str(item), 5) or f"{title_prefix} {index}"
         cards.append({"title": title, "text": _trim_words(item, 20)})
-    while len(cards) < desired_count:
-        index = len(cards) + 1
-        cards.append({"title": f"{title_prefix} {index}", "text": f"Detail {index}"})
     return cards
 
 
@@ -1461,7 +1450,7 @@ def _upgrade_visual_templates(
 
 
 def _maybe_upgrade_slide_to_table(slide: SlideSpec, chunks: list[RetrievedChunk]) -> SlideSpec:
-    if slide.purpose not in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY}:
+    if slide.purpose not in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.CLOSING}:
         return slide
     if any(block.kind in {PresentationBlockKind.IMAGE, PresentationBlockKind.TABLE, PresentationBlockKind.CHART, PresentationBlockKind.KPI_CARDS} for block in slide.blocks):
         return slide
@@ -1490,16 +1479,16 @@ def _maybe_upgrade_slide_to_table(slide: SlideSpec, chunks: list[RetrievedChunk]
     )
     return slide.model_copy(
         update={
-            "layout_intent": LayoutIntent(template_key="table.full", strict_template=True),
+            "layout_intent": LayoutIntent(template_key="headline.evidence", strict_template=True),
             "blocks": [table_block],
         }
     )
 
 
 def _maybe_upgrade_slide_to_cards(slide: SlideSpec, chunks: list[RetrievedChunk], brief: DeckBrief) -> SlideSpec:
-    if slide.purpose not in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY}:
+    if slide.purpose not in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.CLOSING}:
         return slide
-    if slide.layout_intent.template_key in {"executive.overview", "architecture.grid", "table.full", "chart.full"}:
+    if slide.layout_intent.template_key in {"exec.summary", "chart.takeaway"}:
         return slide
 
     serialized_cards = _cards_for_slide(slide, chunks, title_prefix="Capability", desired_count=3)
@@ -1523,7 +1512,7 @@ def _maybe_upgrade_slide_to_cards(slide: SlideSpec, chunks: list[RetrievedChunk]
     )
     return slide.model_copy(
         update={
-            "layout_intent": LayoutIntent(template_key="content.3col.cards", strict_template=True),
+            "layout_intent": LayoutIntent(template_key="compare.2col", strict_template=True),
             "blocks": [card_block],
         }
     )

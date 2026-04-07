@@ -266,7 +266,7 @@ def test_generate_deck_falls_back_when_default_llm_output_is_invalid(
                             "headline": "Quarterly Review",
                             "message": "Open the review.",
                             "evidence_queries": [],
-                            "template_key": "title.hero",
+                            "template_key": "title.cover",
                         },
                         {
                             "slide_id": "s2",
@@ -274,7 +274,7 @@ def test_generate_deck_falls_back_when_default_llm_output_is_invalid(
                             "headline": "Revenue Improved",
                             "message": "Revenue improved materially.",
                             "evidence_queries": ["revenue improved materially"],
-                            "template_key": "content.1col",
+                            "template_key": "headline.evidence",
                         },
                         {
                             "slide_id": "s3",
@@ -282,7 +282,7 @@ def test_generate_deck_falls_back_when_default_llm_output_is_invalid(
                             "headline": "Key Takeaways",
                             "message": "Close the review.",
                             "evidence_queries": [],
-                            "template_key": "content.1col",
+                            "template_key": "headline.evidence",
                         },
                     ],
                     "questions_for_user": [],
@@ -318,7 +318,7 @@ def test_generate_deck_falls_back_when_default_llm_output_is_invalid(
                         {
                             "slide_id": "s1",
                             "purpose": "title",
-                            "layout_intent": {"template_key": "title.hero", "strict_template": True},
+                            "layout_intent": {"template_key": "title.cover", "strict_template": True},
                             "headline": "Quarterly Review",
                             "speaker_notes": "Open the review.",
                             "blocks": [
@@ -334,7 +334,7 @@ def test_generate_deck_falls_back_when_default_llm_output_is_invalid(
                         {
                             "slide_id": "s2",
                             "purpose": "content",
-                            "layout_intent": {"template_key": "content.1col", "strict_template": True},
+                            "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
                             "headline": "Revenue Improved",
                             "speaker_notes": "Revenue improved materially.",
                             "blocks": [

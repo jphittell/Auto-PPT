@@ -16,7 +16,7 @@
     {
       "slide_id": "s1",
       "purpose": "title",
-      "layout_intent": { "template_key": "title.hero", "strict_template": true },
+      "layout_intent": { "template_key": "title.cover", "strict_template": true },
       "headline": "Oracle HCM 26B Integration Options",
       "speaker_notes": "Welcome the steering committee. Today we present three integration approaches for Oracle HCM 26B and our recommendation.",
       "blocks": [
@@ -31,8 +31,8 @@
     },
     {
       "slide_id": "s2",
-      "purpose": "agenda",
-      "layout_intent": { "template_key": "agenda.list", "strict_template": true },
+      "purpose": "closing",
+      "layout_intent": { "template_key": "closing.actions", "strict_template": true },
       "headline": "What We'll Cover",
       "speaker_notes": "Five sections. The comparison matrix on slide 9 is the key decision input.",
       "blocks": [
@@ -56,7 +56,7 @@
     {
       "slide_id": "s3",
       "purpose": "content",
-      "layout_intent": { "template_key": "content.2col.text_image", "strict_template": true },
+      "layout_intent": { "template_key": "compare.2col", "strict_template": true },
       "headline": "26B Introduces 14 New REST Endpoints",
       "speaker_notes": "The new endpoints cover position management, workforce structures, and absence management. This reduces our custom extract dependency from 80% to under 30%.",
       "blocks": [
@@ -89,7 +89,7 @@
     {
       "slide_id": "s4",
       "purpose": "content",
-      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "layout_intent": { "template_key": "headline.evidence", "strict_template": true },
       "headline": "Positions vs Jobs Requires Migration",
       "speaker_notes": "This is a one-time migration but it blocks all three integration options. The migration script has been tested in sandbox but not in production.",
       "blocks": [
@@ -129,7 +129,7 @@
     {
       "slide_id": "s6",
       "purpose": "content",
-      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "layout_intent": { "template_key": "headline.evidence", "strict_template": true },
       "headline": "Option A: Full API — Lowest Cost, Highest Effort",
       "speaker_notes": "Full API gives us real-time data but the 12-week build is the longest path. Rate limiting at 500 req/min is manageable for our volume.",
       "blocks": [
@@ -153,7 +153,7 @@
     {
       "slide_id": "s7",
       "purpose": "content",
-      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "layout_intent": { "template_key": "headline.evidence", "strict_template": true },
       "headline": "Option B: HCM Extract — Fastest, 24h Lag",
       "speaker_notes": "HCM Extract is Oracle's out-of-box solution. Four-week deploy, but the 24-hour lag on position changes means managers see stale org charts.",
       "blocks": [
@@ -177,7 +177,7 @@
     {
       "slide_id": "s8",
       "purpose": "content",
-      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "layout_intent": { "template_key": "headline.evidence", "strict_template": true },
       "headline": "Option C: Hybrid — Best Balance",
       "speaker_notes": "The hybrid approach uses real-time API for position data (which changes frequently) and batch extract for payroll (which is inherently periodic). This matches the natural cadence of each data type.",
       "blocks": [
@@ -201,7 +201,7 @@
     {
       "slide_id": "s9",
       "purpose": "content",
-      "layout_intent": { "template_key": "table.full", "strict_template": true },
+      "layout_intent": { "template_key": "headline.evidence", "strict_template": true },
       "headline": "Hybrid Wins on 4 of 5 Criteria",
       "speaker_notes": "The only criterion where hybrid loses is initial timeline — 8 weeks vs 4 for extract. But the 4-week gap is recovered within the first year through lower maintenance.",
       "blocks": [
@@ -228,7 +228,7 @@
     {
       "slide_id": "s10",
       "purpose": "summary",
-      "layout_intent": { "template_key": "content.1col", "strict_template": true },
+      "layout_intent": { "template_key": "headline.evidence", "strict_template": true },
       "headline": "Recommend Hybrid — Approve by April 30",
       "speaker_notes": "If we get approval today, the integration team starts May 1. The org migration runs in parallel during May. Target go-live is aligned with Oracle's August 26B GA window.",
       "blocks": [

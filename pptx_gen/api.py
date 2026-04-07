@@ -103,8 +103,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = REPO_ROOT / "web"
 WEB_INDEX = WEB_DIR / "index.html"
 RUNTIME_ASSET_DIR = REPO_ROOT / "out" / "runtime_assets"
-DECK_DEFAULT_TEMPLATE_IDS = {"content.1col", "content.3col.cards", "kpi.3up"}
-SPECIALIST_TEMPLATE_IDS = {"executive.overview", "architecture.grid", "content.2col.text_image", "table.full", "chart.full"}
+DECK_DEFAULT_TEMPLATE_IDS = {"headline.evidence", "compare.2col", "kpi.big"}
+SPECIALIST_TEMPLATE_IDS = {"exec.summary", "chart.takeaway", "closing.actions", "title.cover", "section.divider"}
 FONT_PAIR_MAP = {
     "Inter/Inter": ("Inter", "Inter"),
     "Lato/Merriweather": ("Merriweather", "Lato"),
@@ -615,8 +615,8 @@ def _apply_outline_edits(draft: DraftState, outline_updates: list[OutlineSlideRe
     explicit_template_by_slide_id: dict[str, str] = {}
     for update in sorted(outline_updates, key=lambda item: item.index):
         base = base_by_id[update.id]
-        chosen_template = canonical_template_key(update.template_id or base.template_key or "content.1col")
-        if chosen_template != canonical_template_key(base.template_key or "content.1col"):
+        chosen_template = canonical_template_key(update.template_id or base.template_key or "headline.evidence")
+        if chosen_template != canonical_template_key(base.template_key or "headline.evidence"):
             explicit_template_by_slide_id[base.slide_id] = chosen_template
         outline_items.append(
             OutlineItem(
@@ -648,7 +648,7 @@ def _normalize_outline_exact_count(outline: OutlineSpec, target_count: int, goal
         )
         items.pop(removable_index)
 
-    insert_at = next((index for index, item in enumerate(items) if item.purpose in {SlidePurpose.SUMMARY, SlidePurpose.APPENDIX}), len(items))
+    insert_at = next((index for index, item in enumerate(items) if item.purpose in {SlidePurpose.SUMMARY, SlidePurpose.CLOSING}), len(items))
     while len(items) < target_count:
         detail_number = 1 + sum(1 for item in items if item.purpose is SlidePurpose.CONTENT)
         message = f"{goal} supporting detail {detail_number}"
@@ -660,7 +660,7 @@ def _normalize_outline_exact_count(outline: OutlineSpec, target_count: int, goal
                 headline=f"Supporting Detail {detail_number}",
                 message=message,
                 evidence_queries=[message, f"{message} evidence"],
-                template_key="content.1col",
+                template_key="headline.evidence",
             ),
         )
         insert_at += 1
@@ -756,7 +756,7 @@ def _enforce_outline_authority(
                     slide_id=item.slide_id,
                     purpose=item.purpose,
                     archetype=item.archetype,
-                    layout_intent=LayoutIntent(template_key=item.template_key or "content.1col", strict_template=True),
+                    layout_intent=LayoutIntent(template_key=item.template_key or "headline.evidence", strict_template=True),
                     headline=item.headline,
                     speaker_notes=item.message,
                     blocks=[
@@ -764,7 +764,7 @@ def _enforce_outline_authority(
                             block_id="b1",
                             kind=PresentationBlockKind.TEXT,
                             content={"text": item.message},
-                            source_citations=_fallback_citation(source_ids) if item.purpose in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.APPENDIX} else [],
+                            source_citations=_fallback_citation(source_ids) if item.purpose in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.CLOSING} else [],
                         )
                     ],
                 )
@@ -806,53 +806,128 @@ def _apply_global_template_default(spec: PresentationSpec, selected_template_id:
 
 
 def _coerce_slide_for_template(slide: SlideSpec, template_key: str) -> SlideSpec:
-    if template_key == "content.1col":
-        return slide.model_copy(update={"layout_intent": LayoutIntent(template_key=template_key, strict_template=True)})
-    if template_key == "executive.overview":
-        return slide.model_copy(update={"layout_intent": LayoutIntent(template_key=template_key, strict_template=True)})
-    if template_key == "architecture.grid":
-        return slide.model_copy(update={"layout_intent": LayoutIntent(template_key=template_key, strict_template=True)})
+    canonical = canonical_template_key(template_key or "headline.evidence")
 
-    citations = [citation for block in slide.blocks for citation in block.source_citations]
-    summary_items = _slide_summary_items(slide)
+    text_items: list[str] = []
+    cards: list[dict[str, str]] = []
+    chart_data: dict[str, Any] | None = None
+    table_data: dict[str, Any] | None = None
+    takeaway: str | None = None
+    citations: list[SourceCitation] = []
 
-    if template_key == "kpi.3up":
+    for block in slide.blocks:
+        citations.extend(block.source_citations)
+        if block.kind is PresentationBlockKind.CALLOUT:
+            if isinstance(block.content.get("cards"), list):
+                for card in block.content.get("cards", []):
+                    if isinstance(card, dict):
+                        cards.append(
+                            {
+                                "title": str(card.get("title", "")).strip(),
+                                "text": str(card.get("text", "")).strip(),
+                            }
+                        )
+            elif block.content.get("text"):
+                takeaway = str(block.content.get("text", "")).strip()
+        elif block.kind is PresentationBlockKind.BULLETS:
+            text_items.extend(str(item).strip() for item in block.content.get("items", []) if str(item).strip())
+        elif block.kind is PresentationBlockKind.TEXT:
+            text = str(block.content.get("text", "")).strip()
+            if text:
+                text_items.append(text)
+        elif block.kind is PresentationBlockKind.CHART:
+            chart_data = dict(block.content)
+        elif block.kind is PresentationBlockKind.TABLE:
+            table_data = dict(block.content)
+        elif block.kind is PresentationBlockKind.KPI_CARDS:
+            for item in block.content.get("items", []):
+                if isinstance(item, dict):
+                    label = str(item.get("label", "")).strip()
+                    value = str(item.get("value", "")).strip()
+                    cards.append({"title": label or value, "text": value or label})
+
+    if table_data and not text_items:
+        rows = table_data.get("rows", [])
+        for row in rows[:4]:
+            if isinstance(row, list):
+                text_items.append(" | ".join(str(cell) for cell in row if str(cell).strip()))
+    if not text_items and slide.headline:
+        text_items.append(slide.headline)
+
+    def _fallback_callout() -> str:
+        return takeaway or (text_items[-1] if text_items else slide.headline)
+
+    if canonical == "title.cover":
         blocks = [
             PresentationBlock(
-                block_id=f"{slide.slide_id}-kpi-{index + 1}",
+                block_id="b1",
                 kind=PresentationBlockKind.TEXT,
-                content={"text": summary_items[index] if index < len(summary_items) else f"Insight {index + 1}"},
-                source_citations=citations[:1] if citations else [],
+                content={"subtitle": text_items[0] if text_items else "", "presenter": "", "date": ""},
+                source_citations=[],
             )
+        ]
+    elif canonical == "section.divider":
+        blocks = [
+            PresentationBlock(
+                block_id="b1",
+                kind=PresentationBlockKind.TEXT,
+                content={"tagline": text_items[0] if text_items else "", "footer_info": ""},
+                source_citations=[],
+            )
+        ]
+    elif canonical == "exec.summary":
+        summary_cards = cards[:3]
+        if len(summary_cards) < 3:
+            for item in text_items[:3 - len(summary_cards)]:
+                summary_cards.append({"title": " ".join(item.split()[:4]) or "Point", "text": item})
+        blocks = [
+            PresentationBlock(block_id="b1", kind=PresentationBlockKind.BULLETS, content={"items": text_items[:5]}, source_citations=citations),
+            PresentationBlock(block_id="b2", kind=PresentationBlockKind.CALLOUT, content={"text": _fallback_callout()}, source_citations=citations),
+            PresentationBlock(block_id="b3", kind=PresentationBlockKind.CALLOUT, content={"cards": summary_cards[:3]}, source_citations=citations),
+        ]
+    elif canonical == "headline.evidence":
+        blocks = [
+            PresentationBlock(block_id="b1", kind=PresentationBlockKind.BULLETS, content={"items": text_items}, source_citations=citations),
+            PresentationBlock(block_id="b2", kind=PresentationBlockKind.CALLOUT, content={"text": _fallback_callout()}, source_citations=citations),
+        ]
+    elif canonical == "kpi.big":
+        metric_texts = text_items[:3]
+        while len(metric_texts) < 3:
+            metric_texts.append(slide.headline)
+        blocks = [
+            PresentationBlock(block_id=f"b{index + 1}", kind=PresentationBlockKind.TEXT, content={"text": metric_texts[index]}, source_citations=citations[:1] if citations else [])
             for index in range(3)
         ]
-        return slide.model_copy(
-            update={
-                "layout_intent": LayoutIntent(template_key=template_key, strict_template=True),
-                "blocks": blocks,
-            }
-        )
-
-    if template_key == "content.3col.cards":
-        cards = [
-            {"title": f"Point {index + 1}", "text": summary_items[index] if index < len(summary_items) else f"Detail {index + 1}"}
-            for index in range(3)
+    elif canonical == "compare.2col":
+        midpoint = max(1, (len(text_items) + 1) // 2)
+        blocks = [
+            PresentationBlock(block_id="b1", kind=PresentationBlockKind.BULLETS, content={"items": text_items[:midpoint]}, source_citations=citations),
+            PresentationBlock(block_id="b2", kind=PresentationBlockKind.BULLETS, content={"items": text_items[midpoint:] or text_items[:1]}, source_citations=citations),
         ]
-        return slide.model_copy(
-            update={
-                "layout_intent": LayoutIntent(template_key=template_key, strict_template=True),
-                "blocks": [
-                    PresentationBlock(
-                        block_id=f"{slide.slide_id}-cards",
-                        kind=PresentationBlockKind.CALLOUT,
-                        content={"cards": cards},
-                        source_citations=citations[:2] if citations else [],
-                    )
-                ],
-            }
-        )
+    elif canonical == "chart.takeaway":
+        blocks = [
+            PresentationBlock(
+                block_id="b1",
+                kind=PresentationBlockKind.CHART,
+                content=chart_data or {"chart_type": "bar", "data": [{"label": f"Point {index + 1}", "value": index + 1} for index in range(min(max(len(text_items), 1), 3))]},
+                source_citations=citations,
+            ),
+            PresentationBlock(block_id="b2", kind=PresentationBlockKind.CALLOUT, content={"text": _fallback_callout()}, source_citations=citations),
+        ]
+    else:
+        blocks = [
+            PresentationBlock(block_id="b1", kind=PresentationBlockKind.BULLETS, content={"items": text_items}, source_citations=citations),
+            PresentationBlock(block_id="b2", kind=PresentationBlockKind.CALLOUT, content={"text": _fallback_callout()}, source_citations=citations),
+        ]
+        canonical = "closing.actions" if canonical == "closing.actions" else "headline.evidence"
 
-    return slide.model_copy(update={"layout_intent": LayoutIntent(template_key="content.1col", strict_template=True)})
+    if canonical == "closing.actions":
+        blocks = [
+            PresentationBlock(block_id="b1", kind=PresentationBlockKind.BULLETS, content={"items": text_items}, source_citations=citations),
+            PresentationBlock(block_id="b2", kind=PresentationBlockKind.CALLOUT, content={"text": _fallback_callout()}, source_citations=citations),
+        ]
+
+    return slide.model_copy(update={"layout_intent": LayoutIntent(template_key=canonical, strict_template=True), "blocks": blocks})
 
 
 def _slide_summary_items(slide: SlideSpec) -> list[str]:
@@ -918,7 +993,7 @@ def _outline_preview_blocks(
             }
         ]
 
-    if item.purpose is SlidePurpose.AGENDA:
+    if item.purpose is SlidePurpose.CLOSING:
         agenda_lines = [
             outline_item.headline
             for outline_item in outline.outline
@@ -946,40 +1021,30 @@ def _outline_preview_blocks(
 
 def _recommended_outline_template(item: OutlineItem) -> str:
     if item.purpose is SlidePurpose.TITLE:
-        return "title.hero"
-    if item.purpose is SlidePurpose.AGENDA:
-        return "agenda.list"
-    if item.archetype is SlideArchetype.EXECUTIVE_OVERVIEW:
-        return "executive.overview"
-    if item.archetype is SlideArchetype.ARCHITECTURE_GRID:
-        return "architecture.grid"
+        return "title.cover"
+    if item.purpose is SlidePurpose.CLOSING:
+        return "closing.actions"
+    if item.archetype is SlideArchetype.EXECUTIVE_SUMMARY:
+        return "exec.summary"
+    if item.archetype is SlideArchetype.COMPARISON:
+        return "compare.2col"
+    if item.archetype is SlideArchetype.METRICS:
+        return "kpi.big"
+    if item.archetype is SlideArchetype.CHART:
+        return "chart.takeaway"
     if item.purpose is SlidePurpose.SUMMARY:
-        return "content.3col.cards"
+        return "closing.actions"
 
     headline = f"{item.headline} {item.message}".lower()
     if any(term in headline for term in ("metric", "kpi", "score", "rate", "roi", "growth")):
-        return "kpi.3up"
-    if any(
-        term in headline
-        for term in (
-            "architecture",
-            "pipeline",
-            "component",
-            "capability",
-            "workstream",
-            "overview",
-            "ingestion",
-            "retrieval",
-            "layout",
-            "asset",
-            "export",
-            "renderer",
-        )
-    ):
-        return "architecture.grid"
+        return "kpi.big"
+    if any(term in headline for term in ("chart", "trend", "graph", "plot")):
+        return "chart.takeaway"
     if any(term in headline for term in ("compare", "comparison", "option", "tradeoff", "landscape", "tools")):
-        return "content.3col.cards"
-    return canonical_template_key(item.template_key or "content.1col")
+        return "compare.2col"
+    if any(term in headline for term in ("overview", "summary", "executive", "capability")):
+        return "exec.summary"
+    return canonical_template_key(item.template_key or "headline.evidence")
 
 
 def _trim_outline_line(value: str) -> str:
@@ -1003,7 +1068,7 @@ async def _llm_structure_slide_content(
 
     system = f"""You are a presentation designer. Given raw text, produce a structured JSON slide.
 
-Choose the best template_id from: content.1col, content.3col.cards, executive.overview, architecture.grid, kpi.3up
+Choose the best template_id from: headline.evidence, compare.2col, exec.summary, chart.takeaway, kpi.big, closing.actions
 The suggested template is "{suggested_template}" but override if a better one fits.
 
 Return JSON with:
@@ -1128,7 +1193,7 @@ def _fallback_structure_content(content: str, title: str, template: str) -> dict
         sentences.extend(re.split(r"(?<=[.!?])\s+", line))
     sentences = [s.strip() for s in sentences if len(s.split()) >= 5]
 
-    if template in ("content.3col.cards", "architecture.grid"):
+    if template in ("compare.2col", "exec.summary"):
         cards = []
         for i, sentence in enumerate(sentences[:6]):
             words = sentence.split()
@@ -1141,10 +1206,10 @@ def _fallback_structure_content(content: str, title: str, template: str) -> dict
             "headline": title,
             "template_id": template,
             "speaker_notes": "",
-            "blocks": [{"kind": "callout", "cards": cards[:6]}],
+            "blocks": [{"kind": "callout", "cards": cards[:3]}],
         }
 
-    if template == "kpi.3up":
+    if template == "kpi.big":
         items = []
         for sentence in sentences[:3]:
             numbers = re.findall(r"\b[\d,.]+[%$]?\b", sentence)
@@ -1240,40 +1305,44 @@ def _infer_best_template_for_content(content: str) -> str:
 
     # Detect comparison / multi-option content → cards
     if any(term in lowered for term in ("option", "vs.", "versus", "compare", "comparison", "alternative")):
-        return "content.3col.cards"
+        return "compare.2col"
 
     # Detect architecture / component descriptions → grid
     if any(term in lowered for term in ("component", "architecture", "pipeline", "module", "layer", "system")):
-        return "architecture.grid"
+        return "exec.summary"
 
     # Detect metrics / numbers → KPI
     import re
     numbers = re.findall(r"\b\d+[%$]?\b", content)
     if len(numbers) >= 3:
-        return "kpi.3up"
+        return "kpi.big"
 
     # Detect lists of 3+ distinct points → cards
     bullet_lines = [line for line in content.splitlines() if line.strip().startswith(("-", "•", "*", "1", "2", "3"))]
     if len(bullet_lines) >= 3:
-        return "content.3col.cards"
+        return "compare.2col"
 
     # Detect multiple paragraphs with distinct topics → executive overview
     paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
     if len(paragraphs) >= 2 and word_count > 60:
-        return "executive.overview"
+        return "exec.summary"
 
     # Dense text → executive overview for summarization
     if word_count > 80:
-        return "executive.overview"
+        return "exec.summary"
 
-    return "content.1col"
+    return "headline.evidence"
 
 
 def _preview_archetype_for_template(template_key: str) -> SlideArchetype | None:
-    if template_key == "executive.overview":
-        return SlideArchetype.EXECUTIVE_OVERVIEW
-    if template_key == "architecture.grid":
-        return SlideArchetype.ARCHITECTURE_GRID
+    if template_key == "exec.summary":
+        return SlideArchetype.EXECUTIVE_SUMMARY
+    if template_key == "compare.2col":
+        return SlideArchetype.COMPARISON
+    if template_key == "kpi.big":
+        return SlideArchetype.METRICS
+    if template_key == "chart.takeaway":
+        return SlideArchetype.CHART
     return None
 
 
@@ -1476,7 +1545,7 @@ def _infer_chat_brief(prompt: str, default_title: str) -> dict[str, Any]:
     if not goal:
         goal = f"Present {default_title}"
 
-    selected_template_id = "content.3col.cards" if any(term in lowered for term in ("architecture", "pipeline", "overview", "components")) else "content.1col"
+    selected_template_id = "compare.2col" if any(term in lowered for term in ("architecture", "pipeline", "overview", "components")) else "headline.evidence"
     return {
         "goal": goal,
         "audience": audience,

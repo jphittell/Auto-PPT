@@ -119,7 +119,7 @@ def test_openai_structured_client_uses_json_object_for_complex_schema() -> None:
                         '"colors":{"bg":"#FFFFFF","text":"#111111","accent":"#0A84FF","muted":"#6B7280"},'
                         '"spacing":{"margin_in":0.5,"gutter_in":0.25},'
                         '"images":{"source_policy":"provided_only","style_prompt":"clean editorial visuals"}}},'
-                        '"slides":[{"slide_id":"s1","purpose":"title","layout_intent":{"template_key":"title.hero","strict_template":true},'
+                        '"slides":[{"slide_id":"s1","purpose":"title","layout_intent":{"template_key":"title.cover","strict_template":true},'
                         '"headline":"Quarterly Review","speaker_notes":"","blocks":[{"block_id":"b1","kind":"text",'
                         '"content":{"subtitle":"Quarter summary","presenter":"Leadership","date":"2026-04-05"},'
                         '"source_citations":[],"asset_refs":[]}]}],"questions_for_user":[]}}'
@@ -157,7 +157,7 @@ def test_openai_structured_client_normalizes_presentation_spec_like_payload() ->
                             "slides": [
                                 {
                                     "slide_id": "s1",
-                                    "template_key": "title.hero",
+                                    "template_key": "title.cover",
                                     "title": "Quarterly Review",
                                     "blocks": [{"kind": "text", "content": "Quarter summary"}],
                                 }
@@ -174,7 +174,7 @@ def test_openai_structured_client_normalizes_presentation_spec_like_payload() ->
     result = client.generate_json(system_prompt="sys", user_prompt="user", schema_name="PresentationSpec")
 
     assert result["title"] == "Quarterly Review"
-    assert result["slides"][0]["layout_intent"]["template_key"] == "title.hero"
+    assert result["slides"][0]["layout_intent"]["template_key"] == "title.cover"
     assert result["slides"][0]["blocks"][0]["content"] == {"text": "Quarter summary"}
 
 
@@ -197,19 +197,19 @@ def test_anthropic_structured_client_normalizes_presentation_spec_like_payload()
                     "slides": [
                         {
                             "slide_id": "s1",
-                            "template_key": "title.hero",
+                            "template_key": "title.cover",
                             "title": "Quarterly Review",
                             "blocks": [{"kind": "text", "content": "Quarter summary"}],
                         },
                         {
                             "slide_id": "s2",
-                            "template_key": "content.1col",
+                            "template_key": "headline.evidence",
                             "headline": "Revenue Improved",
                             "blocks": [{"kind": "text", "content": "Revenue improved materially"}],
                         },
                         {
                             "slide_id": "s3",
-                            "template_key": "content.1col",
+                            "template_key": "headline.evidence",
                             "headline": "Margin Expanded",
                             "blocks": [
                                 {
@@ -230,7 +230,7 @@ def test_anthropic_structured_client_normalizes_presentation_spec_like_payload()
     result = client.generate_json(system_prompt="sys", user_prompt="user", schema_name="PresentationSpec")
 
     assert result["title"] == "Quarterly Review"
-    assert result["slides"][0]["layout_intent"]["template_key"] == "title.hero"
+    assert result["slides"][0]["layout_intent"]["template_key"] == "title.cover"
     assert result["slides"][1]["blocks"][0]["source_citations"] == [
         {"source_id": "doc-1", "locator": "doc-1:page1", "quote": None, "confidence": None}
     ]
@@ -317,7 +317,7 @@ def test_pipeline_uses_default_llm_client_when_available(
                             "headline": "Quarterly Review",
                             "message": "Open the review.",
                             "evidence_queries": [],
-                            "template_key": "title.hero",
+                            "template_key": "title.cover",
                         },
                         {
                             "slide_id": "s2",
@@ -325,7 +325,7 @@ def test_pipeline_uses_default_llm_client_when_available(
                             "headline": "Revenue Improved",
                             "message": "Revenue improved materially.",
                             "evidence_queries": ["revenue improved materially"],
-                            "template_key": "content.1col",
+                            "template_key": "headline.evidence",
                         },
                         {
                             "slide_id": "s3",
@@ -333,7 +333,7 @@ def test_pipeline_uses_default_llm_client_when_available(
                             "headline": "Key Takeaways",
                             "message": "Close the review.",
                             "evidence_queries": [],
-                            "template_key": "content.1col",
+                            "template_key": "headline.evidence",
                         },
                     ],
                     "questions_for_user": [],
@@ -369,7 +369,7 @@ def test_pipeline_uses_default_llm_client_when_available(
                         {
                             "slide_id": "s1",
                             "purpose": "title",
-                            "layout_intent": {"template_key": "title.hero", "strict_template": True},
+                            "layout_intent": {"template_key": "title.cover", "strict_template": True},
                             "headline": "Quarterly Review",
                             "speaker_notes": "Open the review. Set expectations.",
                             "blocks": [
@@ -385,7 +385,7 @@ def test_pipeline_uses_default_llm_client_when_available(
                         {
                             "slide_id": "s2",
                             "purpose": "content",
-                            "layout_intent": {"template_key": "content.1col", "strict_template": True},
+                            "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
                             "headline": "Revenue Improved",
                             "speaker_notes": "Revenue improved materially. Cite the supporting chunk.",
                             "blocks": [
@@ -408,7 +408,7 @@ def test_pipeline_uses_default_llm_client_when_available(
                         {
                             "slide_id": "s3",
                             "purpose": "summary",
-                            "layout_intent": {"template_key": "content.1col", "strict_template": True},
+                            "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
                             "headline": "Key Takeaways",
                             "speaker_notes": "Close the review. Reinforce the supported message.",
                             "blocks": [

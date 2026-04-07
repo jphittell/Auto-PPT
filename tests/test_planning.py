@@ -58,11 +58,11 @@ def test_collect_brief_outline_and_retrieval_plan_deterministic(sample_ingestion
 
     assert brief.audience == "Leadership team"
     assert outline.outline[0].purpose.value == "title"
-    assert outline.outline[1].purpose.value == "agenda"
-    assert outline.outline[2].archetype.value == "executive_overview"
-    assert outline.outline[2].template_key == "executive.overview"
-    assert any(item.template_key in {"architecture.grid", "content.3col.cards"} for item in outline.outline[2:])
-    assert outline.outline[-1].purpose.value == "summary"
+    assert outline.outline[1].purpose.value == "content"
+    assert outline.outline[1].archetype.value == "executive_summary"
+    assert outline.outline[1].template_key == "exec.summary"
+    assert any(item.template_key in {"exec.summary", "compare.2col", "headline.evidence", "closing.actions"} for item in outline.outline[1:])
+    assert outline.outline[-1].purpose.value in {"summary", "closing"}
     assert all(item.slide_id.startswith("s") for item in outline.outline)
     assert all(item.queries for item in retrieval_plan.retrieval_plan)
 
@@ -80,6 +80,48 @@ def test_collect_brief_preserves_requested_slide_count_above_12(sample_ingestion
     )
 
     assert brief.slide_count_target == 18
+
+
+def test_generate_outline_avoids_duplicate_headlines_for_pipeline_story() -> None:
+    brief = DeckBrief(
+        audience="Executive leadership",
+        goal="Explain the platform architecture with ingestion retrieval and layout details",
+        tone="executive",
+        slide_count_target=6,
+        source_corpus_ids=["src-arch"],
+        questions_for_user=[],
+        extensions={
+            "document_title": "Architecture Review",
+            "key_takeaways": [
+                "The platform supports real-time data ingestion from multiple sources.",
+                "Template-driven layout improves consistency and reliability.",
+                "Automated QA catches overflow and overlap issues before export.",
+            ],
+            "source_preview": "ingestion retrieval layout assets export architecture pipeline",
+        },
+    )
+
+    outline = generate_outline(brief)
+    content_and_summary = [item.headline for item in outline.outline if item.purpose in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.CLOSING}]
+
+    assert len(content_and_summary) == len({headline.lower() for headline in content_and_summary})
+
+
+def test_expand_content_messages_derives_distinct_framings_when_takeaways_are_short() -> None:
+    messages = prompt_chain_module._expand_content_messages(
+        [
+            "Revenue grew 15% year-over-year driven by cloud adoption",
+            "Margin improved through automation and better delivery governance",
+        ],
+        "Improve delivery quality and commercial performance",
+        5,
+    )
+
+    assert len(messages) == 5
+    assert all(" evidence" not in message.lower() for message in messages)
+    assert all(" implications" not in message.lower() for message in messages)
+    headlines = [prompt_chain_module._short_headline(message, fallback=f"Slide {index}") for index, message in enumerate(messages, start=1)]
+    assert len({headline.lower() for headline in headlines}) == len(headlines)
 
 
 def test_collect_brief_augments_llm_output_with_repo_extensions() -> None:
@@ -207,6 +249,58 @@ def test_planning_language_patterns_allow_endpoint_and_api_call_business_content
     )
 
 
+def test_build_agenda_slide_deduplicates_duplicate_headlines() -> None:
+    agenda_item = OutlineItem(
+        slide_id="s2",
+        purpose=SlidePurpose.CLOSING,
+        headline="Agenda",
+        message="Review goals, evidence, and next actions.",
+        evidence_queries=[],
+        template_key="closing.actions",
+    )
+    outline = OutlineSpec(
+        outline=[
+            OutlineItem(
+                slide_id="s1",
+                purpose=SlidePurpose.TITLE,
+                headline="Architecture Review",
+                message="Introduce the architecture review.",
+                evidence_queries=[],
+                template_key="title.cover",
+            ),
+            agenda_item,
+            OutlineItem(
+                slide_id="s3",
+                purpose=SlidePurpose.CONTENT,
+                headline="Architecture Components",
+                message="Architecture components overview",
+                evidence_queries=["architecture components"],
+                template_key="exec.summary",
+            ),
+            OutlineItem(
+                slide_id="s4",
+                purpose=SlidePurpose.CONTENT,
+                headline="Architecture Components",
+                message="Another architecture components view",
+                evidence_queries=["architecture components detail"],
+                template_key="exec.summary",
+            ),
+            OutlineItem(
+                slide_id="s5",
+                purpose=SlidePurpose.SUMMARY,
+                headline="Key Takeaways",
+                message="Summarize the strongest supported points and actions.",
+                evidence_queries=[],
+                template_key="compare.2col",
+            ),
+        ]
+    )
+
+    slide = prompt_chain_module._build_agenda_slide(item=agenda_item, outline=outline)
+
+    assert slide.blocks[0].content["items"] == ["Architecture Components", "Key Takeaways"]
+
+
 def test_generate_presentation_spec_is_schema_valid(sample_ingestion_request, deterministic_embedder, style_tokens_payload) -> None:
     chunks = chunk_document(sample_ingestion_request)
     vector_store = InMemoryVectorStore()
@@ -233,12 +327,12 @@ def test_generate_presentation_spec_is_schema_valid(sample_ingestion_request, de
 
     assert isinstance(spec, PresentationSpec)
     assert spec.slides
-    assert spec.slides[0].layout_intent.template_key == "title.hero"
+    assert spec.slides[0].layout_intent.template_key == "title.cover"
     assert any(block.source_citations for slide in spec.slides if slide.purpose.value in {"content", "summary"} for block in slide.blocks)
     content_slide = next(slide for slide in spec.slides if slide.purpose.value == "content")
-    if content_slide.archetype and content_slide.archetype.value == "executive_overview":
-        assert content_slide.layout_intent.template_key == "executive.overview"
-        assert len(content_slide.blocks[2].content["cards"]) == 6
+    if content_slide.archetype and content_slide.archetype.value == "executive_summary":
+        assert content_slide.layout_intent.template_key == "exec.summary"
+        assert content_slide.blocks[2].content["cards"]
     else:
         bullet_block = next(block for block in content_slide.blocks if block.kind.value == "bullets")
         assert bullet_block.content["items"]
@@ -264,7 +358,7 @@ def test_generate_presentation_spec_upgrades_comparison_slide_to_table(style_tok
                 headline="Integration Approach",
                 message="Introduce the decision.",
                 evidence_queries=[],
-                template_key="title.hero",
+                template_key="title.cover",
             ),
             OutlineItem(
                 slide_id="s2",
@@ -272,7 +366,7 @@ def test_generate_presentation_spec_upgrades_comparison_slide_to_table(style_tok
                 headline="Compare the options",
                 message="Compare integration options across core criteria.",
                 evidence_queries=["comparative summary integration options"],
-                template_key="content.1col",
+                template_key="headline.evidence",
             ),
             OutlineItem(
                 slide_id="s3",
@@ -280,7 +374,7 @@ def test_generate_presentation_spec_upgrades_comparison_slide_to_table(style_tok
                 headline="Recommendation",
                 message="Recommend the preferred path.",
                 evidence_queries=[],
-                template_key="content.1col",
+                template_key="headline.evidence",
             ),
         ]
     )
@@ -318,7 +412,7 @@ def test_generate_presentation_spec_upgrades_comparison_slide_to_table(style_tok
     )
 
     comparison_slide = next(slide for slide in spec.slides if slide.slide_id == "s2")
-    assert comparison_slide.layout_intent.template_key == "table.full"
+    assert comparison_slide.layout_intent.template_key == "headline.evidence"
     assert comparison_slide.blocks[0].kind.value == "table"
     assert comparison_slide.blocks[0].content["columns"][0] == "Criterion"
     assert len(comparison_slide.blocks[0].content["rows"]) >= 2
@@ -341,7 +435,7 @@ def test_generate_presentation_spec_honors_card_template_with_card_blocks(style_
                 headline="Architecture",
                 message="Introduce the delivery model.",
                 evidence_queries=[],
-                template_key="title.hero",
+                template_key="title.cover",
             ),
             OutlineItem(
                 slide_id="s2",
@@ -349,7 +443,7 @@ def test_generate_presentation_spec_honors_card_template_with_card_blocks(style_
                 headline="Core Architecture",
                 message="Architecture pipeline components and workflow",
                 evidence_queries=["architecture pipeline components workflow"],
-                template_key="content.3col.cards",
+                template_key="compare.2col",
             ),
             OutlineItem(
                 slide_id="s3",
@@ -357,7 +451,7 @@ def test_generate_presentation_spec_honors_card_template_with_card_blocks(style_
                 headline="Takeaways",
                 message="Summarize the design.",
                 evidence_queries=[],
-                template_key="content.3col.cards",
+                template_key="compare.2col",
             ),
         ]
     )
@@ -386,14 +480,13 @@ def test_generate_presentation_spec_honors_card_template_with_card_blocks(style_
 
     content_slide = next(slide for slide in spec.slides if slide.slide_id == "s2")
     summary_slide = next(slide for slide in spec.slides if slide.slide_id == "s3")
-    assert content_slide.layout_intent.template_key == "content.3col.cards"
-    assert content_slide.blocks[0].kind.value == "callout"
-    assert len(content_slide.blocks[0].content["cards"]) == 3
-    assert summary_slide.layout_intent.template_key == "content.3col.cards"
-    assert summary_slide.blocks[0].kind.value == "callout"
+    assert content_slide.layout_intent.template_key == "compare.2col"
+    assert content_slide.blocks[0].kind.value == "bullets"
+    assert content_slide.blocks[1].kind.value == "bullets"
+    assert summary_slide.layout_intent.template_key in {"compare.2col", "closing.actions", "headline.evidence"}
 
 
-def test_generate_presentation_spec_builds_executive_overview_slide(style_tokens_payload) -> None:
+def test_generate_presentation_spec_builds_executive_summary_slide(style_tokens_payload) -> None:
     brief = DeckBrief(
         audience="Oracle consultants",
         goal="Explain the delivery architecture",
@@ -411,16 +504,16 @@ def test_generate_presentation_spec_builds_executive_overview_slide(style_tokens
                 headline="Architecture",
                 message="Introduce the delivery model.",
                 evidence_queries=[],
-                template_key="title.hero",
+                template_key="title.cover",
             ),
             OutlineItem(
                 slide_id="s2",
                 purpose=SlidePurpose.CONTENT,
-                archetype="executive_overview",
+                archetype="executive_summary",
                 headline="Executive Overview",
                 message="Hybrid pipeline with six components",
                 evidence_queries=["hybrid pipeline six components"],
-                template_key="executive.overview",
+                template_key="exec.summary",
             ),
             OutlineItem(
                 slide_id="s3",
@@ -428,7 +521,7 @@ def test_generate_presentation_spec_builds_executive_overview_slide(style_tokens
                 headline="Takeaways",
                 message="Summarize the design.",
                 evidence_queries=[],
-                template_key="content.3col.cards",
+                template_key="compare.2col",
             ),
         ]
     )
@@ -459,17 +552,170 @@ def test_generate_presentation_spec_builds_executive_overview_slide(style_tokens
     )
 
     overview = next(slide for slide in spec.slides if slide.slide_id == "s2")
-    assert overview.archetype.value == "executive_overview"
-    assert overview.layout_intent.template_key == "executive.overview"
-    assert len(overview.blocks) == 4
+    assert overview.archetype.value == "executive_summary"
+    assert overview.layout_intent.template_key == "exec.summary"
+    assert len(overview.blocks) == 3
     assert overview.blocks[2].kind.value == "callout"
-    assert len(overview.blocks[2].content["cards"]) == 6
-    summary_text = overview.blocks[0].content["text"]
+    assert len(overview.blocks[2].content["cards"]) == 3
+    summary_text = " ".join(overview.blocks[0].content["items"])
     callout_text = overview.blocks[1].content["text"]
     card_texts = [card["text"] for card in overview.blocks[2].content["cards"]]
     assert prompt_chain_module._normalize_phrase(summary_text) != prompt_chain_module._normalize_phrase(callout_text)
     assert all(prompt_chain_module._normalize_phrase(text) != prompt_chain_module._normalize_phrase(summary_text) for text in card_texts)
     assert all(prompt_chain_module._normalize_phrase(text) != prompt_chain_module._normalize_phrase(callout_text) for text in card_texts)
+
+
+def test_overview_summary_text_falls_back_to_thesis_for_long_prose_fragment() -> None:
+    brief = DeckBrief(
+        audience="Executive leadership",
+        goal="Explain the architecture",
+        tone="executive",
+        slide_count_target=4,
+        source_corpus_ids=["doc"],
+        questions_for_user=[],
+        extensions={"one_sentence_thesis": "Hybrid pipelines outperform single-step slide generation."},
+    )
+    item = OutlineItem(
+        slide_id="s2",
+        purpose=SlidePurpose.CONTENT,
+        headline="Executive Overview",
+        message="Hybrid pipeline with six components",
+        evidence_queries=["hybrid pipeline"],
+        template_key="exec.summary",
+    )
+    slide_chunks = [
+        RetrievedChunk(
+            chunk_id="doc:e1:0",
+            source_id="doc",
+            locator="doc:page1",
+            text=(
+                "Structured data ingestion accepts documents and records, retrieval grounds slide content in source evidence, "
+                "template-driven layout applies deterministic composition, asset generation supplies charts and icons, "
+                "deterministic export preserves PPTX fidelity, validation catches overlap and consistency issues"
+            ),
+        )
+    ]
+
+    summary = prompt_chain_module._overview_summary_text(item, brief, slide_chunks, used=prompt_chain_module._UsedPhrases())
+
+    assert summary == "Hybrid pipelines outperform single-step slide generation."
+
+
+def test_overview_summary_text_prefers_two_complete_sentences() -> None:
+    brief = DeckBrief(
+        audience="Executive leadership",
+        goal="Explain the architecture",
+        tone="executive",
+        slide_count_target=4,
+        source_corpus_ids=["doc"],
+        questions_for_user=[],
+        extensions={"one_sentence_thesis": "Hybrid pipelines outperform single-step slide generation."},
+    )
+    item = OutlineItem(
+        slide_id="s2",
+        purpose=SlidePurpose.CONTENT,
+        headline="Executive Overview",
+        message="Hybrid pipeline with six components",
+        evidence_queries=["hybrid pipeline"],
+        template_key="exec.summary",
+    )
+    slide_chunks = [
+        RetrievedChunk(
+            chunk_id="doc:e1:0",
+            source_id="doc",
+            locator="doc:page1",
+            text=(
+                "Structured data ingestion accepts documents and records for downstream generation. "
+                "RAG-style retrieval grounds each slide in evidence from the source corpus. "
+                "Template-driven layout applies deterministic composition and spacing."
+            ),
+        )
+    ]
+
+    summary = prompt_chain_module._overview_summary_text(item, brief, slide_chunks, used=prompt_chain_module._UsedPhrases())
+
+    assert summary.count(".") <= 2
+    assert "Structured data ingestion accepts documents and records for downstream generation" in summary
+    assert "RAG-style retrieval grounds each slide in evidence from the source corpus" in summary
+    assert "Template-driven layout applies deterministic composition and spacing" not in summary
+
+
+def test_executive_summary_slide_keeps_body_and_callout_distinct_when_chunks_are_sparse() -> None:
+    brief = DeckBrief(
+        audience="Executive leadership",
+        goal="Explain the platform architecture and business value",
+        tone="executive",
+        slide_count_target=4,
+        source_corpus_ids=["doc"],
+        questions_for_user=[],
+        extensions={"one_sentence_thesis": "Hybrid pipelines outperform single-step slide generation."},
+    )
+    item = OutlineItem(
+        slide_id="s2",
+        purpose=SlidePurpose.CONTENT,
+        archetype="executive_summary",
+        headline="Executive Overview",
+        message="Hybrid pipeline with six components",
+        evidence_queries=["hybrid pipeline"],
+        template_key="exec.summary",
+    )
+    slide_chunks = [
+        RetrievedChunk(
+            chunk_id="doc:e1:0",
+            source_id="doc",
+            locator="doc:page1",
+            text="Structured data ingestion accepts documents and records, retrieval grounds slide content in source evidence, template-driven layout applies deterministic composition",
+        )
+    ]
+
+    slide = prompt_chain_module._executive_summary_slide(
+        item=item,
+        brief=brief,
+        tone_label="Balanced framing",
+        slide_chunks=slide_chunks,
+        citations=[{"source_id": "doc", "locator": "doc:page1"}],
+        summary_items=["Hybrid pipelines outperform single-step slide generation."],
+    )
+
+    summary_text = " ".join(slide.blocks[0].content["items"])
+    callout_text = slide.blocks[1].content["text"]
+
+    assert not prompt_chain_module._phrases_are_near_duplicate(
+        prompt_chain_module._normalize_phrase(summary_text),
+        prompt_chain_module._normalize_phrase(callout_text),
+    )
+
+
+def test_executive_summary_slide_has_no_footer_block() -> None:
+    brief = DeckBrief(
+        audience="Executive leadership",
+        goal="Explain the platform architecture",
+        tone="executive",
+        slide_count_target=4,
+        source_corpus_ids=["doc"],
+        questions_for_user=[],
+        extensions={"one_sentence_thesis": "Hybrid pipelines outperform single-step slide generation."},
+    )
+    item = OutlineItem(
+        slide_id="s2",
+        purpose=SlidePurpose.CONTENT,
+        archetype="executive_summary",
+        headline="Executive Overview",
+        message="Hybrid pipeline with six components",
+        evidence_queries=["hybrid pipeline"],
+        template_key="exec.summary",
+    )
+    slide = prompt_chain_module._executive_summary_slide(
+        item=item,
+        brief=brief,
+        tone_label="Balanced framing",
+        slide_chunks=[],
+        citations=[],
+        summary_items=["Hybrid pipelines outperform single-step slide generation."],
+    )
+
+    assert len(slide.blocks) == 3
+    assert [block.kind.value for block in slide.blocks] == ["bullets", "callout", "callout"]
 
 
 def test_used_phrases_tracks_normalized_matches() -> None:
@@ -559,6 +805,36 @@ def test_semantic_cards_from_chunks_strip_section_labels_from_card_text() -> Non
     )
 
 
+def test_compact_cards_does_not_pad_placeholder_titles() -> None:
+    cards = prompt_chain_module._compact_cards(
+        [
+            "Revenue growth accelerated through cloud adoption",
+            "Margin improved through workflow automation",
+        ],
+        title_prefix="Capability",
+        desired_count=6,
+    )
+
+    assert len(cards) == 2
+    assert all(not card["title"].startswith("Capability ") for card in cards)
+
+
+def test_cards_from_points_does_not_pad_placeholder_entries() -> None:
+    cards = prompt_chain_module._cards_from_points(
+        ["Delivery quality improved through deterministic templates"],
+        title_prefix="Capability",
+    )
+
+    assert len(cards) == 1
+    assert cards[0]["text"] == "Delivery quality improved through deterministic templates"
+
+
+def test_kpi_points_from_bullets_does_not_pad_placeholder_values() -> None:
+    values = prompt_chain_module._kpi_points_from_bullets(["Revenue up 15%", "Margin up 4 points"])
+
+    assert values == ["Revenue up 15%", "Margin up 4 points"]
+
+
 def test_deduplicate_slide_blocks_replaces_duplicate_text_block(style_tokens_payload) -> None:
     spec = PresentationSpec(
         title="Architecture",
@@ -569,7 +845,7 @@ def test_deduplicate_slide_blocks_replaces_duplicate_text_block(style_tokens_pay
             SlideSpec(
                 slide_id="s1",
                 purpose=SlidePurpose.CONTENT,
-                layout_intent=LayoutIntent(template_key="content.1col", strict_template=True),
+                layout_intent=LayoutIntent(template_key="headline.evidence", strict_template=True),
                 headline="Executive Overview",
                 blocks=[
                     PresentationBlock(block_id="b1", kind=PresentationBlockKind.TEXT, content={"text": "Repeated architecture summary"}),
@@ -599,7 +875,7 @@ def test_deduplicate_slide_blocks_replaces_duplicate_text_block(style_tokens_pay
     assert prompt_chain_module._normalize_phrase(blocks[0].content["text"]) != prompt_chain_module._normalize_phrase(blocks[-1].content["text"]) or len(blocks) == 1
 
 
-def test_generate_presentation_spec_builds_architecture_grid_slide(style_tokens_payload) -> None:
+def test_generate_presentation_spec_builds_executive_summary_slide(style_tokens_payload) -> None:
     brief = DeckBrief(
         audience="Oracle consultants",
         goal="Explain the architecture pipeline",
@@ -617,16 +893,16 @@ def test_generate_presentation_spec_builds_architecture_grid_slide(style_tokens_
                 headline="Architecture",
                 message="Introduce the model.",
                 evidence_queries=[],
-                template_key="title.hero",
+                template_key="title.cover",
             ),
             OutlineItem(
                 slide_id="s2",
                 purpose=SlidePurpose.CONTENT,
-                archetype="architecture_grid",
+                archetype="executive_summary",
                 headline="Architecture Components",
                 message="Six component pipeline",
                 evidence_queries=["ingestion retrieval layout assets export validation"],
-                template_key="architecture.grid",
+                template_key="exec.summary",
             ),
             OutlineItem(
                 slide_id="s3",
@@ -634,7 +910,7 @@ def test_generate_presentation_spec_builds_architecture_grid_slide(style_tokens_
                 headline="Takeaways",
                 message="Summarize the design.",
                 evidence_queries=[],
-                template_key="content.3col.cards",
+                template_key="compare.2col",
             ),
         ]
     )
@@ -665,11 +941,12 @@ def test_generate_presentation_spec_builds_architecture_grid_slide(style_tokens_
     )
 
     architecture_slide = next(slide for slide in spec.slides if slide.slide_id == "s2")
-    assert architecture_slide.archetype.value == "architecture_grid"
-    assert architecture_slide.layout_intent.template_key == "architecture.grid"
+    assert architecture_slide.archetype.value == "executive_summary"
+    assert architecture_slide.layout_intent.template_key == "exec.summary"
     assert len(architecture_slide.blocks) == 3
+    assert architecture_slide.blocks[0].kind.value == "bullets"
     assert architecture_slide.blocks[1].kind.value == "callout"
-    assert len(architecture_slide.blocks[1].content["cards"]) == 6
+    assert len(architecture_slide.blocks[2].content["cards"]) == 3
 
 
 def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_tokens_payload) -> None:
@@ -690,16 +967,16 @@ def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_
                 headline="How AI Presentation Systems Work",
                 message="Open with the implementation point of view.",
                 evidence_queries=[],
-                template_key="title.hero",
+                template_key="title.cover",
             ),
             OutlineItem(
                 slide_id="s2",
                 purpose=SlidePurpose.CONTENT,
-                archetype="executive_overview",
+                archetype="executive_summary",
                 headline="Executive Overview",
                 message="Hybrid pipeline with six components",
                 evidence_queries=["hybrid pipeline six components"],
-                template_key="executive.overview",
+                template_key="exec.summary",
             ),
             OutlineItem(
                 slide_id="s3",
@@ -707,7 +984,7 @@ def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_
                 headline="Design Quality Strategies",
                 message="Compare the main design quality strategies",
                 evidence_queries=["template first rule based free form design quality strategies"],
-                template_key="content.3col.cards",
+                template_key="compare.2col",
             ),
         ]
     )
@@ -753,7 +1030,7 @@ def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_
                     {
                         "slide_id": "s1",
                         "purpose": "title",
-                        "layout_intent": {"template_key": "content.1col", "strict_template": True},
+                        "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
                         "headline": "Slide 1",
                         "speaker_notes": "",
                         "blocks": [
@@ -769,7 +1046,7 @@ def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_
                     {
                         "slide_id": "s2",
                         "purpose": "content",
-                        "layout_intent": {"template_key": "content.1col", "strict_template": True},
+                        "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
                         "headline": "Slide 2",
                         "speaker_notes": "",
                         "blocks": [
@@ -785,7 +1062,7 @@ def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_
                     {
                         "slide_id": "s3",
                         "purpose": "content",
-                        "layout_intent": {"template_key": "content.1col", "strict_template": True},
+                        "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
                         "headline": "Design Quality Strategies",
                         "speaker_notes": "",
                         "blocks": [
@@ -817,14 +1094,14 @@ def test_generate_presentation_spec_llm_branch_rebuilds_opening_and_cards(style_
     overview_slide = next(slide for slide in spec.slides if slide.slide_id == "s2")
     strategies_slide = next(slide for slide in spec.slides if slide.slide_id == "s3")
 
-    assert title_slide.layout_intent.template_key == "title.hero"
+    assert title_slide.layout_intent.template_key == "title.cover"
     assert title_slide.blocks[0].content["subtitle"]
     assert "Oracle" in title_slide.blocks[0].content["subtitle"]
     assert title_slide.blocks[0].content["presenter"] == "Oracle consultants"
-    assert overview_slide.layout_intent.template_key == "executive.overview"
-    assert overview_slide.archetype.value == "executive_overview"
-    assert len(overview_slide.blocks[2].content["cards"]) == 6
-    assert strategies_slide.layout_intent.template_key == "content.3col.cards"
+    assert overview_slide.layout_intent.template_key == "exec.summary"
+    assert overview_slide.archetype.value == "executive_summary"
+    assert len(overview_slide.blocks[2].content["cards"]) == 3
+    assert strategies_slide.layout_intent.template_key == "compare.2col"
     assert strategies_slide.blocks[0].kind.value == "callout"
     assert strategies_slide.blocks[0].content["cards"][0]["title"] == "Template-First"
 

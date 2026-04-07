@@ -10,7 +10,7 @@ function TemplateIllustration({ templateId }: { templateId: string }) {
   const accentMid = '#A5B4FC'
   const ink = '#334155'
 
-  if (templateId === 'title.hero') {
+  if (templateId === 'title.cover') {
     return (
       <svg viewBox="0 0 240 112" className="h-24 w-full rounded-xl">
         <defs>
@@ -29,7 +29,7 @@ function TemplateIllustration({ templateId }: { templateId: string }) {
     )
   }
 
-  if (templateId === 'agenda.list') {
+  if (templateId === 'closing.actions') {
     return (
       <svg viewBox="0 0 240 112" className="h-24 w-full rounded-xl">
         <defs>
@@ -54,7 +54,7 @@ function TemplateIllustration({ templateId }: { templateId: string }) {
     )
   }
 
-  if (templateId === 'content.2col.text_image') {
+  if (templateId === 'compare.2col') {
     return (
       <svg viewBox="0 0 240 112" className="h-24 w-full rounded-xl">
         <defs>
@@ -130,7 +130,7 @@ export function HomePage() {
             <div className="mt-8 flex flex-wrap gap-4 text-sm text-slate-500">
               <span>Real document parsing</span>
               <span>|</span>
-              <span>12 layout templates</span>
+              <span>8 slide types</span>
               <span>|</span>
               <span>Editable PPTX</span>
               <span>|</span>

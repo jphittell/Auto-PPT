@@ -15,6 +15,7 @@ export function EditorPage() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewSlide, setPreviewSlide] = useState<SlideSpec | null>(null)
   const [promptText, setPromptText] = useState('')
+  const [selectedThemeName, setSelectedThemeName] = useState<'Default' | 'ONAC'>('Default')
   const currentDeck = useDeckStore((state) => state.currentDeck)
   const loadDeck = useDeckStore((state) => state.loadDeck)
   const updateSlide = useDeckStore((state) => state.updateSlide)
@@ -127,15 +128,12 @@ export function EditorPage() {
           <label className="flex items-center gap-2">
             <span>Theme:</span>
             <select
-              value={slide.template_id}
-              onChange={(event) => updateSlide(selectedSlideIndex, { template_id: event.target.value })}
+              value={selectedThemeName}
+              onChange={(event) => setSelectedThemeName(event.target.value as 'Default' | 'ONAC')}
               className="rounded-lg border border-slate-200 px-3 py-2"
             >
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
+              <option value="Default">Default</option>
+              <option value="ONAC">ONAC</option>
             </select>
           </label>
           <button type="button" className="text-slate-600" onClick={() => ui.addToast('Layout controls coming soon.')}>
@@ -169,12 +167,14 @@ export function EditorPage() {
         <div className="flex min-h-0 flex-1">
           <SlideCanvas
             slide={slide}
+            templates={templates}
             previewSlide={previewSlide}
             deckTitle={currentDeck.title}
             audience={currentDeck.audience}
-            themeName={currentDeck.theme?.name}
+            themeName={selectedThemeName}
             promptText={promptText}
             onPromptTextChange={setPromptText}
+            onSlideTypeChange={(templateId) => updateSlide(selectedSlideIndex, { template_id: templateId })}
             onGeneratePreview={handleGeneratePreview}
             previewLoading={previewLoading}
           />

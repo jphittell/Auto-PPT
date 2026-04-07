@@ -153,7 +153,7 @@ def make_slide(make_block: Callable[..., dict]) -> Callable[..., dict]:
         slide_id: str = "s1",
         purpose: str = "content",
         blocks: list[dict] | None = None,
-        template_key: str = "content.1col",
+        template_key: str = "headline.evidence",
     ) -> dict:
         return {
             "slide_id": slide_id,
