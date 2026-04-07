@@ -13,6 +13,7 @@ from pptx.slide import Slide
 from pptx.util import Inches, Pt
 
 from pptx_gen.layout.schemas import ResolvedElementKind, StyleTokens
+from pptx_gen.renderer.markdown_strip import strip_markdown
 
 
 _TEXTBOX_KINDS = {ResolvedElementKind.TEXTBOX, ResolvedElementKind.SHAPE}
@@ -255,19 +256,24 @@ def ensure_local_asset_path(image_path: str | Path) -> Path:
 def extract_text_lines(content: Any) -> list[str]:
     if content is None:
         return []
+    lines: list[str]
     if isinstance(content, str):
-        return [content]
-    if isinstance(content, list):
-        return [str(item) for item in content if item is not None]
-    if isinstance(content, dict):
+        lines = [content]
+    elif isinstance(content, list):
+        lines = [str(item) for item in content if item is not None]
+    elif isinstance(content, dict):
         if isinstance(content.get("items"), list):
-            return [str(item) for item in content["items"] if item is not None]
-        ordered_keys = ("title", "text", "value", "label", "delta", "sub_label", "subtitle", "presenter", "date")
-        values = [str(content[key]) for key in ordered_keys if content.get(key)]
-        if values:
-            return values
-        return [str(value) for value in content.values() if value not in (None, "", [], {})]
-    return [str(content)]
+            lines = [str(item) for item in content["items"] if item is not None]
+        else:
+            ordered_keys = ("title", "text", "value", "label", "delta", "sub_label", "subtitle", "presenter", "date")
+            values = [str(content[key]) for key in ordered_keys if content.get(key)]
+            if values:
+                lines = values
+            else:
+                lines = [str(value) for value in content.values() if value not in (None, "", [], {})]
+    else:
+        lines = [str(content)]
+    return [strip_markdown(line) for line in lines]
 
 
 def extract_table_content(content: Any) -> tuple[list[str], list[list[str]]] | None:
@@ -280,8 +286,8 @@ def extract_table_content(content: Any) -> tuple[list[str], list[list[str]]] | N
     normalized_rows = []
     for row in rows:
         if isinstance(row, list):
-            normalized_rows.append([str(cell) for cell in row])
-    return [str(column) for column in columns], normalized_rows
+            normalized_rows.append([strip_markdown(str(cell)) for cell in row])
+    return [strip_markdown(str(column)) for column in columns], normalized_rows
 
 
 def extract_local_asset_path(content: Any) -> Path | None:

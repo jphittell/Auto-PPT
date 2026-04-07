@@ -150,7 +150,12 @@ def test_api_plan_and_generate_honor_authoritative_inputs(monkeypatch, sample_pd
     assert deck["theme"]["accent_color"] == "#445566"
     assert deck["theme"]["heading_font"] == "DM Serif Display"
     assert deck["theme"]["body_font"] == "DM Sans"
-    assert any("Analytical framing" in block["content"] for slide in deck["slides"] for block in slide["blocks"])
+    assert any(
+        block.get("data", {}).get("tone_hint") == "Analytical framing"
+        for slide in deck["slides"]
+        for block in slide["blocks"]
+        if isinstance(block.get("data"), dict)
+    )
 
     fetched = client.get(f"/api/deck/{deck['id']}")
     assert fetched.status_code == 200
@@ -249,8 +254,22 @@ def test_api_different_prompt_inputs_change_generated_result(monkeypatch, sample
     assert analytical_deck["audience"] == "Board"
     assert bold_deck["audience"] == "Investors"
     assert analytical_text != bold_text
-    assert "Analytical framing" in analytical_text
-    assert "Bold framing" in bold_text
+    analytical_tone_hints = [
+        block.get("data", {}).get("tone_hint")
+        for slide in analytical_deck["slides"]
+        for block in slide["blocks"]
+        if isinstance(block.get("data"), dict)
+    ]
+    bold_tone_hints = [
+        block.get("data", {}).get("tone_hint")
+        for slide in bold_deck["slides"]
+        for block in slide["blocks"]
+        if isinstance(block.get("data"), dict)
+    ]
+    assert "Analytical framing" in analytical_tone_hints
+    assert "Bold framing" in bold_tone_hints
+    assert "Analytical framing" not in analytical_text
+    assert "Bold framing" not in bold_text
     assert any(
         slide["template_id"] in {"content.3col.cards", "architecture.grid", "kpi.3up", "executive.overview"}
         for slide in bold_deck["slides"]
@@ -376,6 +395,48 @@ def test_api_slide_preview_calls_llm_and_returns_consulting_style() -> None:
     assert payload["title"] == "Executive Overview"
     assert payload["template_id"] == "executive.overview"
     assert any(block.get("data", {}).get("cards") for block in payload["blocks"] if isinstance(block.get("data"), dict))
+
+
+def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed() -> None:
+    _reset_api_state()
+
+    class FakeClient:
+        def generate_json(self, *, system_prompt: str, user_prompt: str, schema_name: str) -> dict:
+            return {
+                "schema_version": "1.0.0",
+                "slides": [
+                    {
+                        "headline": "Broken Preview",
+                        "layout_intent": "executive.overview",
+                        "blocks": "not-a-list",
+                    }
+                ],
+            }
+
+    api_module._STRUCTURED_LLM_CLIENT = FakeClient()
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/api/slide/preview",
+        json={
+            "slide_id": "slide-preview-fallback",
+            "title": "Fallback Preview",
+            "purpose": "content",
+            "template_id": "content.1col",
+            "content": "First point explains ingestion. Second point covers retrieval. Third point summarizes export.",
+            "audience": "Operators",
+            "goal": "Explain the workflow",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "slide-preview-fallback"
+    assert payload["title"] == "Fallback Preview"
+    assert payload["template_id"] == "content.1col"
+    assert payload["blocks"]
+    assert all(isinstance(block.get("data"), dict) for block in payload["blocks"])
+    assert all(block.get("data", {}).get("cards") is None for block in payload["blocks"])
 
 
 def test_api_serves_built_frontend(monkeypatch, tmp_path) -> None:

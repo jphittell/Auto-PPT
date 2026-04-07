@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pptx_gen.assets.resolver import AssetManifest, ResolvedAssetBundle, resolve_assets
 from pptx_gen.ingestion.chunker import chunk_document
 from pptx_gen.ingestion.parser import parse_source
-from pptx_gen.ingestion.schemas import ChunkRecord, IngestionOptions, IngestionRequest
+from pptx_gen.ingestion.schemas import ChunkRecord, ContentClassification, IngestionOptions, IngestionRequest
 from pptx_gen.indexing.embedder import SentenceTransformerEmbedder, SupportsEmbedding
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.layout.resolver import resolve_deck_layout
@@ -207,7 +207,11 @@ def generate_deck(
             "slide_count_target": slide_count_target,
             "source_corpus_ids": [ingestion_result.source_id],
             "document_title": title or ingestion_result.ingestion_request.document.title,
-            "source_texts": [chunk.text for chunk in ingestion_result.chunks],
+            "source_texts": [
+                chunk.text
+                for chunk in ingestion_result.chunks
+                if chunk.classification is ContentClassification.AUDIENCE_CONTENT
+            ],
         }
         deck_title = title or ingestion_result.ingestion_request.document.title or "Untitled Presentation"
         try:

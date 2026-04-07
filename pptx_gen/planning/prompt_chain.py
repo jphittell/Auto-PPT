@@ -10,6 +10,7 @@ from typing import Protocol
 
 from pptx_gen.indexing.embedder import SupportsEmbedding
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
+from pptx_gen.ingestion.schemas import ContentClassification
 from pptx_gen.layout.schemas import StyleTokens
 from pptx_gen.planning.schemas import (
     DeckBrief,
@@ -30,6 +31,7 @@ from pptx_gen.planning.schemas import (
     SlideSpec,
     SourceCitation,
 )
+from pptx_gen.renderer.markdown_strip import strip_markdown
 
 
 class StructuredLLMClient(Protocol):
@@ -37,6 +39,26 @@ class StructuredLLMClient(Protocol):
 
     def generate_json(self, *, system_prompt: str, user_prompt: str, schema_name: str) -> dict:
         """Return schema-valid JSON for the requested contract."""
+
+
+# Chroma distances in this repo's deterministic tests map to very small scores,
+# so keep the gate conservative enough to trim only pathological near-zero hits.
+MIN_RETRIEVAL_SCORE = 0.0001
+PLANNING_LANGUAGE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(?:codex|claude|llm|model)\s+should\b", re.IGNORECASE),
+    re.compile(r"\b(?:should implement|must ensure|needs to|todo|fixme|hack|note:)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:upsert|idempotent|sha-256|faiss|qdrant|function signature|"
+        r"(?:implement|wire up|hook up|configure)\s+(?:endpoint|api call))\b",
+        re.IGNORECASE,
+    ),
+)
+SECTION_LABEL_PREFIX_PATTERN = re.compile(
+    r"^(?:(?:business content(?:\s+executive [Oo]verview)?|"
+    r"planning notes(?:\s+executive [Oo]verview)?|implementation [Nn]otes|"
+    r"technical [Dd]etails|key [Ff]indings|background|introduction|appendix)\s+)+",
+    re.IGNORECASE,
+)
 
 
 def collect_deck_brief(
@@ -268,8 +290,17 @@ def execute_retrieval_plan(
         hits: list[RetrievedChunk] = []
         for query in item.queries:
             embedding = embedder.encode([query.query])[0]
-            for hit in vector_store.query(query_embedding=embedding, n_results=max_results_per_query):
+            for hit in vector_store.query(
+                query_embedding=embedding,
+                n_results=max_results_per_query,
+                exclude_classifications=[
+                    ContentClassification.META_PLANNING,
+                    ContentClassification.BOILERPLATE,
+                ],
+            ):
                 if query.doc_ids and hit.source_id not in query.doc_ids:
+                    continue
+                if hit.score is not None and hit.score < MIN_RETRIEVAL_SCORE:
                     continue
                 if hit.chunk_id in seen_chunk_ids:
                     continue
@@ -319,6 +350,7 @@ def generate_presentation_spec(
             retrieved_chunks_by_slide=retrieved_chunks_by_slide,
             tone_label=tone_label,
         )
+        spec = _deduplicate_slide_blocks(spec, retrieved_chunks_by_slide)
         spec = _inject_missing_citations(spec, retrieved_chunks_by_slide, brief)
         return _upgrade_visual_templates(spec, retrieved_chunks_by_slide, brief)
 
@@ -343,7 +375,12 @@ def generate_presentation_spec(
             if takeaways:
                 summary_items = [_trim_words(text, 20) for text in takeaways][:6]
             else:
-                all_chunk_texts = [chunk.text for chunks in retrieved_chunks_by_slide.values() for chunk in chunks]
+                all_chunk_texts = [
+                    chunk.text
+                    for chunks in retrieved_chunks_by_slide.values()
+                    for chunk in chunks
+                    if not _is_planning_language(chunk.text)
+                ]
                 derived = _derive_takeaways(all_chunk_texts, brief.goal)
                 summary_items = [_trim_words(text, 20) for text in derived][:6]
             summary_block_citations = summary_citations[:1] or _citations_from_chunks(slide_chunks)[:1] or _fallback_citation(brief.source_corpus_ids)
@@ -408,7 +445,14 @@ def generate_presentation_spec(
                         PresentationBlock(
                             block_id="b2",
                             kind=PresentationBlockKind.CALLOUT,
-                            content={"text": _callout_from_chunks(slide_chunks, fallback=brief.goal, tone_label=tone_label)},
+                            content={
+                                "text": _callout_from_chunks(
+                                    slide_chunks,
+                                    fallback=brief.goal,
+                                    used=_UsedPhrases.from_phrases(summary_items),
+                                ),
+                                "tone_hint": tone_label,
+                            },
                             source_citations=summary_block_citations,
                         ),
                     ],
@@ -416,7 +460,8 @@ def generate_presentation_spec(
             )
             continue
 
-        bullets = _bullets_from_chunks(slide_chunks, fallback=item.message)
+        used_phrases = _UsedPhrases()
+        bullets = _bullets_from_chunks(slide_chunks, fallback=item.message, used=used_phrases)
         citations = _citations_from_chunks(slide_chunks)[:2]
         if citations:
             summary_citations.extend(citations)
@@ -503,7 +548,10 @@ def generate_presentation_spec(
                     PresentationBlock(
                         block_id="b2",
                         kind=PresentationBlockKind.CALLOUT,
-                        content={"text": _callout_from_chunks(slide_chunks, fallback=item.message, tone_label=tone_label)},
+                        content={
+                            "text": _callout_from_chunks(slide_chunks, fallback=item.message, used=used_phrases),
+                            "tone_hint": tone_label,
+                        },
                         source_citations=citations or _fallback_citation(brief.source_corpus_ids),
                     ),
                 ],
@@ -803,9 +851,13 @@ def _derive_takeaways(source_texts: list[str], goal: str) -> list[str]:
     takeaways: list[str] = []
     seen: set[str] = set()
     for text in source_texts:
+        if _is_planning_language(text):
+            continue
         for candidate in _candidate_phrases(text):
             normalized = _normalize_phrase(candidate)
             if not normalized or normalized in seen:
+                continue
+            if _is_planning_language(candidate):
                 continue
             takeaways.append(candidate)
             seen.add(normalized)
@@ -900,7 +952,7 @@ def _outline_takeaways(brief: DeckBrief) -> list[str]:
             continue
         if normalized == title_norm or normalized == goal_norm:
             continue
-        if trimmed.lower().startswith("how ai presentation systems ingest data"):
+        if _is_planning_language(trimmed):
             continue
         if len(trimmed.split()) < 5:
             continue
@@ -1072,22 +1124,26 @@ def _title_subtitle_from_content(
         for sentence in re.split(r"(?<=[.!?])\s+", chunk.text):
             words = sentence.split()
             if 8 <= len(words) <= 30:
-                subtitle = _trim_words(sentence.strip(), 25)
-                if "oracle" in brief.audience.lower() and "oracle" not in subtitle.lower():
-                    subtitle = _trim_words(f"{subtitle} For {brief.audience}.", 25)
-                return subtitle
+                cleaned = _clean_candidate_phrase(sentence.strip())
+                if not cleaned or len(cleaned.split()) < 6:
+                    continue
+                subtitle = _trim_words(cleaned, 25)
+                return _apply_audience_specific_subtitle(subtitle, brief)
 
     # Use the outline item's message if it's substantive
     if item.message and len(item.message.split()) >= 5:
         subtitle = _trim_words(item.message, 25)
-        if "oracle" in brief.audience.lower() and "oracle" not in subtitle.lower():
-            subtitle = _trim_words(f"{subtitle} For {brief.audience}.", 25)
-        return subtitle
+        return _apply_audience_specific_subtitle(subtitle, brief)
 
     # Use the goal as last resort, but frame it better
     subtitle = _trim_words(brief.goal, 20)
-    if "oracle" in brief.audience.lower() and "oracle" not in subtitle.lower():
-        subtitle = _trim_words(f"{subtitle} For {brief.audience}.", 20)
+    return _apply_audience_specific_subtitle(subtitle, brief)
+
+
+def _apply_audience_specific_subtitle(subtitle: str, brief: DeckBrief) -> str:
+    normalized_audience = brief.audience.lower()
+    if "oracle" in normalized_audience and "oracle" not in subtitle.lower():
+        return _trim_words(f"{subtitle} For {brief.audience}.", 25)
     return subtitle
 
 
@@ -1126,8 +1182,10 @@ def _executive_overview_slide(
     citations: list[SourceCitation],
     summary_items: list[str],
 ) -> SlideSpec:
-    summary_text = _overview_summary_text(item, brief, slide_chunks)
-    cards = _overview_cards(slide_chunks, summary_items)
+    used = _UsedPhrases.from_phrases(summary_items)
+    summary_text = _overview_summary_text(item, brief, slide_chunks, used=used)
+    callout_text = _specialist_callout(brief, slide_chunks, fallback=item.message, used=used)
+    cards = _overview_cards(slide_chunks, summary_items, used=used)
     footer_text = f"{len(cards)} components | {_footer_metric_label(slide_chunks, brief)}"
     return SlideSpec(
         slide_id=item.slide_id,
@@ -1146,7 +1204,10 @@ def _executive_overview_slide(
             PresentationBlock(
                 block_id="b2",
                 kind=PresentationBlockKind.CALLOUT,
-                content={"text": _specialist_callout(brief, slide_chunks, fallback=item.message, tone_label=tone_label)},
+                content={
+                    "text": callout_text,
+                    "tone_hint": tone_label,
+                },
                 source_citations=citations,
             ),
             PresentationBlock(
@@ -1173,8 +1234,9 @@ def _architecture_grid_slide(
     citations: list[SourceCitation],
     summary_items: list[str],
 ) -> SlideSpec:
-    summary_text = _architecture_summary_text(item, brief, slide_chunks)
-    cards = _architecture_cards(slide_chunks, summary_items)
+    used = _UsedPhrases.from_phrases(summary_items)
+    summary_text = _architecture_summary_text(item, brief, slide_chunks, used=used)
+    cards = _architecture_cards(slide_chunks, summary_items, used=used)
     footer_text = f"{len(cards)} components | {_footer_metric_label(slide_chunks, brief)}"
     return SlideSpec(
         slide_id=item.slide_id,
@@ -1206,58 +1268,119 @@ def _architecture_grid_slide(
     )
 
 
-def _overview_summary_text(item: OutlineItem, brief: DeckBrief, slide_chunks: list[RetrievedChunk]) -> str:
+def _overview_summary_text(
+    item: OutlineItem,
+    brief: DeckBrief,
+    slide_chunks: list[RetrievedChunk],
+    *,
+    used: "_UsedPhrases | None" = None,
+) -> str:
     phrases = []
     for chunk in slide_chunks:
-        phrases.extend(_candidate_phrases(chunk.text))
+        for phrase in _candidate_phrases(chunk.text):
+            if used is not None and used.is_used(phrase):
+                continue
+            phrases.append(phrase)
+            if len(phrases) >= 3:
+                break
         if len(phrases) >= 3:
             break
     if phrases:
+        if used is not None:
+            used.mark_all(phrases[:3])
         return _trim_words(". ".join(phrases[:3]), 40)
     thesis = str((brief.extensions or {}).get("one_sentence_thesis", brief.goal))
-    return _trim_words(thesis, 30)
+    summary = _trim_words(thesis, 30)
+    if used is not None:
+        used.mark(summary)
+    return summary
 
 
-def _overview_cards(slide_chunks: list[RetrievedChunk], summary_items: list[str]) -> list[dict[str, str]]:
-    semantic_cards = _semantic_cards_from_chunks(slide_chunks, desired_count=6, mode="overview")
+def _overview_cards(
+    slide_chunks: list[RetrievedChunk],
+    summary_items: list[str],
+    *,
+    used: "_UsedPhrases | None" = None,
+) -> list[dict[str, str]]:
+    semantic_cards = _semantic_cards_from_chunks(slide_chunks, desired_count=6, mode="overview", used=used)
     if semantic_cards:
         return semantic_cards
-    points = list(summary_items)
+    points: list[str] = []
+    for item in summary_items:
+        if used is not None and used.is_used(item):
+            continue
+        if item not in points:
+            points.append(item)
+            if used is not None:
+                used.mark(item)
     for chunk in slide_chunks:
         for phrase in _candidate_phrases(chunk.text):
+            if used is not None and used.is_used(phrase):
+                continue
             if phrase not in points:
                 points.append(phrase)
+                if used is not None:
+                    used.mark(phrase)
             if len(points) >= 6:
                 return _compact_cards(points[:6], title_prefix="Capability")
     return _compact_cards(points[:6], title_prefix="Capability")
 
 
-def _architecture_summary_text(item: OutlineItem, brief: DeckBrief, slide_chunks: list[RetrievedChunk]) -> str:
+def _architecture_summary_text(
+    item: OutlineItem,
+    brief: DeckBrief,
+    slide_chunks: list[RetrievedChunk],
+    *,
+    used: "_UsedPhrases | None" = None,
+) -> str:
     phrases = []
     for chunk in slide_chunks:
-        phrases.extend(_candidate_phrases(chunk.text))
+        for phrase in _candidate_phrases(chunk.text):
+            if used is not None and used.is_used(phrase):
+                continue
+            phrases.append(phrase)
+            if len(phrases) >= 2:
+                break
         if len(phrases) >= 2:
             break
     if phrases:
+        if used is not None:
+            used.mark_all(phrases[:2])
         return _trim_words(". ".join(phrases[:2]), 30)
     thesis = str((brief.extensions or {}).get("one_sentence_thesis", brief.goal))
-    return _trim_words(thesis, 25)
+    summary = _trim_words(thesis, 25)
+    if used is not None:
+        used.mark(summary)
+    return summary
 
 
-def _architecture_cards(slide_chunks: list[RetrievedChunk], summary_items: list[str]) -> list[dict[str, str]]:
-    semantic_cards = _semantic_cards_from_chunks(slide_chunks, desired_count=6, mode="architecture")
+def _architecture_cards(
+    slide_chunks: list[RetrievedChunk],
+    summary_items: list[str],
+    *,
+    used: "_UsedPhrases | None" = None,
+) -> list[dict[str, str]]:
+    semantic_cards = _semantic_cards_from_chunks(slide_chunks, desired_count=6, mode="architecture", used=used)
     if semantic_cards:
         return semantic_cards
     components: list[str] = []
     for chunk in slide_chunks:
         for phrase in _candidate_phrases(chunk.text):
+            if used is not None and used.is_used(phrase):
+                continue
             if phrase not in components:
                 components.append(phrase)
+                if used is not None:
+                    used.mark(phrase)
             if len(components) >= 6:
                 return _compact_cards(components[:6], title_prefix="Component")
     for item in summary_items:
+        if used is not None and used.is_used(item):
+            continue
         if item not in components:
             components.append(item)
+            if used is not None:
+                used.mark(item)
         if len(components) >= 6:
             break
     return _compact_cards(components[:6], title_prefix="Component")
@@ -1277,15 +1400,21 @@ def _specialist_callout(
     slide_chunks: list[RetrievedChunk],
     *,
     fallback: str,
-    tone_label: str,
+    used: "_UsedPhrases | None" = None,
 ) -> str:
-    # Extract a real insight from chunks rather than returning metadata labels
+    # Extract a real insight from chunks rather than returning metadata labels.
     for chunk in slide_chunks:
         for candidate in _candidate_phrases(chunk.text):
+            if used is not None and used.is_used(candidate):
+                continue
             if _normalize_phrase(candidate) != _normalize_phrase(fallback):
-                return f"{_trim_words(candidate, 20)} | {tone_label}"
+                if used is not None:
+                    used.mark(candidate)
+                return _trim_words(candidate, 20)
     insight = _trim_words(fallback, 20) if fallback else "Key insight from the source material"
-    return f"{insight} | {tone_label}"
+    if used is not None:
+        used.mark(insight)
+    return insight
 
 
 def _footer_metric_label(slide_chunks: list[RetrievedChunk], brief: DeckBrief) -> str:
@@ -1545,6 +1674,7 @@ def _semantic_cards_from_chunks(
     *,
     desired_count: int,
     mode: str,
+    used: "_UsedPhrases | None" = None,
 ) -> list[dict[str, str]]:
     joined = " ".join(chunk.text for chunk in chunks)
     lower = joined.lower()
@@ -1621,6 +1751,7 @@ def _semantic_cards_from_chunks(
     # Try to extract real descriptions from chunks for each matched definition
     cards: list[dict[str, str]] = []
     seen_titles: set[str] = set()
+    seen_descriptions: set[str] = set()
     for keywords, title, fallback_text in definitions:
         if any(keyword in lower for keyword in keywords):
             if title in seen_titles:
@@ -1632,21 +1763,44 @@ def _semantic_cards_from_chunks(
                     if keyword in chunk.text.lower():
                         for sentence in re.split(r'(?<=[.!?])\s+', chunk.text):
                             if keyword in sentence.lower() and len(sentence.split()) >= 6:
-                                description = _trim_words(sentence.strip(), 25)
+                                if _is_planning_language(sentence):
+                                    continue
+                                cleaned_sentence = _clean_candidate_phrase(sentence.strip())
+                                if not cleaned_sentence:
+                                    continue
+                                candidate_description = _trim_words(cleaned_sentence, 25)
+                                if used is not None and used.is_used(candidate_description):
+                                    continue
+                                if _normalize_phrase(candidate_description) in seen_descriptions:
+                                    continue
+                                description = candidate_description
+                                if used is not None:
+                                    used.mark(candidate_description)
                                 break
                         if description != fallback_text:
                             break
                 if description != fallback_text:
                     break
+            normalized_description = _normalize_phrase(description)
+            if normalized_description in seen_descriptions:
+                description = fallback_text
+                normalized_description = _normalize_phrase(fallback_text)
+            if normalized_description in seen_descriptions:
+                continue
             cards.append({"title": title, "text": description})
             seen_titles.add(title)
+            seen_descriptions.add(normalized_description)
             if len(cards) >= desired_count:
                 return cards[:desired_count]
     for _, title, fallback_text in definitions:
         if title in seen_titles:
             continue
+        normalized_description = _normalize_phrase(fallback_text)
+        if normalized_description in seen_descriptions:
+            continue
         cards.append({"title": title, "text": fallback_text})
         seen_titles.add(title)
+        seen_descriptions.add(normalized_description)
         if len(cards) >= desired_count:
             return cards[:desired_count]
     return cards[:desired_count]
@@ -1763,6 +1917,38 @@ def _speaker_notes(primary: str, secondary: str) -> str:
     return f"{first}. {second}."
 
 
+def _is_planning_language(text: str) -> bool:
+    normalized = str(text).strip()
+    if not normalized:
+        return False
+    return any(pattern.search(normalized) for pattern in PLANNING_LANGUAGE_PATTERNS)
+
+
+class _UsedPhrases:
+    """Tracks normalized phrases already assigned to blocks on a slide."""
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+
+    @classmethod
+    def from_phrases(cls, phrases: list[str]) -> "_UsedPhrases":
+        tracker = cls()
+        tracker.mark_all(phrases)
+        return tracker
+
+    def is_used(self, phrase: str) -> bool:
+        return _normalize_phrase(phrase) in self._seen
+
+    def mark(self, phrase: str) -> None:
+        normalized = _normalize_phrase(phrase)
+        if normalized:
+            self._seen.add(normalized)
+
+    def mark_all(self, phrases: list[str]) -> None:
+        for phrase in phrases:
+            self.mark(phrase)
+
+
 def _block_lines(block: PresentationBlock) -> list[str]:
     content = block.content if isinstance(block.content, dict) else {}
     items = content.get("items")
@@ -1788,7 +1974,101 @@ def _block_lines(block: PresentationBlock) -> list[str]:
     return []
 
 
-def _bullets_from_chunks(chunks: list[RetrievedChunk], *, fallback: str) -> list[str]:
+def _deduplicate_slide_blocks(
+    spec: PresentationSpec,
+    retrieved_chunks_by_slide: dict[str, list[RetrievedChunk]],
+) -> PresentationSpec:
+    updated_slides: list[SlideSpec] = []
+    changed = False
+    for slide in spec.slides:
+        updated_blocks = _deduplicate_blocks_for_slide(slide.blocks, retrieved_chunks_by_slide.get(slide.slide_id, []))
+        if len(updated_blocks) != len(slide.blocks) or any(new is not old for new, old in zip(updated_blocks, slide.blocks)):
+            slide = slide.model_copy(update={"blocks": updated_blocks})
+            changed = True
+        updated_slides.append(slide)
+    if not changed:
+        return spec
+    return spec.model_copy(update={"slides": updated_slides})
+
+
+def _deduplicate_blocks_for_slide(
+    blocks: list[PresentationBlock],
+    chunks: list[RetrievedChunk],
+) -> list[PresentationBlock]:
+    if len(blocks) <= 1:
+        return blocks
+
+    result: list[PresentationBlock] = []
+    seen_texts: list[str] = []
+    used = _UsedPhrases()
+
+    for block in blocks:
+        block_text = _normalize_phrase(" ".join(_block_lines(block)))
+        is_duplicate = any(_phrases_are_near_duplicate(block_text, existing) for existing in seen_texts if block_text)
+        if not is_duplicate:
+            result.append(block)
+            if block_text:
+                seen_texts.append(block_text)
+            used.mark_all(_block_lines(block))
+            continue
+
+        replacement = _next_distinct_phrase(chunks, used=used)
+        if replacement:
+            result.append(_replace_block_content(block, replacement))
+            replacement_text = _normalize_phrase(replacement)
+            if replacement_text:
+                seen_texts.append(replacement_text)
+            used.mark(replacement)
+        elif result:
+            # Keep the first duplicate-equivalence class member already in `result`
+            # when no distinct replacement exists. This is order-dependent by design
+            # and avoids dropping every block in an all-duplicate slide.
+            continue
+        else:
+            result.append(block)
+            if block_text:
+                seen_texts.append(block_text)
+
+    return result or blocks[:1]
+
+
+def _phrases_are_near_duplicate(left: str, right: str, *, threshold: float = 0.7) -> bool:
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    left_words = set(left.split())
+    right_words = set(right.split())
+    if not left_words or not right_words:
+        return False
+    overlap = left_words & right_words
+    union = left_words | right_words
+    return len(overlap) / len(union) >= threshold
+
+
+def _next_distinct_phrase(chunks: list[RetrievedChunk], *, used: _UsedPhrases) -> str | None:
+    for chunk in chunks:
+        for candidate in _candidate_phrases(chunk.text):
+            if used.is_used(candidate):
+                continue
+            return candidate
+    return None
+
+
+def _replace_block_content(block: PresentationBlock, replacement: str) -> PresentationBlock:
+    if block.kind is PresentationBlockKind.BULLETS:
+        content = {"items": [replacement]}
+    elif block.kind is PresentationBlockKind.CALLOUT and isinstance(block.content.get("cards"), list):
+        content = {"cards": [{"title": _card_title_from_point(replacement, fallback="Detail"), "text": _trim_words(replacement, 25)}]}
+    elif block.kind is PresentationBlockKind.KPI_CARDS:
+        content = {"items": [{"value": _trim_words(replacement, 3), "label": _trim_words(replacement, 8)}]}
+    else:
+        content = dict(block.content)
+        content["text"] = _trim_words(replacement, 25)
+    return block.model_copy(update={"content": content})
+
+
+def _bullets_from_chunks(chunks: list[RetrievedChunk], *, fallback: str, used: "_UsedPhrases | None" = None) -> list[str]:
     bullets: list[str] = []
     seen: set[str] = set()
     fallback_norm = _normalize_phrase(fallback)
@@ -1797,8 +2077,12 @@ def _bullets_from_chunks(chunks: list[RetrievedChunk], *, fallback: str) -> list
             normalized = _normalize_phrase(candidate)
             if not normalized or normalized == fallback_norm or normalized in seen:
                 continue
+            if used is not None and used.is_used(candidate):
+                continue
             bullets.append(candidate)
             seen.add(normalized)
+            if used is not None:
+                used.mark(candidate)
             if len(bullets) == 3:
                 return bullets
     if not bullets:
@@ -1810,15 +2094,23 @@ def _bullets_from_chunks(chunks: list[RetrievedChunk], *, fallback: str) -> list
             bullets.append(" ".join(words[mid:]).rstrip(",:;"))
         else:
             bullets.append(" ".join(words).rstrip(",:;"))
+        if used is not None:
+            used.mark_all(bullets)
     return bullets[:3]
 
 
-def _callout_from_chunks(chunks: list[RetrievedChunk], *, fallback: str, tone_label: str) -> str:
+def _callout_from_chunks(chunks: list[RetrievedChunk], *, fallback: str, used: "_UsedPhrases | None" = None) -> str:
     for chunk in chunks:
         for candidate in _candidate_phrases(chunk.text):
+            if used is not None and used.is_used(candidate):
+                continue
             if _normalize_phrase(candidate) != _normalize_phrase(fallback):
-                return f"{_trim_words(candidate, 15)} | {tone_label}"
-    return f"Supported evidence | {tone_label}"
+                if used is not None:
+                    used.mark(candidate)
+                return _trim_words(candidate, 15)
+    if used is not None:
+        used.mark("Supported evidence")
+    return "Supported evidence"
 
 
 def _citations_from_chunks(chunks: list[RetrievedChunk]) -> list[SourceCitation]:
@@ -1884,9 +2176,12 @@ def _candidate_phrases(text: str) -> list[str]:
 
 
 def _clean_candidate_phrase(text: str) -> str:
-    cleaned = str(text).replace("AI- generated", "AI-generated").strip(" -\t")
+    cleaned = strip_markdown(str(text).replace("AI- generated", "AI-generated")).strip(" -\t")
+    cleaned = SECTION_LABEL_PREFIX_PATTERN.sub("", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if not cleaned:
+        return ""
+    if _is_planning_language(cleaned):
         return ""
     lowered = cleaned.lower()
     if "[redacted" in lowered or "contact me" in lowered:

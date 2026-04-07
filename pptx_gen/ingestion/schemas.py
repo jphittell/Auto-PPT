@@ -39,6 +39,12 @@ class ContentElementType(str, Enum):
     CAPTION = "caption"
 
 
+class ContentClassification(str, Enum):
+    AUDIENCE_CONTENT = "audience_content"
+    META_PLANNING = "meta_planning"
+    BOILERPLATE = "boilerplate"
+
+
 class SourcePermissions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -119,6 +125,7 @@ class ChunkRecord(BaseModel):
     source_id: str = Field(min_length=1)
     element_id: str = Field(min_length=1)
     element_type: ContentElementType
+    classification: ContentClassification = ContentClassification.AUDIENCE_CONTENT
     page: int | None = Field(default=None, ge=1)
     locator: str = Field(pattern=LOCATOR_PATTERN)
     text: str = Field(min_length=1)
@@ -130,4 +137,3 @@ class ChunkRecord(BaseModel):
         if not normalized:
             raise ValueError("chunk text must not be blank")
         return normalized
-

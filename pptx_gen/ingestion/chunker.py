@@ -6,7 +6,13 @@ import hashlib
 import re
 from collections.abc import Iterable
 
-from pptx_gen.ingestion.schemas import ChunkRecord, ContentObject, IngestionRequest
+from pptx_gen.ingestion.schemas import (
+    ChunkRecord,
+    ContentClassification,
+    ContentElementType,
+    ContentObject,
+    IngestionRequest,
+)
 
 
 PII_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -14,6 +20,24 @@ PII_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("phone", re.compile(r"\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b")),
     ("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
     ("card", re.compile(r"\b(?:\d[ -]?){13,16}\b")),
+)
+
+META_PLANNING_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(?:codex|claude|llm|model)\s+should\b", re.IGNORECASE),
+    re.compile(r"\b(?:should implement|must ensure|needs to|todo|fixme|hack|note:)\b", re.IGNORECASE),
+    re.compile(r"\b(?:upsert|idempotent|sha-256|faiss|qdrant|endpoint|api call|function signature)\b", re.IGNORECASE),
+)
+HEADING_META_VERB_PATTERN = re.compile(r"^#*\s*(?:implement|wire|add|fix|update|refactor|prevent|plan|ensure)\b", re.IGNORECASE)
+BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^page\s+\d+(?:\s+of\s+\d+)?$", re.IGNORECASE),
+    re.compile(r"^draft$", re.IGNORECASE),
+    re.compile(r"^confidential$", re.IGNORECASE),
+    re.compile(r"^copyright\b", re.IGNORECASE),
+)
+SECTION_LABEL_PATTERN = re.compile(
+    r"^(?:business content|planning notes|executive overview|implementation notes|technical details|"
+    r"key findings|background|introduction|appendix)$",
+    re.IGNORECASE,
 )
 
 
@@ -31,6 +55,7 @@ def chunk_document(request: IngestionRequest) -> list[ChunkRecord]:
         for index, part in enumerate(parts):
             chunk_id = f"{element.doc_id}:{element.element_id}:{index}"
             page_value = element.page or 1
+            classification = _classify_chunk(part, element.type)
             chunks.append(
                 ChunkRecord(
                     chunk_id=chunk_id,
@@ -39,6 +64,7 @@ def chunk_document(request: IngestionRequest) -> list[ChunkRecord]:
                     source_id=request.source.id,
                     element_id=element.element_id,
                     element_type=element.type,
+                    classification=classification,
                     page=element.page,
                     locator=f"{element.doc_id}:page{page_value}",
                     text=part,
@@ -71,6 +97,34 @@ def _redact_pii(text: str) -> str:
 
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _classify_chunk(text: str, element_type: ContentElementType) -> ContentClassification:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return ContentClassification.BOILERPLATE
+
+    lowered = normalized.lower()
+    if any(pattern.search(normalized) for pattern in META_PLANNING_PATTERNS):
+        return ContentClassification.META_PLANNING
+
+    if element_type is ContentElementType.HEADING and HEADING_META_VERB_PATTERN.match(normalized):
+        return ContentClassification.META_PLANNING
+
+    if len(normalized) < 20 and any(pattern.match(normalized) for pattern in BOILERPLATE_PATTERNS):
+        return ContentClassification.BOILERPLATE
+
+    if element_type is ContentElementType.HEADING and _is_section_label(normalized):
+        return ContentClassification.BOILERPLATE
+
+    if element_type in {ContentElementType.CAPTION, ContentElementType.FIGURE} and len(normalized.split()) < 4:
+        return ContentClassification.BOILERPLATE
+
+    return ContentClassification.AUDIENCE_CONTENT
+
+
+def _is_section_label(text: str) -> bool:
+    return bool(SECTION_LABEL_PATTERN.match(_normalize_text(text)))
 
 
 def _split_text(text: str, *, max_chars: int) -> list[str]:
@@ -119,4 +173,3 @@ def _split_long_sentence(text: str, *, max_chars: int) -> list[str]:
     if current:
         chunks.append(" ".join(current))
     return chunks
-

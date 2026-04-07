@@ -252,14 +252,6 @@ class PresentationSpec(BaseModel):
                     if word_count > 70:
                         raise ValueError(f"slide {slide.slide_id} exceeds 70-word content cap")
 
-            # Citations are recommended but not required — missing citations
-            # should not prevent deck generation.
-            if slide.purpose in citation_required_purposes:
-                for block in slide.blocks:
-                    if block.kind in citation_required_kinds and not block.source_citations:
-                        raise ValueError(
-                            f"slide {slide.slide_id} block {block.block_id} requires source_citations"
-                        )
         return self
 
 

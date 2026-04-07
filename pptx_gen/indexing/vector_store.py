@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
-from pptx_gen.ingestion.schemas import ChunkRecord
+from pptx_gen.ingestion.schemas import ChunkRecord, ContentClassification
 from pptx_gen.planning.schemas import RetrievedChunk
 
 
@@ -39,11 +39,16 @@ class InMemoryVectorStore:
         *,
         query_embedding: Sequence[float],
         n_results: int = 5,
+        exclude_classifications: Sequence[ContentClassification] | None = None,
     ) -> list[RetrievedChunk]:
+        where_filter = None
+        if exclude_classifications:
+            where_filter = {"classification": {"$nin": [classification.value for classification in exclude_classifications]}}
         results = self.collection.query(
             query_embeddings=[list(map(float, query_embedding))],
             n_results=n_results,
             include=["documents", "metadatas", "distances"],
+            where=where_filter,
         )
         ids = results.get("ids", [[]])[0]
         documents = results.get("documents", [[]])[0]
@@ -69,6 +74,7 @@ class InMemoryVectorStore:
                         "doc_id": metadata.get("doc_id"),
                         "element_id": metadata.get("element_id"),
                         "element_type": metadata.get("element_type"),
+                        "classification": metadata.get("classification"),
                         "page": metadata.get("page"),
                     },
                 )
@@ -82,6 +88,7 @@ class InMemoryVectorStore:
             "source_id": chunk.source_id,
             "element_id": chunk.element_id,
             "element_type": chunk.element_type.value,
+            "classification": chunk.classification.value,
             "page": chunk.page,
             "locator": chunk.locator,
         }

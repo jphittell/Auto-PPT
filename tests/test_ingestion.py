@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from pptx_gen.ingestion.chunker import chunk_document
+from pptx_gen.ingestion.chunker import _classify_chunk, chunk_document
 from pptx_gen.ingestion.parser import PDFDependencyError, parse_source
+from pptx_gen.ingestion.schemas import ContentClassification, ContentElementType
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.pipeline import ingest_and_index
 
@@ -26,6 +27,28 @@ def test_chunker_redacts_pii_and_deduplicates(sample_ingestion_request) -> None:
     assert len(chunks) == 2
     assert all("sample@example.com" not in chunk.text for chunk in chunks)
     assert any("[REDACTED_EMAIL]" in chunk.text for chunk in chunks)
+
+
+@pytest.mark.parametrize(
+    ("text", "element_type", "expected"),
+    [
+        ("Codex should implement deterministic chunk IDs", ContentElementType.PARAGRAPH, ContentClassification.META_PLANNING),
+        ("Revenue grew 15% year-over-year driven by cloud adoption.", ContentElementType.PARAGRAPH, ContentClassification.AUDIENCE_CONTENT),
+        ("TODO: wire up the export endpoint", ContentElementType.PARAGRAPH, ContentClassification.META_PLANNING),
+        ("Page 3 of 12", ContentElementType.CAPTION, ContentClassification.BOILERPLATE),
+        (
+            "The platform supports real-time data ingestion from multiple sources.",
+            ContentElementType.PARAGRAPH,
+            ContentClassification.AUDIENCE_CONTENT,
+        ),
+    ],
+)
+def test_classify_chunk_uses_conservative_planning_and_boilerplate_heuristics(
+    text: str,
+    element_type: ContentElementType,
+    expected: ContentClassification,
+) -> None:
+    assert _classify_chunk(text, element_type) is expected
 
 
 def test_ingest_and_index_round_trip_with_chroma(sample_pdf_path, deterministic_embedder) -> None:
@@ -60,4 +83,4 @@ def test_ingest_and_index_round_trip_with_chroma(sample_pdf_path, deterministic_
     assert hits[0].chunk_id == result.chunks[0].chunk_id
     assert hits[0].source_id == result.source_id
     assert hits[0].locator == result.chunks[0].locator
-
+    assert hits[0].metadata["classification"] == result.chunks[0].classification.value

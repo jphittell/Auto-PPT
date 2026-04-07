@@ -36,6 +36,7 @@ from pptx_gen.api_schemas import (
     TemplateResponse,
     ThemeSummaryResponse,
 )
+from pptx_gen.ingestion.schemas import ContentClassification
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.layout.schemas import StyleTokens
 from pptx_gen.layout.templates import TEMPLATE_ALIASES, TEMPLATE_REGISTRY, canonical_template_key, list_template_keys
@@ -62,6 +63,7 @@ from pptx_gen.planning.schemas import (
     SlideSpec,
     SourceCitation,
 )
+from pptx_gen.renderer.markdown_strip import strip_markdown
 
 
 app = FastAPI(title="Auto-PPT API", version="0.1.0")
@@ -183,7 +185,12 @@ def _plan_deck_response(
     combined_title = " + ".join(result.ingestion_request.document.title for result in ingestion_results)
     tone_label = _tone_label_from_score(tone)
     source_ids = [result.source_id for result in ingestion_results]
-    source_texts = [chunk.text for result in ingestion_results for chunk in result.chunks]
+    source_texts = [
+        chunk.text
+        for result in ingestion_results
+        for chunk in result.chunks
+        if chunk.classification is ContentClassification.AUDIENCE_CONTENT
+    ]
 
     brief = collect_deck_brief(
         user_request=goal,
@@ -297,34 +304,8 @@ async def generate_slide_preview(request: SlidePreviewRequest) -> SlideSpecRespo
     content_text = request.content.strip()
     chosen_template = canonical_template_key(request.template_id or _infer_best_template_for_content(content_text))
 
-    llm_client = _get_optional_structured_llm_client()
-    if llm_client is not None and hasattr(llm_client, "generate_json"):
-        system = (
-            "You are a presentation designer. Return a PresentationSpec with exactly one slide. "
-            "Keep the slide consulting-style, concise, and faithful to the input content."
-        )
-        user_prompt = (
-            f"Title: {request.title}\n"
-            f"Audience: {request.audience}\n"
-            f"Purpose: {request.purpose}\n"
-            f"Preferred template: {chosen_template}\n\n"
-            "Produce consulting-style slide content.\n\n"
-            f"Raw content:\n{content_text}"
-        )
-        result = llm_client.generate_json(
-            system_prompt=system,
-            user_prompt=user_prompt,
-            schema_name="PresentationSpec",
-        )
-        slide_payloads = result.get("slides", []) if isinstance(result, dict) else []
-        if slide_payloads:
-            slide = SlideSpec.model_validate(slide_payloads[0]).model_copy(
-                update={"slide_id": request.slide_id}
-            )
-            return _to_api_slide_spec(slide, index=1)
-
     try:
-        # Use LLM to summarize and structure content for the slide
+        # Route all preview generation through the same normalization path.
         structured = await _llm_structure_slide_content(
             content_text, request.title, request.audience, chosen_template,
         )
@@ -1042,7 +1023,13 @@ CRITICAL RULES:
 - Each card/bullet should be a distinct insight derived from the input.
 Audience: {audience}"""
 
-    user_prompt = f"Title: {title}\n\nRaw content:\n{content}"
+    user_prompt = (
+        f"Title: {title}\n"
+        f"Audience: {audience}\n"
+        f"Preferred template: {suggested_template}\n\n"
+        "Produce consulting-style slide content.\n\n"
+        f"Raw content:\n{content}"
+    )
 
     try:
         llm_client = _get_optional_structured_llm_client()
@@ -1062,11 +1049,26 @@ Audience: {audience}"""
             if not slide_payloads:
                 raise ValueError("Structured preview returned no slides")
             slide_payload = slide_payloads[0]
-            layout_intent = slide_payload.get("layout_intent", {}) if isinstance(slide_payload, dict) else {}
+            if not isinstance(slide_payload, dict):
+                raise ValueError("Structured preview slide payload must be an object")
+
+            layout_intent = slide_payload.get("layout_intent", {})
+            if layout_intent is not None and not isinstance(layout_intent, dict):
+                raise ValueError("Structured preview layout_intent must be an object")
+
+            blocks_payload = slide_payload.get("blocks", [])
+            if not isinstance(blocks_payload, list):
+                raise ValueError("Structured preview blocks must be a list")
+
             normalized_blocks: list[dict[str, Any]] = []
-            for block in slide_payload.get("blocks", []) if isinstance(slide_payload, dict) else []:
+            for block in blocks_payload:
+                if not isinstance(block, dict):
+                    raise ValueError("Structured preview blocks must contain objects")
                 kind = block.get("kind", "text")
-                block_content = block.get("content", {}) if isinstance(block, dict) else {}
+                block_content = block.get("content", {})
+                if block_content is not None and not isinstance(block_content, dict):
+                    raise ValueError("Structured preview block content must be an object")
+                block_content = block_content or {}
                 if kind == "callout":
                     normalized_blocks.append({"kind": kind, "cards": block_content.get("cards", [])})
                 elif kind in {"bullets", "kpi_cards"}:
@@ -1195,7 +1197,12 @@ def _build_preview_slide(
             kind = PresentationBlockKind.TEXT
 
         if kind == PresentationBlockKind.CALLOUT:
-            content = {"cards": block_data.get("cards", [])}
+            if isinstance(block_data.get("cards"), list):
+                content = {"cards": block_data.get("cards", [])}
+            else:
+                content = {"text": block_data.get("text", "")}
+            if block_data.get("tone_hint"):
+                content["tone_hint"] = block_data["tone_hint"]
         elif kind == PresentationBlockKind.BULLETS:
             content = {"items": block_data.get("items", [])}
         elif kind == PresentationBlockKind.KPI_CARDS:
@@ -1346,20 +1353,26 @@ def _to_api_slide_spec(slide: SlideSpec, *, index: int) -> SlideSpecResponse:
 
 
 def _stringify_block_content(kind: PresentationBlockKind, content: dict[str, Any]) -> str:
+    text: str
     if kind is PresentationBlockKind.BULLETS:
-        return "\n".join(f"\u2022 {item}" for item in content.get("items", []))
-    if kind is PresentationBlockKind.KPI_CARDS:
-        return "\n".join(f"{item.get('value', '')}|{item.get('label', '')}" for item in content.get("items", []))
-    if kind is PresentationBlockKind.TABLE:
-        return "\n".join(" | ".join(str(cell) for cell in row) for row in content.get("rows", []))
-    if kind is PresentationBlockKind.CHART:
-        return "\n".join(f"{item.get('label', '')}: {item.get('value', '')}" for item in content.get("series", []))
-    if kind is PresentationBlockKind.CALLOUT and isinstance(content.get("cards"), list):
-        return "\n".join(f"{card.get('title', '')}: {card.get('text', '')}" for card in content["cards"])
-    for field in ("text", "label", "subtitle", "tagline", "footer_info", "logo"):
-        if field in content and content[field]:
-            return str(content[field])
-    return "\n".join(f"{key}: {value}" for key, value in content.items())
+        text = "\n".join(f"\u2022 {item}" for item in content.get("items", []))
+    elif kind is PresentationBlockKind.KPI_CARDS:
+        text = "\n".join(f"{item.get('value', '')}|{item.get('label', '')}" for item in content.get("items", []))
+    elif kind is PresentationBlockKind.TABLE:
+        text = "\n".join(" | ".join(str(cell) for cell in row) for row in content.get("rows", []))
+    elif kind is PresentationBlockKind.CHART:
+        text = "\n".join(f"{item.get('label', '')}: {item.get('value', '')}" for item in content.get("series", []))
+    elif kind is PresentationBlockKind.CALLOUT and isinstance(content.get("cards"), list):
+        text = "\n".join(f"{card.get('title', '')}: {card.get('text', '')}" for card in content["cards"])
+    else:
+        text = ""
+        for field in ("text", "label", "subtitle", "tagline", "footer_info", "logo"):
+            if field in content and content[field]:
+                text = str(content[field])
+                break
+        if not text:
+            text = "\n".join(f"{key}: {value}" for key, value in content.items())
+    return strip_markdown(text)
 
 
 def _tone_label_from_score(score: float) -> str:

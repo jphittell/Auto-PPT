@@ -6,8 +6,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import pptx_gen.planning.prompt_chain as prompt_chain_module
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.ingestion.chunker import chunk_document
+from pptx_gen.ingestion.schemas import ContentElementType, ContentObject, DocumentInfo, IngestionOptions, IngestionRequest, SourceInfo, SourceType
 from pptx_gen.layout.schemas import StyleTokens
 from pptx_gen.planning.prompt_chain import (
     build_retrieval_plan,
@@ -19,12 +21,17 @@ from pptx_gen.planning.prompt_chain import (
 )
 from pptx_gen.planning.schemas import (
     DeckBrief,
+    DeckTheme,
     OutlineItem,
     OutlineSpec,
+    PresentationBlock,
+    PresentationBlockKind,
     PresentationSpec,
     RetrievalPlan,
     RetrievedChunk,
+    SlideSpec,
     SlidePurpose,
+    LayoutIntent,
 )
 
 
@@ -131,6 +138,73 @@ def test_execute_retrieval_plan_returns_real_chunk_metadata(sample_ingestion_req
     assert first_hits
     assert first_hits[0].chunk_id in {chunk.chunk_id for chunk in chunks}
     assert first_hits[0].locator
+
+
+def test_execute_retrieval_plan_excludes_meta_planning_chunks(deterministic_embedder) -> None:
+    request = IngestionRequest(
+        source=SourceInfo(type=SourceType.UPLOAD, id="src-mixed", uri="/tmp/mixed.md"),
+        document=DocumentInfo(
+            title="Mixed Notes",
+            mime_type="text/markdown",
+            language="en",
+            elements=[
+                ContentObject(
+                    doc_id="mixed-doc",
+                    element_id="e1",
+                    page=1,
+                    type=ContentElementType.PARAGRAPH,
+                    text="Codex should implement deterministic chunk IDs for asset lookups and endpoint wiring.",
+                ),
+                ContentObject(
+                    doc_id="mixed-doc",
+                    element_id="e2",
+                    page=1,
+                    type=ContentElementType.PARAGRAPH,
+                    text="Revenue grew 15% year-over-year as cloud adoption accelerated across enterprise customers.",
+                ),
+            ],
+        ),
+        options=IngestionOptions(max_chunk_chars=1200),
+    )
+    chunks = chunk_document(request)
+    vector_store = InMemoryVectorStore()
+    vector_store.upsert_chunks(chunks, deterministic_embedder.encode([chunk.text for chunk in chunks]))
+
+    retrieval_plan = RetrievalPlan(
+        retrieval_plan=[
+            {
+                "slide_id": "s1",
+                "queries": [
+                    {
+                        "query": "deterministic chunk ids revenue cloud adoption",
+                        "doc_ids": ["src-mixed"],
+                        "min_date": None,
+                    }
+                ],
+            }
+        ]
+    )
+    results = execute_retrieval_plan(retrieval_plan, vector_store=vector_store, embedder=deterministic_embedder)
+
+    assert "s1" in results
+    assert results["s1"]
+    assert all("should implement" not in hit.text.lower() for hit in results["s1"])
+    assert all(hit.metadata.get("classification") == "audience_content" for hit in results["s1"])
+
+
+def test_planning_language_patterns_allow_endpoint_and_api_call_business_content() -> None:
+    assert not prompt_chain_module._is_planning_language(
+        "Endpoint security adoption expanded across managed devices in the enterprise fleet."
+    )
+    assert not prompt_chain_module._is_planning_language(
+        "API call volume grew 30% after launch as customer usage increased."
+    )
+    assert prompt_chain_module._is_planning_language(
+        "Teams should implement endpoint retries for failed partner requests."
+    )
+    assert prompt_chain_module._is_planning_language(
+        "Platform engineers will configure API call retries for partner integrations."
+    )
 
 
 def test_generate_presentation_spec_is_schema_valid(sample_ingestion_request, deterministic_embedder, style_tokens_payload) -> None:
@@ -390,6 +464,139 @@ def test_generate_presentation_spec_builds_executive_overview_slide(style_tokens
     assert len(overview.blocks) == 4
     assert overview.blocks[2].kind.value == "callout"
     assert len(overview.blocks[2].content["cards"]) == 6
+    summary_text = overview.blocks[0].content["text"]
+    callout_text = overview.blocks[1].content["text"]
+    card_texts = [card["text"] for card in overview.blocks[2].content["cards"]]
+    assert prompt_chain_module._normalize_phrase(summary_text) != prompt_chain_module._normalize_phrase(callout_text)
+    assert all(prompt_chain_module._normalize_phrase(text) != prompt_chain_module._normalize_phrase(summary_text) for text in card_texts)
+    assert all(prompt_chain_module._normalize_phrase(text) != prompt_chain_module._normalize_phrase(callout_text) for text in card_texts)
+
+
+def test_used_phrases_tracks_normalized_matches() -> None:
+    used = prompt_chain_module._UsedPhrases()
+    used.mark("RAG-style retrieval grounds each slide in source evidence.")
+    assert used.is_used("rag style retrieval grounds each slide in source evidence")
+    used.mark_all(["Template-driven layout applies deterministic composition."])
+    assert used.is_used("template driven layout applies deterministic composition")
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "expected"),
+    [
+        ("# Business content Executive Overview", ""),
+        ("Executive Overview of Q3 Results", "Executive Overview of Q3 Results"),
+        ("**Revenue** grew 15% year over year", "Revenue grew 15% year over year"),
+        ("> Quoted insight about growth", "Quoted insight about growth"),
+        ("- Bullet item about strategy", "Bullet item about strategy"),
+        (
+            "Business content Executive Overview Revenue grew 15% year-over-year driven by cloud adoption",
+            "Revenue grew 15% year-over-year driven by cloud adoption",
+        ),
+        ("Plain text without markdown", "Plain text without markdown"),
+    ],
+)
+def test_clean_candidate_phrase_strips_source_markup(raw_text: str, expected: str) -> None:
+    assert prompt_chain_module._clean_candidate_phrase(raw_text) == expected
+
+
+def test_clean_candidate_phrase_drops_planning_language_after_section_label_strip() -> None:
+    assert prompt_chain_module._clean_candidate_phrase("Planning notes Codex should implement deterministic chunk IDs") == ""
+
+
+def test_derive_takeaways_skips_planning_language_and_section_labels() -> None:
+    takeaways = prompt_chain_module._derive_takeaways(
+        [
+            "Planning notes Codex should implement deterministic chunk IDs for asset lookups.",
+            "Business content Executive Overview Revenue grew 15% year-over-year driven by cloud adoption.",
+            "The platform supports real-time data ingestion from multiple sources.",
+        ],
+        "Summarize platform capabilities",
+    )
+
+    assert any("Revenue grew 15% year-over-year driven by cloud adoption" == takeaway for takeaway in takeaways)
+    assert any("The platform supports real-time data ingestion from multiple sources" == takeaway for takeaway in takeaways)
+    assert all("codex should" not in takeaway.lower() for takeaway in takeaways)
+    assert all("business content" not in takeaway.lower() for takeaway in takeaways)
+
+
+def test_semantic_cards_from_chunks_deduplicates_card_descriptions() -> None:
+    chunks = [
+        RetrievedChunk(
+            chunk_id="doc:e1:0",
+            source_id="doc",
+            locator="doc:page1",
+            text="Template-driven layout improves consistency, while retrieval grounds slide content in source evidence.",
+        )
+    ]
+
+    cards = prompt_chain_module._semantic_cards_from_chunks(chunks, desired_count=3, mode="overview")
+    texts = [card["text"] for card in cards]
+
+    assert len(texts) == len(set(texts))
+    assert any(
+        prompt_chain_module._normalize_phrase(text)
+        == prompt_chain_module._normalize_phrase(
+            "Template-driven layout improves consistency, while retrieval grounds slide content in source evidence."
+        )
+        for text in texts
+    )
+
+
+def test_semantic_cards_from_chunks_strip_section_labels_from_card_text() -> None:
+    chunks = [
+        RetrievedChunk(
+            chunk_id="doc:e1:0",
+            source_id="doc",
+            locator="doc:page1",
+            text="# Business content Executive Overview Revenue grew 15% year-over-year, driven by cloud adoption across enterprise customers.",
+        )
+    ]
+
+    cards = prompt_chain_module._semantic_cards_from_chunks(chunks, desired_count=1, mode="overview")
+
+    assert prompt_chain_module._normalize_phrase(cards[0]["text"]) == prompt_chain_module._normalize_phrase(
+        "Revenue grew 15% year-over-year, driven by cloud adoption across enterprise customers."
+    )
+
+
+def test_deduplicate_slide_blocks_replaces_duplicate_text_block(style_tokens_payload) -> None:
+    spec = PresentationSpec(
+        title="Architecture",
+        audience="Oracle consultants",
+        language="en-US",
+        theme=DeckTheme(name="Auto PPT", style_tokens=StyleTokens(**style_tokens_payload)),
+        slides=[
+            SlideSpec(
+                slide_id="s1",
+                purpose=SlidePurpose.CONTENT,
+                layout_intent=LayoutIntent(template_key="content.1col", strict_template=True),
+                headline="Executive Overview",
+                blocks=[
+                    PresentationBlock(block_id="b1", kind=PresentationBlockKind.TEXT, content={"text": "Repeated architecture summary"}),
+                    PresentationBlock(block_id="b2", kind=PresentationBlockKind.TEXT, content={"text": "Repeated architecture summary"}),
+                ],
+            )
+        ],
+    )
+    retrieved_chunks = {
+        "s1": [
+            RetrievedChunk(
+                chunk_id="doc:e1:0",
+                source_id="oracle-arch",
+                locator="oracle-arch:page1",
+                text=(
+                    "Repeated architecture summary.\n"
+                    "Deterministic export preserves PPTX fidelity.\n"
+                    "Validation catches overlap and consistency issues."
+                ),
+            )
+        ]
+    }
+
+    deduped = prompt_chain_module._deduplicate_slide_blocks(spec, retrieved_chunks)
+    blocks = deduped.slides[0].blocks
+    assert len(blocks) >= 1
+    assert prompt_chain_module._normalize_phrase(blocks[0].content["text"]) != prompt_chain_module._normalize_phrase(blocks[-1].content["text"]) or len(blocks) == 1
 
 
 def test_generate_presentation_spec_builds_architecture_grid_slide(style_tokens_payload) -> None:

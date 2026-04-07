@@ -86,6 +86,40 @@ def test_generate_deck_from_source_runs_end_to_end(
     assert result.resolved_layout.slides
 
 
+def test_generate_deck_filters_meta_planning_chunks_from_brief(
+    tmp_path: Path,
+    deterministic_embedder,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("pptx_gen.pipeline.build_default_structured_llm_client", lambda: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    source_path = tmp_path / "mixed_source.md"
+    source_path.write_text(
+        "# Planning notes\n"
+        "Codex should implement deterministic chunk IDs for asset lookups.\n\n"
+        "# Business content\n"
+        "Revenue grew 15% year-over-year driven by cloud adoption across enterprise customers.\n"
+        "The platform supports real-time data ingestion from multiple sources.\n",
+        encoding="utf-8",
+    )
+
+    result = generate_deck(
+        source_path=source_path,
+        output_path=tmp_path / "mixed_generated.pptx",
+        audience="Leadership team",
+        goal="Summarize platform capabilities",
+        slide_count_target=5,
+        embedder=deterministic_embedder,
+    )
+
+    assert result.brief is not None
+    takeaways = list((result.brief.extensions or {}).get("key_takeaways", []))
+    assert takeaways
+    assert all("codex should" not in takeaway.lower() for takeaway in takeaways)
+    assert all("business content" not in takeaway.lower() for takeaway in takeaways)
+
+
 def test_revise_for_design_quality_validates_structured_output(
     tmp_path: Path,
     make_presentation_spec,
