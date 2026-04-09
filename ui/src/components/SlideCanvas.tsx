@@ -113,7 +113,7 @@ function SlidePreviewSurface({
         </div>
 
         <div className="mt-7 grid min-h-0 flex-1 grid-cols-[1.1fr_1.6fr] gap-8">
-          <div className="flex flex-col">
+          <div className="flex min-h-0 flex-col overflow-hidden">
             <h2 className="text-4xl font-semibold tracking-[-0.02em] text-stone-900">{slide.title}</h2>
             <p className="mt-6 text-xl leading-relaxed text-stone-600">{leftSummary}</p>
             <div className="mt-8 rounded-2xl border border-[#E8C6BF] bg-[#FFF7F4] p-5">
@@ -126,7 +126,7 @@ function SlidePreviewSurface({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid min-h-0 auto-rows-fr grid-cols-1 gap-4">
             {(cards.length > 0 ? cards : Array.from({ length: 3 }, (_, index) => ({ title: `Point ${index + 1}`, text: 'Add consulting-style detail' }))).slice(0, 3).map((card, index) => (
               <div key={`${card.title}-${index}`} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <div className="text-sm font-semibold text-stone-900">{card.title}</div>
@@ -190,7 +190,7 @@ function SlidePreviewSurface({
 
   if (slide.template_id === 'headline.evidence' || slide.template_id === 'kpi.big' || slide.template_id === 'chart.takeaway') {
     const isKpi = slide.template_id === 'kpi.big'
-    const cols = isKpi ? 3 : 1
+    const cols = isKpi ? 3 : cards.length > 3 ? 2 : 1
     const colsClass = cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'
     return (
       <div className="flex h-full flex-col rounded-[28px] border border-stone-200 bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
@@ -203,7 +203,7 @@ function SlidePreviewSurface({
           <div className="rounded-full bg-stone-100 px-4 py-2 text-sm font-medium capitalize text-stone-600">{slide.purpose}</div>
         </div>
         {cards.length > 0 ? (
-          <div className={`mt-8 grid flex-1 ${colsClass} gap-5`}>
+          <div className={`mt-8 grid min-h-0 flex-1 auto-rows-fr ${colsClass} gap-5`}>
             {cards.map((card, index) => (
               <div key={`${card.title}-${index}`} className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,_#fff_0%,_#fafaf9_100%)] p-6 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <div className="text-base font-semibold text-stone-900">{card.title}</div>
@@ -212,7 +212,7 @@ function SlidePreviewSurface({
             ))}
           </div>
         ) : kpis.length > 0 ? (
-          <div className="mt-8 grid flex-1 grid-cols-3 gap-5">
+          <div className="mt-8 grid min-h-0 flex-1 auto-rows-fr grid-cols-3 gap-5">
             {kpis.map((item, index) => (
               <div key={`${item.label}-${index}`} className="flex flex-col items-center justify-center rounded-3xl border border-stone-200 bg-white p-6 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <div className="text-4xl font-semibold text-stone-900">{item.value}</div>
@@ -241,7 +241,7 @@ function SlidePreviewSurface({
         <div className="rounded-full bg-stone-100 px-4 py-2 text-sm font-medium capitalize text-stone-600">{slide.purpose}</div>
       </div>
       <div className="mt-8 min-h-0 flex-1">
-        <div className="grid h-full gap-4 auto-rows-fr" style={{ gridTemplateColumns: `repeat(${Math.min(slide.blocks.length, 3)}, 1fr)` }}>
+        <div className="grid min-h-0 h-full gap-4 auto-rows-fr" style={{ gridTemplateColumns: `repeat(${Math.min(slide.blocks.length, 3)}, 1fr)` }}>
           {slide.blocks.map((block) => (
             <div key={block.id} className="min-h-0">
               <BlockRenderer block={block} mode="preview" onChange={() => {}} />
