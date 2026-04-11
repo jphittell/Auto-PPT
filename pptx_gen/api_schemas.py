@@ -15,6 +15,9 @@ class IngestResponse(BaseModel):
     chunk_count: int = Field(ge=0)
     title: str = Field(min_length=1)
     element_types: dict[str, int] = Field(default_factory=dict)
+    source_format: str = "document"
+    slide_count: int | None = Field(default=None, ge=1)
+    slide_types: dict[str, int] = Field(default_factory=dict)
     summary: str = ""
 
 
@@ -28,7 +31,7 @@ class PlanDeckRequest(BaseModel):
     goal: str = Field(min_length=1)
     audience: str = Field(min_length=1)
     tone: float = Field(ge=0, le=100)
-    slide_count: int = Field(ge=6, le=20)
+    slide_count: int = Field(ge=1, le=40)
 
 
 class PlanPromptRequest(BaseModel):
@@ -124,9 +127,9 @@ class BrandKitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     logo_data_url: str | None = None
-    primary_color: str = Field(pattern=HEX_COLOR_PATTERN)
-    accent_color: str = Field(pattern=HEX_COLOR_PATTERN)
-    font_pair: str = Field(min_length=1)
+    primary_color: str | None = Field(default=None, pattern=HEX_COLOR_PATTERN)
+    accent_color: str | None = Field(default=None, pattern=HEX_COLOR_PATTERN)
+    font_pair: str | None = Field(default=None, min_length=1)
 
 
 class GenerateDeckRequest(BaseModel):
@@ -135,7 +138,8 @@ class GenerateDeckRequest(BaseModel):
     draft_id: str = Field(min_length=1)
     outline: list[OutlineSlideRequest] = Field(min_length=1)
     selected_template_id: str = Field(min_length=1)
-    brand_kit: BrandKitRequest
+    theme_name: str = "ONAC"
+    brand_kit: BrandKitRequest = Field(default_factory=BrandKitRequest)
 
 
 class SlidePreviewRequest(BaseModel):
@@ -150,10 +154,56 @@ class SlidePreviewRequest(BaseModel):
     goal: str = Field(min_length=1)
 
 
+class SlidePreviewBlockLLMResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(min_length=1)
+    text: str | None = None
+    attribution: str | None = None
+    items: list[str] = Field(default_factory=list)
+    cards: list[dict[str, str]] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
+    chart_type: str | None = None
+    series: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SlidePreviewLLMResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    headline: str = Field(min_length=1)
+    speaker_notes: str = ""
+    blocks: list[SlidePreviewBlockLLMResponse] = Field(min_length=1)
+
+
+class ExportBlockRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    kind: str = Field(min_length=1)
+    content: str = ""
+    data: dict[str, Any] | None = None
+    citation: str | None = None
+
+
+class ExportSlideRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    index: int = Field(ge=1)
+    purpose: str = Field(min_length=1)
+    archetype: str | None = None
+    title: str = Field(min_length=1)
+    blocks: list[ExportBlockRequest] = Field(default_factory=list)
+    template_id: str = Field(min_length=1)
+    speaker_notes: str | None = None
+
+
 class ExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     format: Literal["pdf", "pptx"]
+    slides: list[ExportSlideRequest] | None = None
 
 
 class HealthResponse(BaseModel):

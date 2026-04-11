@@ -22,7 +22,9 @@ from pptx_gen.api_schemas import (
     BrandKitRequest,
     ChatGenerateResponse,
     ChatMessageResponse,
+    ExportBlockRequest,
     ExportRequest,
+    ExportSlideRequest,
     GenerateDeckRequest,
     HealthResponse,
     IngestResponse,
@@ -93,6 +95,7 @@ class DraftState:
 
 _INGESTED_DOCS: dict[str, IngestResponse] = {}
 _INGESTED_RESULTS: dict[str, pipeline_module.IngestionIndexResult] = {}
+_INGESTED_VECTOR_STORES: dict[str, InMemoryVectorStore] = {}
 _DRAFTS: dict[str, DraftState] = {}
 _DECKS: dict[str, PresentationSpecResponse] = {}
 _RAW_DECK_SPECS: dict[str, PresentationSpec] = {}
@@ -103,12 +106,24 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = REPO_ROOT / "web"
 WEB_INDEX = WEB_DIR / "index.html"
 RUNTIME_ASSET_DIR = REPO_ROOT / "out" / "runtime_assets"
+ONAC_TEMPLATE_PATH = REPO_ROOT / "Input" / "Assets" / "PPTs" / "ONAC Presentation Template" / "ONAC Presentation Template.pptx"
 DECK_DEFAULT_TEMPLATE_IDS = {"headline.evidence", "compare.2col", "kpi.big"}
 SPECIALIST_TEMPLATE_IDS = {"exec.summary", "chart.takeaway", "closing.actions", "title.cover", "section.divider"}
 FONT_PAIR_MAP = {
+    "Georgia/Oracle Sans Tab": ("Georgia", "Oracle Sans Tab"),
     "Inter/Inter": ("Inter", "Inter"),
     "Lato/Merriweather": ("Merriweather", "Lato"),
     "DM Sans/DM Serif Display": ("DM Serif Display", "DM Sans"),
+}
+BRAND_THEMES = {
+    "ONAC": {
+        "style_tokens": StyleTokens(**pipeline_module.ONAC_STYLE_TOKENS),
+        "template_path": ONAC_TEMPLATE_PATH,
+    },
+}
+BRAND_THEME_ALIASES = {
+    "Auto PPT": "ONAC",
+    "Default": "ONAC",
 }
 
 
@@ -121,30 +136,44 @@ async def health() -> HealthResponse:
 async def ingest_document(file: UploadFile = File(...)) -> IngestResponse:
     original_name = Path(file.filename or "upload.txt").name
     suffix = Path(original_name).suffix.lower()
-    if suffix not in {".pdf", ".txt", ".md"}:
-        raise HTTPException(status_code=400, detail="Only .pdf, .txt, and .md uploads are supported.")
+    if suffix not in {".pdf", ".txt", ".md", ".pptx"}:
+        raise HTTPException(status_code=400, detail="Only .pdf, .txt, .md, and .pptx uploads are supported.")
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir) / original_name
         temp_path.write_bytes(await file.read())
+        doc_vector_store = InMemoryVectorStore()
         result = pipeline_module.ingest_and_index(
             temp_path,
             title=Path(original_name).stem.replace("_", " "),
             embedder=_get_embedder(),
-            vector_store=InMemoryVectorStore(),
+            vector_store=doc_vector_store,
         )
 
     element_counts = Counter(element.type.value for element in result.ingestion_request.document.elements)
+    source_metadata = dict(result.ingestion_request.extensions or {})
     summary = await _generate_document_summary(result)
     response = IngestResponse(
         doc_id=result.doc_id,
         chunk_count=result.n_chunks,
         title=result.ingestion_request.document.title,
         element_types=dict(sorted(element_counts.items())),
+        source_format=str(source_metadata.get("source_format") or suffix.removeprefix(".") or "document"),
+        slide_count=(
+            int(source_metadata["slide_count"])
+            if source_metadata.get("slide_count") not in {None, ""}
+            else None
+        ),
+        slide_types=(
+            dict(source_metadata["slide_types"])
+            if isinstance(source_metadata.get("slide_types"), dict)
+            else {}
+        ),
         summary=summary,
     )
     _INGESTED_DOCS[result.doc_id] = response
     _INGESTED_RESULTS[result.doc_id] = result
+    _INGESTED_VECTOR_STORES[result.doc_id] = doc_vector_store
     return response
 
 
@@ -163,7 +192,17 @@ async def plan_deck(request: PlanDeckRequest) -> PlanDeckResponse:
 async def plan_deck_from_prompt(request: PlanPromptRequest) -> PlanDeckResponse:
     ingestion_results = _ingested_results_for(request.doc_ids)
     combined_title = " + ".join(result.ingestion_request.document.title for result in ingestion_results)
-    inferred = _infer_chat_brief(request.prompt, combined_title)
+    content_chunk_count = sum(
+        1 for result in ingestion_results
+        for chunk in result.chunks
+        if chunk.classification is ContentClassification.AUDIENCE_CONTENT
+    )
+    inferred = _infer_chat_brief(
+        request.prompt,
+        combined_title,
+        content_chunk_count=content_chunk_count,
+        source_context=_source_metadata_for_results(ingestion_results),
+    )
     return _plan_deck_response(
         doc_ids=request.doc_ids,
         goal=inferred["goal"],
@@ -191,6 +230,7 @@ def _plan_deck_response(
         for chunk in result.chunks
         if chunk.classification is ContentClassification.AUDIENCE_CONTENT
     ]
+    source_metadata = _source_metadata_for_results(ingestion_results)
 
     brief = collect_deck_brief(
         user_request=goal,
@@ -201,9 +241,14 @@ def _plan_deck_response(
         source_corpus_ids=source_ids,
         document_title=combined_title,
         source_texts=source_texts,
-        llm_client=None,
+        source_metadata=source_metadata,
+        llm_client=_get_optional_structured_llm_client(),
     )
-    outline = _normalize_outline_exact_count(generate_outline(brief, llm_client=None), slide_count, goal)
+    outline = _normalize_outline_exact_count(
+        generate_outline(brief, llm_client=_get_optional_structured_llm_client()),
+        slide_count,
+        goal,
+    )
 
     created_at = datetime.now().isoformat(timespec="seconds")
     draft_id = f"draft-{uuid4().hex[:10]}"
@@ -248,7 +293,8 @@ async def generate_deck_from_draft(request: GenerateDeckRequest) -> Presentation
     if draft is None:
         raise HTTPException(status_code=404, detail=f"Unknown draft_id: {request.draft_id}")
     if len(request.outline) != draft.slide_count:
-        raise HTTPException(status_code=400, detail="Outline length must match the planned slide count.")
+        draft.slide_count = len(request.outline)
+        draft.brief = draft.brief.model_copy(update={"slide_count_target": len(request.outline)})
 
     selected_template_id = canonical_template_key(request.selected_template_id)
     if selected_template_id not in DECK_DEFAULT_TEMPLATE_IDS:
@@ -258,11 +304,13 @@ async def generate_deck_from_draft(request: GenerateDeckRequest) -> Presentation
         outline = _apply_outline_edits(draft, request.outline)
         vector_store = _build_vector_store(draft.doc_ids)
         retrieved_chunks = execute_retrieval_plan(
-            build_retrieval_plan(draft.brief, outline, llm_client=None),
+            build_retrieval_plan(draft.brief, outline, llm_client=_get_optional_structured_llm_client()),
             vector_store=vector_store,
             embedder=_get_embedder(),
         )
-        style_tokens = _style_tokens_from_brand_kit(request.brand_kit)
+        theme_name = request.theme_name or "ONAC"
+        _theme_config(theme_name)
+        style_tokens = _style_tokens_from_brand_kit(request.brand_kit, theme_name)
         deck_id = f"deck-{draft.doc_ids[0]}-{len(_DECKS) + 1}"
         logo_path = _persist_logo_asset(deck_id, request.brand_kit.logo_data_url)
 
@@ -272,7 +320,7 @@ async def generate_deck_from_draft(request: GenerateDeckRequest) -> Presentation
             retrieved_chunks,
             deck_title=f"{draft.title} presentation",
             style_tokens=style_tokens,
-            theme_name=_theme_name(selected_template_id),
+            theme_name=theme_name,
             language="en-US",
             llm_client=_get_optional_structured_llm_client(),
         )
@@ -302,18 +350,22 @@ async def generate_slide_preview(request: SlidePreviewRequest) -> SlideSpecRespo
         raise HTTPException(status_code=400, detail=f"Unsupported slide purpose: {request.purpose}") from exc
 
     content_text = request.content.strip()
-    chosen_template = canonical_template_key(request.template_id or _infer_best_template_for_content(content_text))
+    chosen_template = canonical_template_key(request.template_id)
 
     try:
-        # Route all preview generation through the same normalization path.
         structured = await _llm_structure_slide_content(
-            content_text, request.title, request.audience, chosen_template,
+            content=content_text,
+            title=request.title,
+            audience=request.audience,
+            goal=request.goal,
+            purpose=purpose,
+            selected_template=chosen_template,
         )
         slide = _build_preview_slide(
             slide_id=request.slide_id,
             purpose=purpose,
             headline=structured.get("headline", request.title),
-            template_key=structured.get("template_id", chosen_template),
+            template_key=chosen_template,
             blocks_data=structured.get("blocks", []),
             speaker_notes=structured.get("speaker_notes", ""),
         )
@@ -329,7 +381,17 @@ async def chat_generate_deck(
     file: UploadFile = File(...),
 ) -> ChatGenerateResponse:
     ingest = await ingest_document(file)
-    inferred = _infer_chat_brief(prompt, ingest.title)
+    ingestion_result = _INGESTED_RESULTS[ingest.doc_id]
+    content_chunk_count = sum(
+        1 for chunk in ingestion_result.chunks
+        if chunk.classification is ContentClassification.AUDIENCE_CONTENT
+    )
+    inferred = _infer_chat_brief(
+        prompt,
+        ingest.title,
+        content_chunk_count=content_chunk_count,
+        source_context=_source_metadata_for_results([ingestion_result]),
+    )
     planned = await plan_deck(
         PlanDeckRequest(
             doc_ids=[ingest.doc_id],
@@ -352,12 +414,13 @@ async def chat_generate_deck(
                 )
                 for slide in planned.slides
             ],
+            theme_name="ONAC",
             selected_template_id=inferred["selected_template_id"],
             brand_kit=BrandKitRequest(
                 logo_data_url=None,
-                primary_color="#C74634" if "oracle" in prompt.lower() else "#4F46E5",
-                accent_color="#1F2937",
-                font_pair="Inter/Inter",
+                primary_color="#C74634",
+                accent_color="#2A2F2F",
+                font_pair="Georgia/Oracle Sans Tab",
             ),
         )
     )
@@ -403,6 +466,11 @@ async def get_templates() -> list[TemplateResponse]:
     ]
 
 
+@app.get("/api/themes", response_model=list[str])
+async def get_themes() -> list[str]:
+    return sorted(BRAND_THEMES.keys())
+
+
 @app.get("/api/deck/{deck_id}", response_model=PresentationSpecResponse)
 async def get_deck(deck_id: str) -> PresentationSpecResponse:
     deck = _DECKS.get(deck_id)
@@ -416,17 +484,23 @@ async def export_deck(deck_id: str, request: ExportRequest) -> Response:
     if deck_id not in _DECKS:
         raise HTTPException(status_code=404, detail=f"Unknown deck_id: {deck_id}")
 
+    api_deck = _DECKS[deck_id]
+
     if request.format == "pptx":
         planning_spec = _RAW_DECK_SPECS.get(deck_id)
         if planning_spec is None:
             raise HTTPException(status_code=404, detail=f"Missing planning spec for deck_id: {deck_id}")
+        export_spec = _merge_export_slides(planning_spec, request.slides)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             export_path = Path(temp_dir) / f"{deck_id}.pptx"
+            template_path = _theme_template_path(export_spec.theme.name)
             pipeline_module.generate_deck(
-                presentation_spec=planning_spec,
+                presentation_spec=export_spec,
                 output_path=export_path,
                 enable_refinement=False,
+                template_path=template_path,
+                theme_name=export_spec.theme.name,
             )
             if not export_path.exists():
                 raise HTTPException(status_code=500, detail="PPTX export failed.")
@@ -439,7 +513,11 @@ async def export_deck(deck_id: str, request: ExportRequest) -> Response:
 
     from pptx_gen.renderer.pdf_exporter import export_deck_to_pdf
 
-    deck_data = _DECKS[deck_id].model_dump()
+    planning_spec = _RAW_DECK_SPECS.get(deck_id)
+    if planning_spec is None:
+        raise HTTPException(status_code=404, detail=f"Missing planning spec for deck_id: {deck_id}")
+    export_spec = _merge_export_slides(planning_spec, request.slides)
+    deck_data = _to_api_presentation_spec(deck_id, api_deck.doc_ids, api_deck.goal, export_spec).model_dump()
     pdf_bytes = export_deck_to_pdf(deck_data)
     return Response(
         content=pdf_bytes,
@@ -566,12 +644,33 @@ def _ingested_results_for(doc_ids: list[str]) -> list[pipeline_module.IngestionI
     return [_INGESTED_RESULTS[doc_id] for doc_id in doc_ids]
 
 
+def _source_metadata_for_results(
+    ingestion_results: list[pipeline_module.IngestionIndexResult],
+) -> dict[str, Any]:
+    if len(ingestion_results) != 1:
+        return {}
+    extensions = dict(ingestion_results[0].ingestion_request.extensions or {})
+    if str(extensions.get("source_format", "")).lower() != "pptx":
+        return {}
+    return extensions
+
+
 def _build_vector_store(doc_ids: list[str]) -> InMemoryVectorStore:
+    # If there's only one doc and we already have its vector store cached, reuse it
+    if len(doc_ids) == 1 and doc_ids[0] in _INGESTED_VECTOR_STORES:
+        return _INGESTED_VECTOR_STORES[doc_ids[0]]
+
+    # For multi-doc decks, merge cached stores when available, only re-embed misses
     vector_store = InMemoryVectorStore()
     embedder = _get_embedder()
-    for result in _ingested_results_for(doc_ids):
-        embeddings = embedder.encode([chunk.text for chunk in result.chunks])
-        vector_store.upsert_chunks(result.chunks, embeddings)
+    for doc_id in doc_ids:
+        cached = _INGESTED_VECTOR_STORES.get(doc_id)
+        if cached is not None:
+            vector_store.merge(cached)
+        else:
+            result = _INGESTED_RESULTS[doc_id]
+            embeddings = embedder.encode([chunk.text for chunk in result.chunks])
+            vector_store.upsert_chunks(result.chunks, embeddings)
     return vector_store
 
 
@@ -676,23 +775,39 @@ def _normalize_outline_exact_count(outline: OutlineSpec, target_count: int, goal
     )
 
 
-def _style_tokens_from_brand_kit(brand_kit: BrandKitRequest) -> StyleTokens:
-    heading_font, body_font = FONT_PAIR_MAP.get(brand_kit.font_pair, (brand_kit.font_pair, brand_kit.font_pair))
+def _style_tokens_from_brand_kit(brand_kit: BrandKitRequest, theme_name: str = "ONAC") -> StyleTokens:
+    theme = _theme_config(theme_name)
+    base_tokens: StyleTokens = theme["style_tokens"]
+    font_pair = brand_kit.font_pair or f"{base_tokens.fonts.heading}/{base_tokens.fonts.body}"
+    heading_font, body_font = FONT_PAIR_MAP.get(font_pair, (base_tokens.fonts.heading, base_tokens.fonts.body))
     return StyleTokens(
         fonts={
             "heading": heading_font,
             "body": body_font,
-            "mono": pipeline_module.DEFAULT_STYLE_TOKENS["fonts"]["mono"],
+            "mono": base_tokens.fonts.mono,
         },
         colors={
-            "bg": "#FFFFFF",
-            "text": brand_kit.accent_color,
-            "accent": brand_kit.primary_color,
-            "muted": brand_kit.accent_color,
+            "bg": base_tokens.colors.bg,
+            "text": base_tokens.colors.text,
+            "accent": brand_kit.primary_color or base_tokens.colors.accent,
+            "muted": brand_kit.accent_color or base_tokens.colors.muted,
         },
-        spacing=pipeline_module.DEFAULT_STYLE_TOKENS["spacing"],
-        images=pipeline_module.DEFAULT_STYLE_TOKENS["images"],
+        spacing=base_tokens.spacing.model_dump(),
+        images=base_tokens.images.model_dump(),
     )
+
+
+def _theme_config(theme_name: str) -> dict[str, Any]:
+    canonical_theme_name = BRAND_THEME_ALIASES.get(theme_name, theme_name)
+    try:
+        return BRAND_THEMES[canonical_theme_name]
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"Unsupported theme_name: {theme_name}") from exc
+
+
+def _theme_template_path(theme_name: str) -> str | None:
+    template_path = _theme_config(theme_name).get("template_path")
+    return str(template_path) if template_path else None
 
 
 def _persist_logo_asset(deck_id: str, logo_data_url: str | None) -> str | None:
@@ -746,10 +861,21 @@ def _enforce_outline_authority(
     outline: OutlineSpec,
     source_ids: list[str],
 ) -> PresentationSpec:
-    existing = {slide.slide_id: slide for slide in spec.slides}
+    existing_by_id = {slide.slide_id: slide for slide in spec.slides}
+    # Build a positional index so we can match LLM slides that used different IDs
+    existing_by_index = {index: slide for index, slide in enumerate(spec.slides)}
+    used_positions: set[int] = set()
+
     slides: list[SlideSpec] = []
-    for item in outline.outline:
-        slide = existing.get(item.slide_id)
+    for outline_index, item in enumerate(outline.outline):
+        slide = existing_by_id.get(item.slide_id)
+        # If no ID match, try matching by position — the LLM often generates
+        # correct content but with different slide_id values
+        if slide is None and outline_index in existing_by_index:
+            positional = existing_by_index[outline_index]
+            if positional.slide_id not in {i.slide_id for i in outline.outline}:
+                slide = positional
+                used_positions.add(outline_index)
         if slide is None:
             slides.append(
                 SlideSpec(
@@ -794,13 +920,20 @@ def _apply_global_template_default(spec: PresentationSpec, selected_template_id:
             slides.append(slide)
             continue
         current_template = canonical_template_key(slide.layout_intent.template_key)
-        chosen_template = (
-            explicit_template_by_slide_id[slide.slide_id]
-            if slide.slide_id in explicit_template_by_slide_id
-            else current_template
-            if current_template in SPECIALIST_TEMPLATE_IDS
-            else selected_template_id
-        )
+        if slide.slide_id in explicit_template_by_slide_id:
+            # User explicitly changed the template in the outline editor.
+            chosen_template = explicit_template_by_slide_id[slide.slide_id]
+        elif current_template in SPECIALIST_TEMPLATE_IDS:
+            # Specialist templates (exec.summary, chart.takeaway, etc.) are
+            # assigned by the outline heuristic — always keep them.
+            chosen_template = current_template
+        elif current_template in DECK_DEFAULT_TEMPLATE_IDS and current_template != "headline.evidence":
+            # The outline heuristic chose a specific deck-level template
+            # (e.g., compare.2col, kpi.big) — preserve the variety.
+            chosen_template = current_template
+        else:
+            # Generic fallback — apply the user's deck-level selection.
+            chosen_template = selected_template_id
         slides.append(_coerce_slide_for_template(slide, chosen_template))
     return spec.model_copy(update={"slides": slides})
 
@@ -862,7 +995,7 @@ def _coerce_slide_for_template(slide: SlideSpec, template_key: str) -> SlideSpec
             PresentationBlock(
                 block_id="b1",
                 kind=PresentationBlockKind.TEXT,
-                content={"subtitle": text_items[0] if text_items else "", "presenter": "", "date": ""},
+                content={"subtitle": text_items[0] if text_items else "", "presenter": "", "date": datetime.now().strftime("%B %d, %Y")},
                 source_citations=[],
             )
         ]
@@ -959,7 +1092,7 @@ def _block_summary_text(block: PresentationBlock) -> str:
 
 
 def _theme_name(template_key: str) -> str:
-    return f"{_humanize_template_name(template_key)} Brand"
+    return "ONAC"
 
 
 def _outline_preview_blocks(
@@ -1052,127 +1185,107 @@ def _fallback_citation(source_ids: list[str]) -> list[SourceCitation]:
 
 
 async def _llm_structure_slide_content(
+    *,
     content: str,
     title: str,
     audience: str,
-    suggested_template: str,
+    goal: str,
+    purpose: SlidePurpose,
+    selected_template: str,
 ) -> dict[str, Any]:
-    """Use LLM to summarize raw text into structured slide content."""
-    import json as _json
+    """Use the structured client to turn editor notes into one well-formed preview slide."""
+    llm_client = _get_optional_structured_llm_client()
+    if llm_client is None:
+        return _fallback_structure_content(content, title, selected_template)
 
-    system = f"""You are a presentation designer. Given raw text, produce a structured JSON slide.
-
-Choose the best template_id from: headline.evidence, compare.2col, exec.summary, chart.takeaway, kpi.big, closing.actions
-The suggested template is "{suggested_template}" but override if a better one fits.
-
-Return JSON with:
-- "headline": concise slide title (max 8 words)
-- "template_id": chosen template
-- "speaker_notes": 1-2 sentence presenter note
-- "blocks": array of content blocks, each with "kind" and fields:
-  - For callout/cards: {{"kind":"callout","cards":[{{"title":"...","text":"..."}}]}} (one card per distinct point, each text 15-25 words)
-  - For bullets: {{"kind":"bullets","items":["...",...]}} (one bullet per distinct point, each 10-20 words)
-  - For text: {{"kind":"text","text":"..."}} (40-80 words, summarized)
-  - For kpi_cards: {{"kind":"kpi_cards","items":[{{"value":"...","label":"..."}}]}} (3 items)
-
-CRITICAL RULES:
-- Every distinct point or idea from the input MUST appear in the output. Do not drop any user content.
-- Summarize and rephrase for clarity — do NOT just copy the raw text verbatim.
-- If there are 4+ distinct points, use cards (one per point) or bullets (one per point). Do not cap at 3 if there are more.
-- Each card/bullet should be a distinct insight derived from the input.
-Audience: {audience}"""
-
+    system = (
+        "You are a professional presentation writer. "
+        "Given raw editor notes, produce a polished slide with a clear headline, speaker notes, and structured blocks. "
+        "CRITICAL: Do NOT copy-paste the raw notes. Synthesize, summarize, and rewrite them into concise, "
+        "audience-facing language with an executive tone. Each bullet should be 10-20 words of original phrasing. "
+        "Respect the selected template key and format blocks to fit that layout."
+    )
     user_prompt = (
-        f"Title: {title}\n"
+        f"Goal: {goal}\n"
         f"Audience: {audience}\n"
-        f"Preferred template: {suggested_template}\n\n"
-        "Produce consulting-style slide content.\n\n"
-        f"Raw content:\n{content}"
+        f"Slide purpose: {purpose.value}\n"
+        f"Selected template key: {selected_template}\n"
+        f"Title seed: {title}\n\n"
+        f"Template guidance:\n{_preview_template_guidance(selected_template)}\n\n"
+        "Return a JSON object with: headline (str), speaker_notes (str), blocks (list of block objects). "
+        "Do NOT wrap in a PresentationSpec. The response IS the slide object directly.\n\n"
+        f"Raw editor notes to synthesize (do NOT echo verbatim):\n{content}"
     )
 
     try:
-        llm_client = _get_optional_structured_llm_client()
-        if llm_client is None:
-            raise ValueError("No LLM client")
+        result = llm_client.generate_json(
+            system_prompt=system,
+            user_prompt=user_prompt,
+            schema_name="SlidePreviewLLMResponse",
+        )
+        if not isinstance(result, dict):
+            raise ValueError("Structured preview returned a non-object payload")
 
-        if hasattr(llm_client, "generate_json"):
-            result = llm_client.generate_json(
-                system_prompt=system,
-                user_prompt=(
-                    f"{user_prompt}\n\n"
-                    "Return a PresentationSpec with exactly one slide that follows the requested structure."
-                ),
-                schema_name="PresentationSpec",
-            )
-            slide_payloads = result.get("slides", []) if isinstance(result, dict) else []
-            if not slide_payloads:
-                raise ValueError("Structured preview returned no slides")
-            slide_payload = slide_payloads[0]
-            if not isinstance(slide_payload, dict):
-                raise ValueError("Structured preview slide payload must be an object")
+        blocks_payload = result.get("blocks", [])
+        if not isinstance(blocks_payload, list):
+            raise ValueError("Structured preview blocks must be a list")
 
-            layout_intent = slide_payload.get("layout_intent", {})
-            if layout_intent is not None and not isinstance(layout_intent, dict):
-                raise ValueError("Structured preview layout_intent must be an object")
-
-            blocks_payload = slide_payload.get("blocks", [])
-            if not isinstance(blocks_payload, list):
-                raise ValueError("Structured preview blocks must be a list")
-
-            normalized_blocks: list[dict[str, Any]] = []
-            for block in blocks_payload:
-                if not isinstance(block, dict):
-                    raise ValueError("Structured preview blocks must contain objects")
-                kind = block.get("kind", "text")
-                block_content = block.get("content", {})
-                if block_content is not None and not isinstance(block_content, dict):
-                    raise ValueError("Structured preview block content must be an object")
-                block_content = block_content or {}
-                if kind == "callout":
-                    normalized_blocks.append({"kind": kind, "cards": block_content.get("cards", [])})
-                elif kind in {"bullets", "kpi_cards"}:
-                    normalized_blocks.append({"kind": kind, "items": block_content.get("items", [])})
+        normalized_blocks: list[dict[str, Any]] = []
+        for block in blocks_payload:
+            if not isinstance(block, dict):
+                raise ValueError("Structured preview blocks must contain objects")
+            kind = block.get("kind", "text")
+            if kind == "callout":
+                if isinstance(block.get("cards"), list):
+                    normalized_blocks.append({"kind": kind, "cards": block.get("cards", [])})
                 else:
-                    normalized_blocks.append({"kind": kind, "text": block_content.get("text", "")})
-            return {
-                "headline": slide_payload.get("headline", title),
-                "template_id": layout_intent.get("template_key", suggested_template),
-                "speaker_notes": slide_payload.get("speaker_notes", ""),
-                "blocks": normalized_blocks,
-            }
-        elif hasattr(llm_client, "anthropic_client"):
-            response = llm_client.anthropic_client.messages.create(
-                model=llm_client.model,
-                max_tokens=800,
-                temperature=0.3,
-                system=system,
-                messages=[{"role": "user", "content": user_prompt}],
-            )
-            raw = response.content[0].text.strip()
-        elif hasattr(llm_client, "openai_client"):
-            response = llm_client.openai_client.chat.completions.create(
-                model=llm_client.model,
-                max_tokens=800,
-                temperature=0.3,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            raw = response.choices[0].message.content.strip()
-        else:
-            raise ValueError("Unknown LLM client type")
+                    normalized_blocks.append({"kind": kind, "text": block.get("text", "")})
+            elif kind in {"bullets", "kpi_cards"}:
+                normalized_blocks.append({"kind": kind, "items": block.get("items", [])})
+            elif kind == "table":
+                normalized_blocks.append({"kind": kind, "columns": block.get("columns", []), "rows": block.get("rows", [])})
+            elif kind == "chart":
+                normalized_blocks.append({"kind": kind, "chart_type": block.get("chart_type", "bar"), "series": block.get("series", [])})
+            elif kind == "quote":
+                normalized_blocks.append({"kind": kind, "text": block.get("text", ""), "attribution": block.get("attribution", "")})
+            else:
+                normalized_blocks.append({"kind": kind, "text": block.get("text", "")})
+        return {
+            "headline": result.get("headline", title),
+            "template_id": selected_template,
+            "speaker_notes": result.get("speaker_notes", ""),
+            "blocks": normalized_blocks,
+        }
+    except Exception as llm_exc:
+        import logging
+        logging.getLogger("pptx_gen.api").warning("LLM slide preview failed, using fallback: %s", llm_exc)
+        return _fallback_structure_content(content, title, selected_template)
 
-        # Extract JSON from response (may be wrapped in markdown fences)
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        return _json.loads(raw)
-    except Exception:
-        # Fallback: structure content without LLM
-        return _fallback_structure_content(content, title, suggested_template)
+
+def _preview_template_guidance(template_key: str) -> str:
+    guidance = {
+        "title.cover": "Use one high-level subtitle-style text block.",
+        "section.divider": "Use one short transition statement or subhead.",
+        "headline.evidence": "Use a bullets block plus a short takeaway callout.",
+        "exec.summary": "Use three summary cards plus one brief takeaway callout.",
+        "compare.2col": "Split the content into two clear sides or perspectives.",
+        "chart.takeaway": "Use a chart block if numeric evidence exists plus a short takeaway callout.",
+        "kpi.big": "Use kpi_cards with three metrics and short labels.",
+        "closing.actions": "Use bullets for concrete next steps or recommendations.",
+        "quote.photo": "Use one quote block and optionally a short supporting text or image placeholder.",
+        "quote.texture": "Use one strong quote block with attribution if available.",
+        "impact.statement": "Use one bold statement block only.",
+        "content.3col": "Use three cards or three short text blocks, one per column.",
+        "content.4col": "Use four cards or four short text blocks, one per column.",
+        "icons.3": "Use three short cards with a heading and brief body text.",
+        "icons.4": "Use four short cards with a heading and brief body text.",
+        "content.photo": "Use text or bullets for the main message and one image placeholder block.",
+        "bold.photo": "Use one bold statement block and one image placeholder block.",
+        "split.content": "Use two contrasting text blocks, one for each side.",
+        "agenda.table": "Use a concise table with row labels and descriptions.",
+        "screenshot": "Use one brief intro text block and one image placeholder block.",
+    }
+    return guidance.get(template_key, "Format the content to fit the selected layout cleanly and concisely.")
 
 
 def _fallback_structure_content(content: str, title: str, template: str) -> dict[str, Any]:
@@ -1181,31 +1294,31 @@ def _fallback_structure_content(content: str, title: str, template: str) -> dict
     bullet_lines = [line.lstrip("-•* ").strip() for line in lines if line.startswith(("-", "•", "*"))]
     plain_lines = [line for line in lines if not line.startswith(("-", "•", "*"))]
 
-    # Extract sentences for card content
-    sentences = []
+    sentences: list[str] = []
     for line in lines:
         sentences.extend(re.split(r"(?<=[.!?])\s+", line))
     sentences = [s.strip() for s in sentences if len(s.split()) >= 5]
+    points = bullet_lines or plain_lines or sentences or [content.strip() or title]
 
-    if template in ("compare.2col", "exec.summary"):
-        cards = []
-        for i, sentence in enumerate(sentences[:6]):
-            words = sentence.split()
-            card_title = " ".join(words[:5])
-            card_text = " ".join(words[:25])
-            cards.append({"title": card_title, "text": card_text})
-        while len(cards) < 3:
-            cards.append({"title": f"Key point {len(cards)+1}", "text": "Add detail here."})
-        return {
-            "headline": title,
-            "template_id": template,
-            "speaker_notes": "",
-            "blocks": [{"kind": "callout", "cards": cards[:3]}],
-        }
+    def cards_from_points(count: int) -> list[dict[str, str]]:
+        cards: list[dict[str, str]] = []
+        for point in points[:count]:
+            words = point.split()
+            cards.append({
+                "title": " ".join(words[:4]) or "Point",
+                "text": " ".join(words[:18]) or point,
+            })
+        while len(cards) < count:
+            cards.append({"title": f"Point {len(cards)+1}", "text": "Add supporting detail."})
+        return cards
+
+    def bullets_from_points(count: int = 5) -> list[str]:
+        values = [" ".join(point.split()[:16]) for point in points[:count] if point.strip()]
+        return values or [title]
 
     if template == "kpi.big":
         items = []
-        for sentence in sentences[:3]:
+        for sentence in points[:3]:
             numbers = re.findall(r"\b[\d,.]+[%$]?\b", sentence)
             value = numbers[0] if numbers else str(len(items) + 1)
             label = " ".join(sentence.split()[:6])
@@ -1219,21 +1332,124 @@ def _fallback_structure_content(content: str, title: str, template: str) -> dict
             "blocks": [{"kind": "kpi_cards", "items": items}],
         }
 
-    if bullet_lines:
+    if template == "compare.2col":
+        midpoint = max(1, (len(points) + 1) // 2)
         return {
             "headline": title,
             "template_id": template,
             "speaker_notes": "",
-            "blocks": [{"kind": "bullets", "items": bullet_lines[:6]}],
+            "blocks": [
+                {"kind": "bullets", "items": [" ".join(point.split()[:16]) for point in points[:midpoint]]},
+                {"kind": "bullets", "items": [" ".join(point.split()[:16]) for point in points[midpoint:]] or ["Add right-side comparison"]},
+            ],
         }
 
-    # Default: summarize as text
-    summary = " ".join(sentences[:5]) if sentences else content[:300]
+    if template == "exec.summary":
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [
+                {"kind": "bullets", "items": bullets_from_points(4)},
+                {"kind": "callout", "text": " ".join((sentences[:1] or points[:1]))[:160]},
+                {"kind": "callout", "cards": cards_from_points(3)},
+            ],
+        }
+
+    if template in {"content.3col", "icons.3"}:
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "callout", "cards": cards_from_points(3)}]}
+
+    if template in {"content.4col", "icons.4"}:
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "callout", "cards": cards_from_points(4)}]}
+
+    if template == "agenda.table":
+        rows = [[f"Item {index + 1}", " ".join(point.split()[:14])] for index, point in enumerate(points[:5])]
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [{"kind": "table", "columns": ["Section", "Focus"], "rows": rows}],
+        }
+
+    if template == "chart.takeaway":
+        series = []
+        for index, point in enumerate(points[:4], start=1):
+            numbers = re.findall(r"\b[\d,.]+[%$]?\b", point)
+            value_token = (numbers[0] if numbers else str(index)).replace("$", "").replace("%", "")
+            try:
+                value = float(value_token.replace(",", ""))
+            except ValueError:
+                value = float(index)
+            series.append({"label": f"Point {index}", "value": value})
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [
+                {"kind": "chart", "chart_type": "bar", "series": series or [{"label": "Point 1", "value": 1.0}]},
+                {"kind": "callout", "text": " ".join((sentences[:1] or points[:1]))[:160]},
+            ],
+        }
+
+    if template in {"quote.photo", "quote.texture"}:
+        quote_text = " ".join((sentences[:1] or points[:1]))[:180]
+        blocks = [{"kind": "quote", "text": quote_text, "attribution": title}]
+        if template == "quote.photo":
+            blocks.append({"kind": "image", "text": "Photo"})
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": blocks}
+
+    if template == "impact.statement":
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "text", "text": " ".join((sentences[:1] or points[:1]))[:160]}]}
+
+    if template in {"content.photo", "bold.photo", "screenshot"}:
+        primary_block = (
+            {"kind": "bullets", "items": bullets_from_points(4)}
+            if template == "content.photo"
+            else {"kind": "text", "text": " ".join((sentences[:1] or points[:1]))[:180]}
+        )
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [primary_block, {"kind": "image", "text": "Image"}],
+        }
+
+    if template == "split.content":
+        midpoint = max(1, (len(points) + 1) // 2)
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [
+                {"kind": "text", "text": " ".join(points[:midpoint])[:180]},
+                {"kind": "text", "text": " ".join(points[midpoint:])[:180] or "Add contrasting point"},
+            ],
+        }
+
+    if template in {"title.cover", "section.divider"}:
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [{"kind": "text", "text": " ".join((sentences[:1] or points[:1]))[:160]}],
+        }
+
+    if template == "closing.actions":
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [{"kind": "bullets", "items": bullets_from_points(5)}],
+        }
+
     return {
         "headline": title,
         "template_id": template,
         "speaker_notes": "",
-        "blocks": [{"kind": "text", "text": summary}],
+        "blocks": [
+            {"kind": "bullets", "items": bullets_from_points(5)},
+            {"kind": "callout", "text": " ".join((sentences[:1] or points[:1]))[:160]},
+        ],
     }
 
 
@@ -1266,6 +1482,14 @@ def _build_preview_slide(
             content = {"items": block_data.get("items", [])}
         elif kind == PresentationBlockKind.KPI_CARDS:
             content = {"items": block_data.get("items", [])}
+        elif kind == PresentationBlockKind.TABLE:
+            content = {"columns": block_data.get("columns", []), "rows": block_data.get("rows", [])}
+        elif kind == PresentationBlockKind.CHART:
+            content = {"chart_type": block_data.get("chart_type", "bar"), "series": block_data.get("series", [])}
+        elif kind == PresentationBlockKind.QUOTE:
+            content = {"text": block_data.get("text", ""), "attribution": block_data.get("attribution", "")}
+        elif kind == PresentationBlockKind.IMAGE:
+            content = {"text": block_data.get("text", "Image")}
         else:
             content = {"text": block_data.get("text", "")}
 
@@ -1385,7 +1609,7 @@ def _to_api_presentation_spec(
         theme=ThemeSummaryResponse(
             name=planning_spec.theme.name,
             primary_color=planning_spec.theme.style_tokens.colors.accent,
-            accent_color=planning_spec.theme.style_tokens.colors.text,
+            accent_color=planning_spec.theme.style_tokens.colors.muted,
             heading_font=planning_spec.theme.style_tokens.fonts.heading,
             body_font=planning_spec.theme.style_tokens.fonts.body,
             logo_present=logo_present,
@@ -1436,6 +1660,247 @@ def _stringify_block_content(kind: PresentationBlockKind, content: dict[str, Any
         if not text:
             text = "\n".join(f"{key}: {value}" for key, value in content.items())
     return strip_markdown(text)
+
+
+def _merge_export_slides(planning_spec: PresentationSpec, ui_slides: list[ExportSlideRequest] | None) -> PresentationSpec:
+    if not ui_slides:
+        return planning_spec
+
+    existing_slides = {slide.slide_id: slide for slide in planning_spec.slides}
+    source_ids = [citation.source_id for slide in planning_spec.slides for block in slide.blocks for citation in block.source_citations]
+    fallback_source_id = source_ids[0] if source_ids else "ui-export"
+    merged_slides = [
+        _ui_slide_to_planning_slide(ui_slide, existing_slides.get(ui_slide.id), fallback_source_id)
+        for ui_slide in sorted(ui_slides, key=lambda slide: slide.index)
+    ]
+    return planning_spec.model_copy(update={"slides": merged_slides})
+
+
+def _ui_slide_to_planning_slide(
+    ui_slide: ExportSlideRequest,
+    existing_slide: SlideSpec | None,
+    fallback_source_id: str,
+) -> SlideSpec:
+    template_key = canonical_template_key(ui_slide.template_id)
+    try:
+        purpose = SlidePurpose(ui_slide.purpose)
+    except ValueError:
+        purpose = existing_slide.purpose if existing_slide else SlidePurpose.CONTENT
+
+    archetype = existing_slide.archetype if existing_slide else None
+    if ui_slide.archetype:
+        try:
+            archetype = SlideArchetype(ui_slide.archetype)
+        except ValueError:
+            pass
+
+    existing_blocks = {block.block_id: block for block in existing_slide.blocks} if existing_slide else {}
+    blocks = [
+        _ui_block_to_planning_block(block, existing_blocks.get(block.id), fallback_source_id)
+        for block in ui_slide.blocks
+    ]
+    if not blocks:
+        blocks = [
+            PresentationBlock(
+                block_id=f"{ui_slide.id}-b1",
+                kind=PresentationBlockKind.TEXT,
+                content={"text": ui_slide.title},
+            )
+        ]
+
+    headline, blocks = _canonicalize_export_slide(template_key, ui_slide.title, blocks)
+
+    return SlideSpec(
+        slide_id=ui_slide.id,
+        purpose=purpose,
+        archetype=archetype,
+        layout_intent=LayoutIntent(template_key=template_key, strict_template=True),
+        headline=headline,
+        speaker_notes=ui_slide.speaker_notes or "",
+        blocks=blocks,
+    )
+
+
+def _ui_block_to_planning_block(
+    ui_block: ExportBlockRequest,
+    existing_block: PresentationBlock | None,
+    fallback_source_id: str,
+) -> PresentationBlock:
+    try:
+        kind = PresentationBlockKind(ui_block.kind)
+    except ValueError:
+        kind = PresentationBlockKind.TEXT
+
+    citations = existing_block.source_citations[:] if existing_block else []
+    if ui_block.citation and not citations:
+        source_id = ui_block.citation.split(":", 1)[0] if ":" in ui_block.citation else fallback_source_id
+        citations = [SourceCitation(source_id=source_id or fallback_source_id, locator=ui_block.citation)]
+
+    return PresentationBlock(
+        block_id=ui_block.id,
+        kind=kind,
+        content=_ui_block_content(kind, ui_block),
+        source_citations=citations,
+        style_overrides=existing_block.style_overrides if existing_block else None,
+        asset_refs=existing_block.asset_refs[:] if existing_block else [],
+        x_security=existing_block.x_security if existing_block else None,
+        extensions=existing_block.extensions if existing_block else None,
+    )
+
+
+def _ui_block_content(kind: PresentationBlockKind, ui_block: ExportBlockRequest) -> dict[str, Any]:
+    text = ui_block.content or ""
+    data = dict(ui_block.data) if isinstance(ui_block.data, dict) else {}
+
+    if data and _should_preserve_ui_block_data(kind, data):
+        return data
+
+    # For text-native blocks, prefer the visible content when present so editor
+    # edits cannot silently diverge from the exported slide.
+    if not text.strip() and data:
+        return data
+
+    if not text.strip():
+        return {"text": ""}
+    if kind is PresentationBlockKind.BULLETS:
+        items = [line.lstrip("-•* ").strip() for line in text.splitlines() if line.strip()]
+        return {"items": items or [text.strip() or "Add content"]}
+    if kind is PresentationBlockKind.KPI_CARDS:
+        items = []
+        for line in text.splitlines():
+            raw = line.strip()
+            if not raw:
+                continue
+            if "|" in raw:
+                value, label = raw.split("|", 1)
+            else:
+                value, label = raw, ""
+            items.append({"value": value.strip(), "label": label.strip()})
+        return {"items": items or [{"value": "N/A", "label": text.strip() or "Metric"}]}
+    if kind is PresentationBlockKind.TABLE:
+        rows = [[cell.strip() for cell in line.split("|")] for line in text.splitlines() if line.strip()]
+        if not rows:
+            rows = [["Item", text.strip() or "Add detail"]]
+        column_count = max(len(row) for row in rows)
+        columns = [f"Column {index + 1}" for index in range(column_count)]
+        normalized_rows = [row + [""] * (column_count - len(row)) for row in rows]
+        return {"columns": columns, "rows": normalized_rows}
+    if kind is PresentationBlockKind.CHART:
+        series = []
+        for line in text.splitlines():
+            raw = line.strip()
+            if not raw:
+                continue
+            if ":" in raw:
+                label, value = raw.split(":", 1)
+            else:
+                label, value = raw, "1"
+            try:
+                parsed_value = float(value.strip().replace(",", "").replace("%", "").replace("$", ""))
+            except ValueError:
+                parsed_value = 1.0
+            series.append({"label": label.strip(), "value": parsed_value})
+        return {"chart_type": "bar", "series": series or [{"label": "Point 1", "value": 1.0}]}
+    if kind is PresentationBlockKind.CALLOUT:
+        cards = []
+        for line in text.splitlines():
+            raw = line.strip()
+            if not raw:
+                continue
+            if ":" in raw:
+                title, body = raw.split(":", 1)
+                cards.append({"title": title.strip(), "text": body.strip()})
+        if cards:
+            return {"cards": cards}
+        return {"text": text.strip()}
+    if kind is PresentationBlockKind.QUOTE:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        return {"text": lines[0] if lines else text.strip(), "attribution": lines[1] if len(lines) > 1 else ""}
+    if kind is PresentationBlockKind.IMAGE:
+        return {"text": text.strip() or "Image"}
+    return {"text": text.strip()}
+
+
+def _should_preserve_ui_block_data(kind: PresentationBlockKind, data: dict[str, Any]) -> bool:
+    asset_keys = {"local_path", "path", "file_path", "asset_path", "uri"}
+    if any(isinstance(data.get(key), str) and data.get(key) for key in asset_keys):
+        return True
+    if kind in {PresentationBlockKind.TABLE, PresentationBlockKind.CHART, PresentationBlockKind.QUOTE}:
+        return True
+    if kind is PresentationBlockKind.CALLOUT and isinstance(data.get("cards"), list):
+        return True
+    return False
+
+
+def _canonicalize_export_slide(
+    template_key: str,
+    headline: str,
+    blocks: list[PresentationBlock],
+) -> tuple[str, list[PresentationBlock]]:
+    canonical_blocks = blocks
+    canonical_headline = headline
+
+    if template_key in {"content.3col", "content.4col"}:
+        target_count = 3 if template_key == "content.3col" else 4
+        canonical_blocks = _expand_card_blocks(blocks, target_count)
+    elif template_key == "bold.photo":
+        statement = next((_extract_block_text(block) for block in blocks if block.kind is not PresentationBlockKind.IMAGE), "")
+        if statement:
+            canonical_headline = statement
+
+    if template_key == "chart.takeaway" and len(canonical_blocks) >= 2:
+        takeaway = canonical_blocks[1]
+        if takeaway.kind is PresentationBlockKind.CALLOUT and isinstance(takeaway.content.get("cards"), list):
+            canonical_blocks = [
+                *canonical_blocks[:1],
+                takeaway.model_copy(
+                    update={
+                        "content": {
+                            "text": "\n".join(
+                                f"{card.get('title', '').strip()}: {card.get('text', '').strip()}".strip(": ")
+                                for card in takeaway.content["cards"]
+                                if card.get("title") or card.get("text")
+                            ).strip()
+                        }
+                    }
+                ),
+                *canonical_blocks[2:],
+            ]
+
+    return canonical_headline, canonical_blocks
+
+
+def _expand_card_blocks(blocks: list[PresentationBlock], target_count: int) -> list[PresentationBlock]:
+    if len(blocks) >= target_count:
+        return blocks
+    if not blocks:
+        return blocks
+
+    first_block = blocks[0]
+    cards = first_block.content.get("cards")
+    if first_block.kind is not PresentationBlockKind.CALLOUT or not isinstance(cards, list):
+        return blocks
+
+    expanded_blocks: list[PresentationBlock] = []
+    for index in range(target_count):
+        card = cards[index] if index < len(cards) and isinstance(cards[index], dict) else {}
+        title = str(card.get("title", "")).strip()
+        body = str(card.get("text", "")).strip()
+        text = "\n".join(part for part in (title, body) if part).strip() or "Add supporting detail."
+        expanded_blocks.append(
+            first_block.model_copy(
+                update={
+                    "block_id": f"{first_block.block_id}-card-{index + 1}",
+                    "kind": PresentationBlockKind.TEXT,
+                    "content": {"text": text},
+                }
+            )
+        )
+    return expanded_blocks
+
+
+def _extract_block_text(block: PresentationBlock) -> str:
+    return _stringify_block_content(block.kind, block.content).strip()
 
 
 def _tone_label_from_score(score: float) -> str:
@@ -1503,19 +1968,40 @@ def _serve_frontend_path(full_path: str) -> Response:
         raise HTTPException(status_code=404, detail="Invalid frontend path.") from exc
 
     if full_path and requested.exists() and requested.is_file():
-        return FileResponse(requested)
-    return FileResponse(WEB_INDEX)
+        response = FileResponse(requested)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    response = FileResponse(WEB_INDEX)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 _ALIAS_BY_CANONICAL = _build_alias_index()
 
 
-def _infer_chat_brief(prompt: str, default_title: str) -> dict[str, Any]:
+def _infer_chat_brief(
+    prompt: str,
+    default_title: str,
+    *,
+    content_chunk_count: int = 0,
+    source_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     lowered = prompt.lower()
-    slide_count = 6
+    source_context = source_context or {}
+
+    # Dynamic default based on document size — more content means more slides.
+    # Each content slide typically covers ~8-12 chunks of source material.
+    if str(source_context.get("source_format", "")).lower() == "pptx" and source_context.get("slide_count"):
+        slide_count = max(1, min(40, int(source_context["slide_count"])))
+    elif content_chunk_count > 0:
+        slide_count = max(6, min(20, 4 + content_chunk_count // 10))
+    else:
+        slide_count = 6
+
+    # Explicit user request ("12 slides") overrides the dynamic default.
     count_match = next((match for match in re.finditer(r"(\d+)\s+slides?", lowered)), None)
     if count_match is not None:
-        slide_count = max(4, min(12, int(count_match.group(1))))
+        slide_count = max(1, min(40, int(count_match.group(1))))
 
     audience = "Executive audience"
     for marker in ("for ", "to "):

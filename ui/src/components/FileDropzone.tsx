@@ -2,12 +2,13 @@ import { useRef, useState } from 'react'
 
 interface FileDropzoneProps {
   accept: string
+  acceptLabel?: string
   loading?: boolean
   multiple?: boolean
   onFilesSelect: (files: File[]) => void
 }
 
-export function FileDropzone({ accept, loading = false, multiple = false, onFilesSelect }: FileDropzoneProps) {
+export function FileDropzone({ accept, acceptLabel, loading = false, multiple = false, onFilesSelect }: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [status, setStatus] = useState('Drop files here or press Enter to browse.')
   const [selectedNames, setSelectedNames] = useState<string[]>([])
@@ -48,7 +49,7 @@ export function FileDropzone({ accept, loading = false, multiple = false, onFile
       />
       <div aria-live="polite" className="mx-auto max-w-lg space-y-3">
         <p className="text-lg font-semibold text-slate-900">Drag and drop one or more documents</p>
-        <p className="text-sm text-slate-600">Accepts .pdf, .txt, and .md</p>
+        <p className="text-sm text-slate-600">Accepts {acceptLabel ?? accept}</p>
         {selectedNames.length > 0 ? (
           <div className="space-y-1 text-sm text-slate-800">
             {selectedNames.map((name) => (

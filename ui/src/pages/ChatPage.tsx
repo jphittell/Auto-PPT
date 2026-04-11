@@ -59,7 +59,7 @@ export function ChatPage() {
                 <span className="mb-2 block text-sm font-medium text-slate-700">Document</span>
                 <input
                   type="file"
-                  accept=".pdf,.txt,.md"
+                  accept=".pdf,.txt,.md,.pptx"
                   onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                   className="block w-full rounded-2xl border border-slate-200 px-4 py-3"
                 />

@@ -9,17 +9,13 @@ export interface ToastMessage {
 }
 
 interface UIStore {
-  preflightModalOpen: boolean
   toasts: ToastMessage[]
-  setPreflightModalOpen: (open: boolean) => void
   addToast: (message: string, type?: ToastType) => void
   dismissToast: (id: string) => void
 }
 
 export const useUIStore = create<UIStore>((set) => ({
-  preflightModalOpen: false,
   toasts: [],
-  setPreflightModalOpen: (preflightModalOpen) => set({ preflightModalOpen }),
   addToast: (message, type = 'info') =>
     set((state) => ({
       toasts: [...state.toasts, { id: `${Date.now()}-${Math.random()}`, message, type }],

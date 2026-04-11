@@ -81,6 +81,19 @@ class InMemoryVectorStore:
             )
         return retrieved
 
+    def merge(self, other: "InMemoryVectorStore") -> None:
+        """Copy all entries from *other* into this store."""
+        all_data = other.collection.get(include=["documents", "metadatas", "embeddings"])
+        ids = all_data.get("ids", [])
+        if not ids:
+            return
+        self.collection.upsert(
+            ids=ids,
+            documents=all_data.get("documents", []),
+            embeddings=all_data.get("embeddings", []),
+            metadatas=all_data.get("metadatas", []),
+        )
+
     @staticmethod
     def _metadata_for_chunk(chunk: ChunkRecord) -> dict[str, Any]:
         return {

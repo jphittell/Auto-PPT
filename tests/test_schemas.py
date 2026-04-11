@@ -37,7 +37,7 @@ def test_presentation_spec_rejects_duplicate_block_ids(make_presentation_spec, m
 
 
 def test_presentation_spec_enforces_word_cap(make_presentation_spec, make_slide, make_block) -> None:
-    long_text = " ".join(["word"] * 71)
+    long_text = " ".join(["word"] * 151)
     payload = make_presentation_spec(
         slides=[
             make_slide(

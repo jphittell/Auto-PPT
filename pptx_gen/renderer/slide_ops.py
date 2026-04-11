@@ -76,6 +76,32 @@ def add_text(
     return shape
 
 
+def fill_text_placeholder(
+    shape: Any,
+    text: str,
+    *,
+    style_tokens: StyleTokens,
+    style_ref: str | None = None,
+):
+    if not getattr(shape, "has_text_frame", False):
+        raise ValueError(f"placeholder {getattr(shape, 'name', 'unknown')} does not support text")
+    text_frame = shape.text_frame
+    text_frame.clear()
+    text_frame.word_wrap = True
+    text_frame.vertical_anchor = MSO_ANCHOR.TOP
+    paragraph = text_frame.paragraphs[0]
+    paragraph.text = text
+    paragraph.alignment = PP_ALIGN.LEFT
+    profile = style_profile(style_tokens, style_ref or "body", ResolvedElementKind.TEXTBOX)
+    run = _ensure_first_run(paragraph)
+    run.font.name = profile["font_name"]
+    run.font.size = Pt(profile["font_size_pt"])
+    run.font.bold = profile["bold"]
+    run.font.italic = profile["italic"]
+    run.font.color.rgb = rgb_from_hex(profile["text_color"])
+    return shape
+
+
 def add_bullets(
     slide: Slide,
     items: list[str],
@@ -113,6 +139,35 @@ def add_bullets(
     return shape
 
 
+def fill_bullets_placeholder(
+    shape: Any,
+    items: list[str],
+    *,
+    style_tokens: StyleTokens,
+    style_ref: str | None = None,
+):
+    if not getattr(shape, "has_text_frame", False):
+        raise ValueError(f"placeholder {getattr(shape, 'name', 'unknown')} does not support text")
+    text_frame = shape.text_frame
+    text_frame.clear()
+    text_frame.word_wrap = True
+    text_frame.vertical_anchor = MSO_ANCHOR.TOP
+    profile = style_profile(style_tokens, style_ref or "body", ResolvedElementKind.TEXTBOX)
+    for index, item in enumerate(items):
+        paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
+        paragraph.text = f"\u2022 {item}"
+        paragraph.level = 0
+        paragraph.alignment = PP_ALIGN.LEFT
+        runs = paragraph.runs or (_ensure_first_run(paragraph),)
+        for run in runs:
+            run.font.name = profile["font_name"]
+            run.font.size = Pt(profile["font_size_pt"])
+            run.font.bold = profile["bold"]
+            run.font.italic = profile["italic"]
+            run.font.color.rgb = rgb_from_hex(profile["text_color"])
+    return shape
+
+
 def add_image(slide: Slide, image_path: str | Path, *, x: float, y: float, w: float, h: float):
     path = ensure_local_asset_path(image_path)
     return slide.shapes.add_picture(str(path), Inches(x), Inches(y), width=Inches(w), height=Inches(h))
@@ -120,6 +175,13 @@ def add_image(slide: Slide, image_path: str | Path, *, x: float, y: float, w: fl
 
 def add_chart_image(slide: Slide, image_path: str | Path, *, x: float, y: float, w: float, h: float):
     return add_image(slide, image_path, x=x, y=y, w=w, h=h)
+
+
+def fill_picture_placeholder(shape: Any, image_path: str | Path):
+    path = ensure_local_asset_path(image_path)
+    if not hasattr(shape, "insert_picture"):
+        raise ValueError(f"placeholder {getattr(shape, 'name', 'unknown')} does not support pictures")
+    return shape.insert_picture(str(path))
 
 
 def add_table(
@@ -232,7 +294,7 @@ def style_profile(
                 "bold": style_ref == "takeaway",
                 "fill_color": colors.accent if style_ref == "takeaway" else "#F8FAFC",
                 "line_color": colors.accent,
-                "text_color": "#FFFFFF" if style_ref == "takeaway" else colors.text,
+                "text_color": "#FFFFFF" if style_ref == "takeaway" else "#1E293B",
             }
         )
     elif style_ref == "accent_bar":

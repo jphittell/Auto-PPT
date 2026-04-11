@@ -82,6 +82,53 @@ def test_collect_brief_preserves_requested_slide_count_above_12(sample_ingestion
     assert brief.slide_count_target == 18
 
 
+def test_generate_outline_uses_powerpoint_blueprint_when_available() -> None:
+    brief = collect_deck_brief(
+        user_request="Rebrand this deck for ONAC",
+        audience="Executive leadership",
+        goal="Rebrand this deck for ONAC",
+        slide_count_target=2,
+        source_corpus_ids=["src-pptx"],
+        document_title="Sample Deck",
+        source_texts=[
+            "Sample Deck Executive overview",
+            "Decision Summary Primary recommendation First point Cost Low",
+        ],
+        source_metadata={
+            "source_format": "pptx",
+            "slide_count": 2,
+            "slide_types": {"content": 1, "title": 1},
+            "slide_blueprint": [
+                {
+                    "slide_number": 1,
+                    "title": "Sample Deck",
+                    "slide_type": "title",
+                    "purpose_hint": "title",
+                    "template_hint": "title.cover",
+                    "text_preview": "Executive overview",
+                },
+                {
+                    "slide_number": 2,
+                    "title": "Decision Summary",
+                    "slide_type": "table",
+                    "purpose_hint": "content",
+                    "template_hint": "compare.2col",
+                    "text_preview": "Primary recommendation Cost Low",
+                },
+            ],
+        },
+    )
+
+    outline = generate_outline(brief)
+
+    assert len(outline.outline) == 2
+    assert outline.outline[0].purpose is SlidePurpose.TITLE
+    assert outline.outline[0].template_key == "title.cover"
+    assert outline.outline[1].headline == "Decision Summary"
+    assert outline.outline[1].template_key == "compare.2col"
+    assert outline.outline[1].purpose is SlidePurpose.CONTENT
+
+
 def test_generate_outline_avoids_duplicate_headlines_for_pipeline_story() -> None:
     brief = DeckBrief(
         audience="Executive leadership",
@@ -105,6 +152,8 @@ def test_generate_outline_avoids_duplicate_headlines_for_pipeline_story() -> Non
     content_and_summary = [item.headline for item in outline.outline if item.purpose in {SlidePurpose.CONTENT, SlidePurpose.SUMMARY, SlidePurpose.CLOSING}]
 
     assert len(content_and_summary) == len({headline.lower() for headline in content_and_summary})
+    assert all(not headline.startswith("Implementation implications") for headline in content_and_summary)
+    assert all(not headline.startswith("Design quality strategies") for headline in content_and_summary)
 
 
 def test_expand_content_messages_derives_distinct_framings_when_takeaways_are_short() -> None:
@@ -152,9 +201,9 @@ def test_collect_brief_augments_llm_output_with_repo_extensions() -> None:
     )
 
     assert brief.extensions is not None
-    assert brief.extensions["document_title"] == "Oracle HCM Cloud 26B Release Notes"
-    assert brief.extensions["deck_archetype"] == "release_readiness"
-    assert brief.extensions["key_takeaways"]
+    assert brief.extensions.document_title == "Oracle HCM Cloud 26B Release Notes"
+    assert brief.extensions.deck_archetype == "release_readiness"
+    assert brief.extensions.key_takeaways
 
 
 def test_execute_retrieval_plan_returns_real_chunk_metadata(sample_ingestion_request, deterministic_embedder) -> None:
@@ -232,6 +281,58 @@ def test_execute_retrieval_plan_excludes_meta_planning_chunks(deterministic_embe
     assert results["s1"]
     assert all("should implement" not in hit.text.lower() for hit in results["s1"])
     assert all(hit.metadata.get("classification") == "audience_content" for hit in results["s1"])
+
+
+def test_execute_retrieval_plan_uses_expanded_result_caps(deterministic_embedder) -> None:
+    class FakeVectorStore:
+        def __init__(self) -> None:
+            self._calls = 0
+
+        def query(self, *, query_embedding, n_results, exclude_classifications):
+            self._calls += 1
+            assert n_results == 4
+            hits: list[RetrievedChunk] = []
+            for index in range(1, n_results + 1):
+                hits.append(
+                    RetrievedChunk(
+                        chunk_id=f"chunk-{self._calls}-{index}",
+                        source_id="src-rich",
+                        locator=f"src-rich:page{self._calls}-{index}",
+                        text=f"Evidence {self._calls}-{index}",
+                        score=0.9,
+                        metadata={"classification": "audience_content"},
+                    )
+                )
+            return hits
+
+    retrieval_plan = RetrievalPlan(
+        retrieval_plan=[
+            {
+                "slide_id": "s1",
+                "queries": [
+                    {"query": f"query {index}", "doc_ids": ["src-rich"], "min_date": None}
+                    for index in range(1, 6)
+                ],
+            }
+        ]
+    )
+
+    results = execute_retrieval_plan(
+        retrieval_plan,
+        vector_store=FakeVectorStore(),
+        embedder=deterministic_embedder,
+    )
+
+    assert len(results["s1"]) == 10
+    assert results["s1"][0].chunk_id == "chunk-1-1"
+    assert results["s1"][-1].chunk_id == "chunk-3-2"
+
+
+def test_step4_prompt_uses_word_cap_language() -> None:
+    prompt = (Path(prompt_chain_module.__file__).with_name("prompts") / "step4_slidespec.md").read_text(encoding="utf-8")
+
+    assert "150" in prompt
+    assert "cap" in prompt.lower()
 
 
 def test_planning_language_patterns_allow_endpoint_and_api_call_business_content() -> None:
@@ -484,6 +585,79 @@ def test_generate_presentation_spec_honors_card_template_with_card_blocks(style_
     assert content_slide.blocks[0].kind.value == "bullets"
     assert content_slide.blocks[1].kind.value == "bullets"
     assert summary_slide.layout_intent.template_key in {"compare.2col", "closing.actions", "headline.evidence"}
+
+
+def test_title_slide_subtitle_prefers_brief_thesis_over_technical_chunk_text() -> None:
+    brief = DeckBrief(
+        audience="Executive leadership",
+        goal="Summarize how Codex improves slide production.",
+        tone="executive",
+        slide_count_target=4,
+        source_corpus_ids=["codex-doc"],
+        questions_for_user=[],
+        extensions={
+            "one_sentence_thesis": "Tools you can use to increase Codex productivity.",
+            "key_takeaways": ["Orchestrator of deterministic tools."],
+        },
+    )
+    item = OutlineItem(
+        slide_id="s1",
+        purpose=SlidePurpose.TITLE,
+        headline="Codex Skills and Capabilities",
+        message="Introduce the deck.",
+        evidence_queries=[],
+        template_key="title.cover",
+    )
+    chunks = [
+        RetrievedChunk(
+            chunk_id="codex-doc:1",
+            source_id="codex-doc",
+            locator="codex-doc:page1",
+            text="PptxGenJS documents addSlide() usage and positions itself as generating OOXML-compatible PPTX.",
+        )
+    ]
+
+    subtitle = prompt_chain_module._title_subtitle_from_content(brief, item, chunks)
+
+    assert subtitle == "Tools you can use to increase Codex productivity"
+
+
+def test_title_slide_subtitle_uses_high_level_chunk_over_jargony_chunk_when_priority_inputs_are_weak() -> None:
+    brief = DeckBrief(
+        audience="Executive leadership",
+        goal="Update",
+        tone="executive",
+        slide_count_target=4,
+        source_corpus_ids=["codex-doc"],
+        questions_for_user=[],
+        extensions={},
+    )
+    item = OutlineItem(
+        slide_id="s1",
+        purpose=SlidePurpose.TITLE,
+        headline="Codex Skills and Capabilities",
+        message="Overview",
+        evidence_queries=[],
+        template_key="title.cover",
+    )
+    chunks = [
+        RetrievedChunk(
+            chunk_id="codex-doc:1",
+            source_id="codex-doc",
+            locator="codex-doc:page1",
+            text="PptxGenJS documents addSlide() usage and positions itself as generating OOXML-compatible PPTX.",
+        ),
+        RetrievedChunk(
+            chunk_id="codex-doc:2",
+            source_id="codex-doc",
+            locator="codex-doc:page1",
+            text="Orchestrator of deterministic tools that streamline slide production for teams.",
+        ),
+    ]
+
+    subtitle = prompt_chain_module._title_subtitle_from_content(brief, item, chunks)
+
+    assert subtitle == "Orchestrator of deterministic tools that streamline slide production for teams"
 
 
 def test_generate_presentation_spec_builds_executive_summary_slide(style_tokens_payload) -> None:
@@ -1165,5 +1339,62 @@ def test_gold_planning_fixtures_validate_against_declared_models(fixture_name: s
 def test_dense_bad_spec_fixture_is_rejected_by_presentation_schema() -> None:
     payload = _load_gold_fixture(GOLD_FIXTURE_DIR / "spec_bad_dense.json")
 
-    with pytest.raises(ValidationError, match="requires source_citations|exceeds 70-word content cap"):
+    with pytest.raises(ValidationError, match="requires source_citations|exceeds 150-word content cap"):
         PresentationSpec(**payload)
+
+
+def test_score_content_template_favors_kpi_for_metrics() -> None:
+    from pptx_gen.planning.prompt_chain import _score_content_template
+
+    result = _score_content_template(
+        "Revenue growth of 42% and ROI improvement to 3.5x across all regions",
+        "Present quarterly KPI performance",
+    )
+    assert result == "kpi.big"
+
+
+def test_score_content_template_favors_compare_for_tradeoffs() -> None:
+    from pptx_gen.planning.prompt_chain import _score_content_template
+
+    result = _score_content_template(
+        "Compare option A versus option B with pros and cons",
+        "Decision guide for the team",
+    )
+    assert result == "compare.2col"
+
+
+def test_score_content_template_diversity_penalty() -> None:
+    from pptx_gen.planning.prompt_chain import _score_content_template
+
+    # First call with no history — should pick some template
+    used: dict[str, int] = {}
+    t1 = _score_content_template("General enterprise capabilities and features", "Overview", used_templates=used)
+    used[t1] = used.get(t1, 0) + 1
+
+    # Second call with same content — diversity should push to a different template
+    t2 = _score_content_template("General enterprise capabilities and features", "Overview", used_templates=used)
+    used[t2] = used.get(t2, 0) + 1
+
+    # Third call — should diversify further
+    t3 = _score_content_template("General enterprise capabilities and features", "Overview", used_templates=used)
+
+    # At least 2 distinct templates used across 3 calls with identical content
+    assert len({t1, t2, t3}) >= 2
+
+
+def test_template_diversity_in_outline(sample_ingestion_request) -> None:
+    chunks = chunk_document(sample_ingestion_request)
+    brief = collect_deck_brief(
+        user_request="Create an executive summary of this document",
+        audience="Leadership team",
+        goal="Comprehensive overview",
+        source_corpus_ids=[sample_ingestion_request.source.id],
+        document_title=sample_ingestion_request.document.title,
+        source_texts=[chunk.text for chunk in chunks],
+        slide_count_target=8,
+    )
+    outline = generate_outline(brief)
+
+    template_keys = [item.template_key for item in outline.outline if item.template_key]
+    distinct_keys = set(template_keys)
+    assert len(distinct_keys) >= 3, f"Expected >= 3 distinct templates, got {distinct_keys}"

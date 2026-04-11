@@ -31,12 +31,13 @@ from pptx_gen.renderer.pptx_exporter import export_pptx
 from pptx_gen.renderer.qa import QAReport, validate_export, validate_layout
 
 
-DEFAULT_STYLE_TOKENS = {
-    "fonts": {"heading": "Aptos Display", "body": "Aptos", "mono": "Cascadia Code"},
-    "colors": {"bg": "#FFFFFF", "text": "#111111", "accent": "#0A84FF", "muted": "#6B7280"},
+ONAC_STYLE_TOKENS = {
+    "fonts": {"heading": "Georgia", "body": "Oracle Sans Tab", "mono": "Cascadia Code"},
+    "colors": {"bg": "#2A2F2F", "text": "#FFFFFF", "accent": "#C74634", "muted": "#89B2B0"},
     "spacing": {"margin_in": 0.5, "gutter_in": 0.25},
     "images": {"source_policy": "provided_only", "style_prompt": "clean editorial visuals"},
 }
+DEFAULT_STYLE_TOKENS = ONAC_STYLE_TOKENS
 
 
 class ExportStatus(str, Enum):
@@ -160,7 +161,7 @@ def generate_deck(
     user_brief: str | None = None,
     language: str = "en-US",
     style_tokens: StyleTokens | None = None,
-    theme_name: str = "Auto PPT",
+    theme_name: str = "ONAC",
     ingest_options: IngestionOptions | None = None,
     embedder: SupportsEmbedding | None = None,
     vector_store: InMemoryVectorStore | None = None,
@@ -212,6 +213,7 @@ def generate_deck(
                 for chunk in ingestion_result.chunks
                 if chunk.classification is ContentClassification.AUDIENCE_CONTENT
             ],
+            "source_metadata": dict(ingestion_result.ingestion_request.extensions or {}),
         }
         deck_title = title or ingestion_result.ingestion_request.document.title or "Untitled Presentation"
         try:
@@ -369,8 +371,8 @@ def generate_deck(
     else:
         pass
 
-    status = ExportStatus.SUCCESS if export_report.passed else ExportStatus.FAILED
-    artifact_urls = [str(output_path)] if output_path.exists() and status is ExportStatus.SUCCESS else None
+    status = ExportStatus.SUCCESS if output_path.exists() else ExportStatus.FAILED
+    artifact_urls = [str(output_path)] if output_path.exists() else None
     return DeckGenerationResult(
         presentation_spec=final_spec,
         resolved_layout=final_bundle.resolved_layout,

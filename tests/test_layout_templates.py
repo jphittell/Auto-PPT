@@ -29,6 +29,18 @@ EXPECTED_TEMPLATE_KEYS = (
     "compare.2col",
     "chart.takeaway",
     "closing.actions",
+    "quote.photo",
+    "quote.texture",
+    "impact.statement",
+    "content.3col",
+    "content.4col",
+    "icons.3",
+    "icons.4",
+    "content.photo",
+    "bold.photo",
+    "split.content",
+    "agenda.table",
+    "screenshot",
 )
 
 
@@ -140,3 +152,137 @@ def test_resolver_integrates_with_richer_template_registry(make_presentation_spe
     ]
     assert layout.slides[0].elements[1].data_ref == "block:b1"
     assert layout.slides[0].elements[2].kind.value == "shape"
+
+
+def test_specialized_template_bindings_match_export_contract(
+    make_presentation_spec,
+    make_slide,
+    make_block,
+) -> None:
+    spec = PresentationSpec(
+        **make_presentation_spec(
+            slides=[
+                make_slide(
+                    slide_id="quote-photo",
+                    template_key="quote.photo",
+                    blocks=[
+                        make_block(
+                            block_id="b1",
+                            kind="quote",
+                            content={"text": "Standardize the platform first.", "attribution": "CIO"},
+                            with_citation=False,
+                        ),
+                        make_block(
+                            block_id="b2",
+                            kind="image",
+                            content={"path": "C:/assets/leader.png"},
+                            with_citation=False,
+                        ),
+                    ],
+                ),
+                make_slide(
+                    slide_id="chart-takeaway",
+                    template_key="chart.takeaway",
+                    blocks=[
+                        make_block(
+                            block_id="b1",
+                            kind="chart",
+                            content={"chart_type": "bar", "series": [{"label": "Q1", "value": 1.0}]},
+                            with_citation=False,
+                        ),
+                        make_block(
+                            block_id="b2",
+                            kind="callout",
+                            content={"text": "Automation compounds over time."},
+                            with_citation=False,
+                        ),
+                    ],
+                ),
+                make_slide(
+                    slide_id="split-content",
+                    template_key="split.content",
+                    blocks=[
+                        make_block(block_id="b1", content={"text": "Current state"}, with_citation=False),
+                        make_block(block_id="b2", content={"text": "Target state"}, with_citation=False),
+                    ],
+                ),
+                make_slide(
+                    slide_id="icons-three",
+                    template_key="icons.3",
+                    blocks=[
+                        make_block(
+                            block_id="b1",
+                            kind="callout",
+                            content={
+                                "cards": [
+                                    {"title": "Discover", "text": "Clarify the operating model"},
+                                    {"title": "Align", "text": "Sequence the workstreams"},
+                                    {"title": "Scale", "text": "Operationalize the controls"},
+                                ]
+                            },
+                            with_citation=False,
+                        ),
+                    ],
+                ),
+                make_slide(
+                    slide_id="icons-four",
+                    template_key="icons.4",
+                    blocks=[
+                        make_block(
+                            block_id="b1",
+                            kind="callout",
+                            content={
+                                "cards": [
+                                    {"title": "Plan", "text": "Define milestones"},
+                                    {"title": "Build", "text": "Implement shared services"},
+                                    {"title": "Run", "text": "Measure adoption"},
+                                    {"title": "Improve", "text": "Close control gaps"},
+                                ]
+                            },
+                            with_citation=False,
+                        ),
+                    ],
+                ),
+                make_slide(
+                    slide_id="agenda-table",
+                    template_key="agenda.table",
+                    blocks=[
+                        make_block(
+                            block_id="b1",
+                            kind="table",
+                            content={"columns": ["Section", "Focus"], "rows": [["Discovery", "Align priorities"]]},
+                            with_citation=False,
+                        ),
+                    ],
+                ),
+            ]
+        )
+    )
+
+    layout = resolve_deck_layout(spec)
+    slides_by_id = {slide.slide_id: slide for slide in layout.slides}
+
+    quote_payloads = {element.element_id.split(":")[1]: element.payload for element in slides_by_id["quote-photo"].elements}
+    assert quote_payloads["quote"]["content"] == "Standardize the platform first."
+    assert quote_payloads["supporting_text"]["content"] == "CIO"
+    assert quote_payloads["image"]["content"] == "C:/assets/leader.png"
+
+    chart_elements = {element.element_id.split(":")[1]: element for element in slides_by_id["chart-takeaway"].elements}
+    assert chart_elements["takeaway"].kind.value == "shape"
+    assert chart_elements["takeaway"].payload["content"] == "Automation compounds over time."
+
+    split_payloads = {element.element_id.split(":")[1]: element.payload for element in slides_by_id["split-content"].elements}
+    assert split_payloads["body_left"]["content"] == {"text": "Current state"}
+    assert split_payloads["body_right"]["content"] == {"text": "Target state"}
+
+    icons_three_payloads = {element.element_id.split(":")[1]: element.payload for element in slides_by_id["icons-three"].elements}
+    assert icons_three_payloads["card_1_title"]["content"]["title"] == "Discover"
+    assert icons_three_payloads["card_3_text"]["content"]["text"] == "Operationalize the controls"
+
+    icons_four_payloads = {element.element_id.split(":")[1]: element.payload for element in slides_by_id["icons-four"].elements}
+    assert icons_four_payloads["card_2_title"]["content"]["title"] == "Build"
+    assert icons_four_payloads["card_4_text"]["content"]["text"] == "Close control gaps"
+
+    agenda_payloads = {element.element_id.split(":")[1]: element.payload for element in slides_by_id["agenda-table"].elements}
+    assert agenda_payloads["table_lead"]["content"] is None
+    assert agenda_payloads["table_main"]["content"]["columns"] == ["Section", "Focus"]

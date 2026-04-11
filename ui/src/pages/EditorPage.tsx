@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { exportDeck, generateSlidePreview, getTemplates } from '../api/client'
-import { ExportPreflightModal } from '../components/ExportPreflightModal'
 import { SlideCanvas } from '../components/SlideCanvas'
 import { SlideRail } from '../components/SlideRail'
 import { useDeckStore } from '../store/deckStore'
@@ -15,11 +14,15 @@ export function EditorPage() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewSlide, setPreviewSlide] = useState<SlideSpec | null>(null)
   const [promptText, setPromptText] = useState('')
-  const [selectedThemeName, setSelectedThemeName] = useState<'Default' | 'ONAC'>('Default')
+  const [selectedThemeName, setSelectedThemeName] = useState<'ONAC'>('ONAC')
   const currentDeck = useDeckStore((state) => state.currentDeck)
   const loadDeck = useDeckStore((state) => state.loadDeck)
   const updateSlide = useDeckStore((state) => state.updateSlide)
+  const replaceSlide = useDeckStore((state) => state.replaceSlide)
   const addSlide = useDeckStore((state) => state.addSlide)
+  const deleteSlide = useDeckStore((state) => state.deleteSlide)
+  const duplicateSlide = useDeckStore((state) => state.duplicateSlide)
+  const moveSlide = useDeckStore((state) => state.moveSlide)
   const selectedSlideIndex = useDeckStore((state) => state.selectedSlideIndex)
   const setSelectedSlide = useDeckStore((state) => state.setSelectedSlide)
   const ui = useUIStore()
@@ -33,10 +36,6 @@ export function EditorPage() {
   }, [])
 
   const slide = currentDeck?.slides[selectedSlideIndex] ?? null
-  const imageIssueCount = useMemo(
-    () => currentDeck?.slides.flatMap((item) => item.blocks).filter((block) => block.kind === 'image').length ?? 0,
-    [currentDeck],
-  )
 
   useEffect(() => {
     setPreviewSlide(null)
@@ -70,10 +69,7 @@ export function EditorPage() {
         goal: currentDeck.goal,
       })
       setPreviewSlide(preview)
-      // Update the slide's template if the pipeline chose a better one
-      if (preview.template_id && preview.template_id !== slide.template_id) {
-        updateSlide(selectedSlideIndex, { template_id: preview.template_id })
-      }
+      replaceSlide(selectedSlideIndex, { ...preview, index: slide.index })
       ui.addToast('Slide preview generated with consulting-style copy.', 'success')
     } catch (error) {
       ui.addToast(error instanceof Error ? error.message : 'Slide preview failed', 'error')
@@ -82,25 +78,16 @@ export function EditorPage() {
     }
   }
 
-  async function handlePdfExport() {
-    await handleDeckExport('pdf')
-  }
-
-  async function handlePptxExport() {
-    await handleDeckExport('pptx')
-  }
-
   async function handleDeckExport(format: 'pdf' | 'pptx') {
     if (!currentDeck) return
     try {
-      const result = await exportDeck(currentDeck.id, format)
+      const result = await exportDeck(currentDeck.id, format, currentDeck.slides)
       const url = URL.createObjectURL(result.blob)
       const anchor = document.createElement('a')
       anchor.href = url
       anchor.download = `${currentDeck.id}.${format}`
       anchor.click()
       URL.revokeObjectURL(url)
-      ui.setPreflightModalOpen(false)
       ui.addToast(`${format.toUpperCase()} exported.`, 'success')
     } catch (error) {
       ui.addToast(error instanceof Error ? error.message : `${format.toUpperCase()} export failed`, 'error')
@@ -117,7 +104,15 @@ export function EditorPage() {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <SlideRail slides={currentDeck.slides} selectedSlideIndex={selectedSlideIndex} onSelect={setSelectedSlide} onAddSlide={addSlide} />
+      <SlideRail
+        slides={currentDeck.slides}
+        selectedSlideIndex={selectedSlideIndex}
+        onSelect={setSelectedSlide}
+        onAddSlide={addSlide}
+        onDeleteSlide={deleteSlide}
+        onDuplicateSlide={duplicateSlide}
+        onMoveSlide={moveSlide}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-6 py-4 text-sm">
@@ -129,18 +124,14 @@ export function EditorPage() {
             <span>Theme:</span>
             <select
               value={selectedThemeName}
-              onChange={(event) => setSelectedThemeName(event.target.value as 'Default' | 'ONAC')}
+              onChange={(event) => setSelectedThemeName(event.target.value as 'ONAC')}
               className="rounded-lg border border-slate-200 px-3 py-2"
             >
-              <option value="Default">Default</option>
               <option value="ONAC">ONAC</option>
             </select>
           </label>
           <button type="button" className="text-slate-600" onClick={() => ui.addToast('Layout controls coming soon.')}>
             Layout
-          </button>
-          <button type="button" className="text-slate-600" onClick={() => ui.addToast('Accessibility checks available in preflight.')}>
-            Accessibility
           </button>
           <span className="ml-auto" />
           <button type="button" className="text-slate-600" onClick={() => ui.addToast('Share is not wired yet.')}>
@@ -149,14 +140,14 @@ export function EditorPage() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => ui.setPreflightModalOpen(true)}
+              onClick={() => void handleDeckExport('pdf')}
               className="rounded-xl border border-slate-200 px-4 py-2"
             >
               Export PDF
             </button>
             <button
               type="button"
-              onClick={() => void handlePptxExport()}
+              onClick={() => void handleDeckExport('pptx')}
               className="rounded-xl bg-slate-950 px-4 py-2 text-white"
             >
               Export PPTX
@@ -176,17 +167,13 @@ export function EditorPage() {
             onPromptTextChange={setPromptText}
             onSlideTypeChange={(templateId) => updateSlide(selectedSlideIndex, { template_id: templateId })}
             onGeneratePreview={handleGeneratePreview}
+            onTitleChange={(title) => updateSlide(selectedSlideIndex, { title })}
+            onSpeakerNotesChange={(notes) => updateSlide(selectedSlideIndex, { speaker_notes: notes })}
             previewLoading={previewLoading}
           />
         </div>
       </main>
 
-      <ExportPreflightModal
-        open={ui.preflightModalOpen}
-        imageIssueCount={imageIssueCount}
-        onClose={() => ui.setPreflightModalOpen(false)}
-        onContinue={handlePdfExport}
-      />
     </div>
   )
 }

@@ -57,6 +57,9 @@ export interface IngestResult {
   chunk_count: number
   title: string
   element_types: Record<string, number>
+  source_format: string
+  slide_count?: number | null
+  slide_types: Record<string, number>
   summary: string
 }
 
@@ -84,6 +87,7 @@ export interface GenerateParams {
   draft_id: string
   outline: Array<Pick<SlideSpec, 'id' | 'index' | 'purpose' | 'title' | 'template_id'>>
   selected_template_id: string
+  theme_name?: string
   brand_kit: BrandKit
 }
 

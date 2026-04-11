@@ -87,6 +87,52 @@ def test_export_pptx_and_export_qa(tmp_path: Path, style_tokens_payload: dict, t
     assert report.executability.status is QAStatus.PASS
 
 
+def test_export_pptx_removes_existing_template_slides(
+    tmp_path: Path,
+    style_tokens_payload: dict,
+    make_pptx_file,
+) -> None:
+    tokens = StyleTokens(**style_tokens_payload)
+    template_path = make_pptx_file()
+    layout = ResolvedDeckLayout(
+        deck_id="deck-template-cleanup",
+        slides=[
+            {
+                "slide_id": "s1",
+                "elements": [
+                    {
+                        "element_id": "s1:headline",
+                        "kind": "textbox",
+                        "x": 0.75,
+                        "y": 0.75,
+                        "w": 6.0,
+                        "h": 0.75,
+                        "z": 0,
+                        "data_ref": "slide:s1:headline",
+                        "style_ref": "headline",
+                        "payload": {"content": "Generated Title"},
+                    }
+                ],
+            }
+        ],
+    )
+
+    output_path = export_pptx(
+        layout=layout,
+        style_tokens=tokens,
+        output_path=tmp_path / "deck-from-template.pptx",
+        template_path=template_path,
+    )
+    exported = Presentation(str(output_path))
+    first_slide = exported.slides[0]
+    text_content = "\n".join(
+        shape.text for shape in first_slide.shapes if getattr(shape, "has_text_frame", False)
+    )
+
+    assert len(exported.slides) == 1
+    assert "Generated Title" in text_content
+
+
 def test_layout_qa_reports_overlap_bounds_contrast_and_missing_assets(style_tokens_payload: dict) -> None:
     low_contrast_tokens = StyleTokens(
         **{

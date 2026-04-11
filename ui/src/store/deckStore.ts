@@ -14,6 +14,9 @@ interface DeckStore {
   replaceSlide: (index: number, slide: SlideSpec) => void
   insertSlideAfter: (index: number, slide?: SlideSpec) => void
   addSlide: () => void
+  deleteSlide: (index: number) => void
+  duplicateSlide: (index: number) => void
+  moveSlide: (from: number, to: number) => void
   setSelectedSlide: (i: number) => void
 }
 
@@ -92,6 +95,49 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
         nextSlide,
       ]
       return { currentDeck: { ...state.currentDeck, slides } }
+    }),
+  deleteSlide: (index) =>
+    set((state) => {
+      if (!state.currentDeck || state.currentDeck.slides.length <= 1) return {}
+      const slides = state.currentDeck.slides
+        .filter((_, i) => i !== index)
+        .map((s, i) => ({ ...s, index: i + 1 }))
+      const selected = Math.min(state.selectedSlideIndex, slides.length - 1)
+      return { currentDeck: { ...state.currentDeck, slides }, selectedSlideIndex: selected }
+    }),
+  duplicateSlide: (index) =>
+    set((state) => {
+      if (!state.currentDeck) return {}
+      const source = state.currentDeck.slides[index]
+      if (!source) return {}
+      const duplicate: SlideSpec = {
+        ...source,
+        id: `slide-${Date.now()}`,
+        blocks: source.blocks.map((b) => ({ ...b, id: `block-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` })),
+      }
+      const slides = [...state.currentDeck.slides]
+      slides.splice(index + 1, 0, duplicate)
+      return {
+        currentDeck: {
+          ...state.currentDeck,
+          slides: slides.map((s, i) => ({ ...s, index: i + 1 })),
+        },
+        selectedSlideIndex: index + 1,
+      }
+    }),
+  moveSlide: (from, to) =>
+    set((state) => {
+      if (!state.currentDeck) return {}
+      const slides = [...state.currentDeck.slides]
+      const [moved] = slides.splice(from, 1)
+      slides.splice(to, 0, moved)
+      return {
+        currentDeck: {
+          ...state.currentDeck,
+          slides: slides.map((s, i) => ({ ...s, index: i + 1 })),
+        },
+        selectedSlideIndex: to,
+      }
     }),
   setSelectedSlide: (selectedSlideIndex) => set({ selectedSlideIndex }),
 }))

@@ -7,8 +7,8 @@ import type {
   PlanPromptParams,
   PlannedDeck,
   PresentationSpec,
-  SlidePreviewParams,
   SlideSpec,
+  SlidePreviewParams,
   Template,
 } from '../types'
 
@@ -49,6 +49,7 @@ export async function generateDeck(params: GenerateParams): Promise<Presentation
       draft_id: params.draft_id,
       outline: params.outline,
       selected_template_id: params.selected_template_id,
+      theme_name: params.theme_name ?? 'ONAC',
       brand_kit: {
         logo_data_url: params.brand_kit.logo,
         primary_color: params.brand_kit.primary,
@@ -70,11 +71,11 @@ export async function getDeck(deckId: string): Promise<PresentationSpec> {
   return parseJson<PresentationSpec>(response)
 }
 
-export async function exportDeck(deckId: string, format: 'pdf' | 'pptx'): Promise<ExportResult> {
+export async function exportDeck(deckId: string, format: 'pdf' | 'pptx', slides: SlideSpec[]): Promise<ExportResult> {
   const response = await fetch(`${BASE}/export/${deckId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ format }),
+    body: JSON.stringify({ format, slides }),
   })
   if (!response.ok) {
     const payload = await response.text()

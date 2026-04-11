@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import type { BrandKit, IngestResult, SlideSpec } from '../types'
 
 interface WizardStore {
-  step: 1 | 2 | 3
+  step: 1 | 2 | 3 | 4
   ingestResults: IngestResult[]
   prompt: string
   goal: string
@@ -30,6 +30,9 @@ interface WizardStore {
   setOutline: (outline: SlideSpec[]) => void
   reorderOutline: (fromIndex: number, toIndex: number) => void
   updateOutlineTitle: (index: number, title: string) => void
+  removeOutlineSlide: (index: number) => void
+  addOutlineSlide: () => void
+  updateOutlineTemplate: (index: number, templateId: string) => void
   setSelectedTemplateId: (templateId: string) => void
   setBrandKit: (partial: Partial<BrandKit>) => void
   setPlannedDraftId: (draftId: string | null) => void
@@ -39,9 +42,9 @@ interface WizardStore {
 
 const defaultBrandKit: BrandKit = {
   logo: null,
-  primary: '#4F46E5',
-  accent: '#0F172A',
-  fontPair: 'Inter/Inter',
+  primary: '#C74634',
+  accent: '#2A2F2F',
+  fontPair: 'Georgia/Oracle Sans Tab',
 }
 
 export const useWizardStore = create<WizardStore>()(persist((set) => ({
@@ -57,7 +60,7 @@ export const useWizardStore = create<WizardStore>()(persist((set) => ({
   brandKit: defaultBrandKit,
   plannedDraftId: null,
   generatedDeckId: null,
-  nextStep: () => set((state) => ({ step: Math.min(3, state.step + 1) as WizardStore['step'] })),
+  nextStep: () => set((state) => ({ step: Math.min(4, state.step + 1) as WizardStore['step'] })),
   prevStep: () => set((state) => ({ step: Math.max(1, state.step - 1) as WizardStore['step'] })),
   setStep: (step) => set({ step }),
   setIngestResults: (ingestResults) => set({ ingestResults }),
@@ -85,6 +88,30 @@ export const useWizardStore = create<WizardStore>()(persist((set) => ({
   updateOutlineTitle: (index, title) =>
     set((state) => ({
       outline: state.outline.map((slide, slideIndex) => (slideIndex === index ? { ...slide, title } : slide)),
+    })),
+  removeOutlineSlide: (index) =>
+    set((state) => ({
+      outline: state.outline
+        .filter((_, i) => i !== index)
+        .map((slide, i) => ({ ...slide, index: i + 1 })),
+    })),
+  addOutlineSlide: () =>
+    set((state) => ({
+      outline: [
+        ...state.outline,
+        {
+          id: `slide-${Date.now()}`,
+          index: state.outline.length + 1,
+          purpose: 'content' as const,
+          title: 'New slide',
+          template_id: 'headline.evidence',
+          blocks: [{ id: `block-${Date.now()}`, kind: 'text' as const, content: '' }],
+        },
+      ],
+    })),
+  updateOutlineTemplate: (index, templateId) =>
+    set((state) => ({
+      outline: state.outline.map((slide, i) => (i === index ? { ...slide, template_id: templateId } : slide)),
     })),
   setSelectedTemplateId: (selectedTemplateId) => set({ selectedTemplateId }),
   setBrandKit: (partial) => set((state) => ({ brandKit: { ...state.brandKit, ...partial } })),

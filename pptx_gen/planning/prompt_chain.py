@@ -6,7 +6,7 @@ import ast
 import re
 from datetime import date
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from pptx_gen.indexing.embedder import SupportsEmbedding
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
@@ -59,6 +59,64 @@ SECTION_LABEL_PREFIX_PATTERN = re.compile(
     r"technical [Dd]etails|key [Ff]indings|background|introduction|appendix)\s+)+",
     re.IGNORECASE,
 )
+TITLE_SUBTITLE_GENERIC_PATTERN = re.compile(
+    r"^(?:update|overview|summary|introduction|deck overview|presentation|status update)$",
+    re.IGNORECASE,
+)
+TITLE_SUBTITLE_CODELIKE_PATTERN = re.compile(r"(?:[`{}\[\]()_/\\]|\.md\b|\.py\b|::|->|==)")
+TITLE_SUBTITLE_CAMELCASE_PATTERN = re.compile(r"\b(?=\w*[a-z])(?=\w*[A-Z])\w+\b")
+TITLE_SUBTITLE_HIGH_LEVEL_TERMS = {
+    "adoption",
+    "approach",
+    "capability",
+    "capabilities",
+    "decision",
+    "delivery",
+    "direction",
+    "framing",
+    "impact",
+    "leadership",
+    "next step",
+    "next steps",
+    "operating",
+    "orchestrator",
+    "outcome",
+    "outcomes",
+    "overview",
+    "productivity",
+    "quality",
+    "roadmap",
+    "strategy",
+    "tool",
+    "tools",
+    "workflow",
+}
+TITLE_SUBTITLE_TECHNICAL_TERMS = {
+    "api",
+    "chunk",
+    "chunks",
+    "cli",
+    "embedding",
+    "embeddings",
+    "json",
+    "llm",
+    "markdown",
+    "ooxml",
+    "pdf",
+    "pptx",
+    "prompt",
+    "prompts",
+    "rag",
+    "renderer",
+    "schema",
+    "schemas",
+    "slidespec",
+    "token",
+    "tokens",
+    "uvicorn",
+    "validator",
+    "vector",
+}
 
 
 def collect_deck_brief(
@@ -71,6 +129,7 @@ def collect_deck_brief(
     source_corpus_ids: list[str],
     document_title: str | None = None,
     source_texts: list[str] | None = None,
+    source_metadata: dict[str, Any] | None = None,
     llm_client: StructuredLLMClient | None = None,
 ) -> DeckBrief:
     source_texts = source_texts or []
@@ -98,6 +157,7 @@ def collect_deck_brief(
             brief,
             document_title=document_title,
             source_texts=source_texts,
+            source_metadata=source_metadata,
             user_request=user_request,
             goal=goal,
         )
@@ -106,7 +166,7 @@ def collect_deck_brief(
         audience=audience,
         goal=goal,
         tone=tone,
-        slide_count_target=max(3, min(20, slide_count_target)),
+        slide_count_target=max(1, min(40, slide_count_target)),
         source_corpus_ids=source_corpus_ids,
         questions_for_user=[],
     )
@@ -114,6 +174,7 @@ def collect_deck_brief(
         brief,
         document_title=document_title,
         source_texts=source_texts,
+        source_metadata=source_metadata,
         user_request=user_request,
         goal=goal,
     )
@@ -124,6 +185,10 @@ def generate_outline(
     *,
     llm_client: StructuredLLMClient | None = None,
 ) -> OutlineSpec:
+    pptx_outline = _outline_from_source_blueprint(brief)
+    if pptx_outline is not None:
+        return pptx_outline
+
     if llm_client is not None:
         result = llm_client.generate_json(
             system_prompt=_load_prompt("step0_system.md"),
@@ -158,16 +223,19 @@ def generate_outline(
     ]
     seen_headlines: set[str] = {_normalize_phrase(outline[0].headline)}
 
+    used_templates: dict[str, int] = {}
     next_index = 2
     for content_index, message in enumerate(content_messages):
         archetype = SlideArchetype.GENERIC
         headline = _short_headline(message, fallback=f"Slide {next_index}")
-        template_key = _recommended_content_template(
+        template_key = _score_content_template(
             message,
             brief.goal,
             brief.audience,
             str((brief.extensions or {}).get("document_title", "")),
+            used_templates=used_templates,
         )
+        used_templates[template_key] = used_templates.get(template_key, 0) + 1
         if content_index == 0 and content_count >= 3:
             archetype = SlideArchetype.EXECUTIVE_SUMMARY
             headline = "Executive Overview"
@@ -257,8 +325,8 @@ def execute_retrieval_plan(
     *,
     vector_store: InMemoryVectorStore,
     embedder: SupportsEmbedding,
-    max_results_per_query: int = 2,
-    max_chunks_per_slide: int = 5,
+    max_results_per_query: int = 4,
+    max_chunks_per_slide: int = 10,
 ) -> dict[str, list[RetrievedChunk]]:
     slide_hits: dict[str, list[RetrievedChunk]] = {}
     for item in retrieval_plan.retrieval_plan:
@@ -683,9 +751,16 @@ def _enforce_authoritative_fields(
         if item.message
     }
     outline_items: dict[str, OutlineItem] = {item.slide_id: item for item in outline.outline}
+    # Build positional fallback: when the LLM generates different slide IDs
+    # than the outline, match by position to preserve content
+    outline_by_index: dict[int, OutlineItem] = {i: item for i, item in enumerate(outline.outline)}
     slides = []
-    for slide in spec.slides:
+    for slide_index, slide in enumerate(spec.slides):
         outline_item = outline_items.get(slide.slide_id)
+        if outline_item is None and slide_index in outline_by_index:
+            outline_item = outline_by_index[slide_index]
+            # Rewrite slide_id to match the outline so downstream lookups work
+            slide = slide.model_copy(update={"slide_id": outline_item.slide_id})
         if outline_item is not None:
             slide = slide.model_copy(
                 update={
@@ -854,20 +929,134 @@ def _augment_brief(
     *,
     document_title: str | None,
     source_texts: list[str],
+    source_metadata: dict[str, Any] | None,
     user_request: str,
     goal: str,
 ) -> DeckBrief:
+    from pptx_gen.planning.schemas import DeckBriefExtensions
+
     takeaways = _derive_takeaways(source_texts, goal)
     thesis = _trim_words(document_title or goal or user_request, 12)
-    extensions = dict(brief.extensions or {})
-    extensions.setdefault("document_title", document_title or "Generated Presentation")
-    extensions.setdefault("one_sentence_thesis", thesis)
-    extensions.setdefault("key_takeaways", takeaways)
-    extensions.setdefault("user_request", user_request)
-    extensions.setdefault("deck_archetype", _infer_deck_archetype(document_title, goal, user_request, source_texts))
-    extensions.setdefault("audience_focus", _audience_focus_label(brief.audience))
-    extensions.setdefault("source_preview", _source_preview(source_texts))
-    return brief.model_copy(update={"extensions": extensions})
+    # Build extensions dict, preserving any LLM-populated values
+    ext = brief.extensions.model_dump() if brief.extensions else {}
+    if not ext.get("document_title"):
+        ext["document_title"] = document_title or "Generated Presentation"
+    if not ext.get("one_sentence_thesis"):
+        ext["one_sentence_thesis"] = thesis
+    if not ext.get("key_takeaways"):
+        ext["key_takeaways"] = takeaways
+    if not ext.get("user_request"):
+        ext["user_request"] = user_request
+    if not ext.get("deck_archetype"):
+        ext["deck_archetype"] = _infer_deck_archetype(document_title, goal, user_request, source_texts)
+    if not ext.get("audience_focus"):
+        ext["audience_focus"] = _audience_focus_label(brief.audience)
+    if not ext.get("source_preview"):
+        ext["source_preview"] = _source_preview(source_texts)
+    source_metadata = source_metadata or {}
+    if not ext.get("source_format") and source_metadata.get("source_format"):
+        ext["source_format"] = str(source_metadata["source_format"])
+    if not ext.get("source_slide_count") and source_metadata.get("slide_count"):
+        ext["source_slide_count"] = int(source_metadata["slide_count"])
+    if not ext.get("source_slide_types") and isinstance(source_metadata.get("slide_types"), dict):
+        ext["source_slide_types"] = dict(source_metadata["slide_types"])
+    if not ext.get("source_slide_blueprint") and isinstance(source_metadata.get("slide_blueprint"), list):
+        ext["source_slide_blueprint"] = list(source_metadata["slide_blueprint"])
+    return brief.model_copy(update={"extensions": DeckBriefExtensions(**ext)})
+
+
+def _outline_from_source_blueprint(brief: DeckBrief) -> OutlineSpec | None:
+    extensions = brief.extensions or {}
+    if str(extensions.get("source_format", "")).lower() != "pptx":
+        return None
+
+    blueprint = extensions.get("source_slide_blueprint") or []
+    if not isinstance(blueprint, list) or not blueprint:
+        return None
+
+    target_count = max(1, brief.slide_count_target)
+    selected_blueprint = blueprint[:target_count]
+    if len(selected_blueprint) < target_count:
+        for index in range(len(selected_blueprint) + 1, target_count + 1):
+            selected_blueprint.append(
+                {
+                    "slide_number": index,
+                    "title": f"Slide {index}",
+                    "slide_type": "content",
+                    "purpose_hint": "content",
+                    "template_hint": "headline.evidence",
+                    "text_preview": brief.goal,
+                }
+            )
+
+    items: list[OutlineItem] = []
+    for index, slide in enumerate(selected_blueprint, start=1):
+        title = str(slide.get("title") or f"Slide {index}").strip() or f"Slide {index}"
+        text_preview = str(slide.get("text_preview") or "").strip()
+        slide_type = str(slide.get("slide_type") or "content").strip().lower()
+        purpose_hint = str(slide.get("purpose_hint") or "content").strip().lower()
+        template_hint = str(slide.get("template_hint") or "headline.evidence").strip() or "headline.evidence"
+
+        if purpose_hint == "title" or index == 1:
+            purpose = SlidePurpose.TITLE
+            archetype = None
+            template_key = "title.cover"
+            message = _trim_words(text_preview or brief.goal or title, 18) or title
+            evidence_queries: list[str] = []
+        elif purpose_hint == "closing" or slide_type == "closing":
+            purpose = SlidePurpose.CLOSING
+            archetype = None
+            template_key = "closing.actions"
+            message = _trim_words(text_preview or title or brief.goal, 18) or "Summarize supported next steps."
+            evidence_queries = _evidence_queries_for_message(f"{title} {message}".strip())
+        else:
+            purpose = SlidePurpose.CONTENT
+            archetype = _archetype_from_blueprint_slide(slide_type, template_hint)
+            template_key = _template_from_blueprint_slide(slide_type, template_hint)
+            message = _trim_words(text_preview or title or brief.goal, 18) or title
+            evidence_queries = _evidence_queries_for_message(f"{title} {message}".strip())
+
+        items.append(
+            OutlineItem(
+                slide_id=f"s{index}",
+                purpose=purpose,
+                archetype=archetype,
+                headline=_short_headline(title, fallback=f"Slide {index}"),
+                message=message,
+                evidence_queries=evidence_queries,
+                template_key=template_key,
+            )
+        )
+
+    return OutlineSpec(outline=items, questions_for_user=[])
+
+
+def _template_from_blueprint_slide(slide_type: str, template_hint: str) -> str:
+    normalized_hint = (template_hint or "").strip().lower()
+    if normalized_hint in {"exec.summary", "compare.2col", "chart.takeaway", "kpi.big", "headline.evidence"}:
+        return normalized_hint
+    if slide_type == "summary":
+        return "exec.summary"
+    if slide_type in {"chart"}:
+        return "chart.takeaway"
+    if slide_type in {"table", "matrix"}:
+        return "compare.2col"
+    if slide_type in {"three_point"}:
+        return "exec.summary"
+    return "headline.evidence"
+
+
+def _archetype_from_blueprint_slide(slide_type: str, template_hint: str) -> SlideArchetype | None:
+    template_key = _template_from_blueprint_slide(slide_type, template_hint)
+    if template_key == "exec.summary":
+        return SlideArchetype.EXECUTIVE_SUMMARY
+    if template_key == "compare.2col":
+        return SlideArchetype.COMPARISON
+    if template_key == "chart.takeaway":
+        return SlideArchetype.CHART
+    if template_key == "kpi.big":
+        return SlideArchetype.METRICS
+    return None
 
 
 def _infer_deck_archetype(
@@ -893,8 +1082,8 @@ def _source_preview(source_texts: list[str]) -> str:
         return ""
     parts: list[str] = []
     total = 0
-    limit = 2500
-    for chunk in chunks[:12]:
+    limit = 6000
+    for chunk in chunks[:25]:
         if total >= limit:
             break
         remaining = limit - total
@@ -962,59 +1151,96 @@ def _outline_takeaways(brief: DeckBrief) -> list[str]:
 
 
 def _plan_content_messages(brief: DeckBrief, takeaways: list[str], count: int) -> list[str]:
-    if _is_pipeline_story(brief):
-        seeded = [
-            "Hybrid architecture: ingestion, retrieval, planning, layout, assets, and deterministic export",
-            "Design quality strategies: template-first, rule-based layout, and free-form constraints",
-            "Implementation implications: connectors, cloud files, structured data, and reproducible PPTX export",
-        ]
-        messages: list[str] = []
-        seen: set[str] = set()
-        for candidate in [*seeded, *takeaways]:
-            normalized = _normalize_phrase(candidate)
-            if not normalized or normalized in seen:
-                continue
-            messages.append(candidate)
-            seen.add(normalized)
-            if len(messages) >= count:
-                return messages
-        return messages
     return _expand_content_messages(takeaways, brief.goal, count)
 
 
 def _overview_message(brief: DeckBrief, takeaways: list[str]) -> str:
-    if _is_pipeline_story(brief):
-        return "Hybrid architecture: ingestion, retrieval, planning, layout, assets, and deterministic export"
     thesis = str((brief.extensions or {}).get("one_sentence_thesis", brief.goal))
     supporting = takeaways[0] if takeaways else brief.goal
     return _trim_words(f"{thesis}. {supporting}.", 18)
 
 
-def _is_pipeline_story(brief: DeckBrief) -> bool:
-    haystack = " ".join(
-        [
-            brief.goal,
-            str((brief.extensions or {}).get("document_title", "")),
-            str((brief.extensions or {}).get("source_preview", "")),
-        ]
-    ).lower()
-    required = ("ingestion", "retrieval", "layout")
-    return all(term in haystack for term in required)
-
-
-def _recommended_content_template(message: str, goal: str, audience: str = "", document_title: str = "") -> str:
+def _score_content_template(
+    message: str,
+    goal: str,
+    audience: str = "",
+    document_title: str = "",
+    *,
+    used_templates: dict[str, int] | None = None,
+) -> str:
+    """Score all eligible templates and return the best fit with diversity awareness."""
     haystack = f"{message} {goal} {audience} {document_title}".lower()
-    if any(t in haystack for t in ("metric", "kpi", "score", "rate", "roi", "growth", "performance")):
-        return "kpi.big"
-    if any(t in haystack for t in ("chart", "trend", "graph", "data series", "plot")):
-        return "chart.takeaway"
+    word_count = len(re.findall(r"\b\w+\b", haystack))
+    numeric_density = len(re.findall(r"\b[\d,.]+[%$]?\b", haystack))
+    bullet_count = haystack.count("\n") + 1
+
+    # Content-eligible templates (exclude title.cover and section.divider)
+    candidates = [
+        "headline.evidence", "kpi.big", "compare.2col", "chart.takeaway",
+        "exec.summary", "closing.actions", "content.3col", "content.4col",
+        "icons.3", "icons.4", "impact.statement", "split.content",
+        "quote.texture", "agenda.table",
+    ]
+
+    content_scores: dict[str, float] = {t: 0.0 for t in candidates}
+    purpose_scores: dict[str, float] = {t: 0.0 for t in candidates}
+
+    # --- Content structure signals ---
+    if numeric_density >= 2:
+        content_scores["kpi.big"] += 0.8
+        content_scores["chart.takeaway"] += 0.4
     if any(t in haystack for t in ("compare", "comparison", "option", "versus", "tradeoff", "pros", "cons")):
-        return "compare.2col"
+        content_scores["compare.2col"] += 0.8
+    if any(t in haystack for t in ("quote", "said", "according to", '"')):
+        content_scores["quote.texture"] += 0.7
+    if any(t in haystack for t in ("schedule", "agenda", "timeline", "matrix", "table")):
+        content_scores["agenda.table"] += 0.7
+    if word_count < 15:
+        content_scores["impact.statement"] += 0.7
+        content_scores["quote.texture"] += 0.4
+    if word_count > 40:
+        content_scores["headline.evidence"] += 0.4
+        content_scores["split.content"] += 0.3
+    if bullet_count == 3:
+        content_scores["content.3col"] += 0.6
+        content_scores["icons.3"] += 0.5
+    elif bullet_count == 4:
+        content_scores["content.4col"] += 0.6
+        content_scores["icons.4"] += 0.5
+    elif bullet_count >= 5:
+        content_scores["headline.evidence"] += 0.5
+    # General content gets a small baseline for variety candidates
+    if any(t in haystack for t in ("capability", "feature", "pillar", "strategy", "benefit")):
+        content_scores["icons.3"] += 0.4
+        content_scores["icons.4"] += 0.3
+        content_scores["content.3col"] += 0.3
+
+    # --- Purpose signals ---
     if any(t in haystack for t in ("next step", "action", "closing", "recommendation", "call to action")):
-        return "closing.actions"
-    if any(t in haystack for t in ("overview", "summary", "executive", "landscape", "capability")):
-        return "exec.summary"
-    return "headline.evidence"
+        purpose_scores["closing.actions"] += 0.8
+    if any(t in haystack for t in ("overview", "summary", "executive", "landscape")):
+        purpose_scores["exec.summary"] += 0.7
+    if any(t in haystack for t in ("chart", "trend", "graph", "data series", "plot", "visualization")):
+        purpose_scores["chart.takeaway"] += 0.8
+    if any(t in haystack for t in ("metric", "kpi", "score", "rate", "roi", "growth", "performance")):
+        purpose_scores["kpi.big"] += 0.6
+
+    # --- Diversity penalty ---
+    best_score = -1.0
+    best_template = "headline.evidence"
+    for template in candidates:
+        diversity_score = 1.0
+        if used_templates and template in used_templates:
+            diversity_score = max(0.0, 1.0 - used_templates[template] * 0.3)
+        if template == "headline.evidence":
+            diversity_score -= 0.15
+
+        final = (content_scores[template] * 0.4) + (purpose_scores[template] * 0.3) + (diversity_score * 0.3)
+        if final > best_score or (final == best_score and (used_templates or {}).get(template, 0) < (used_templates or {}).get(best_template, 0)):
+            best_score = final
+            best_template = template
+
+    return best_template
 
 
 def _cards_from_points(items: list[str], *, title_prefix: str) -> list[dict[str, str]]:
@@ -1099,24 +1325,23 @@ def _title_subtitle_from_content(
     chunks: list[RetrievedChunk],
 ) -> str:
     """Build a meaningful subtitle from document content, not internal metadata."""
-    # Try to extract a real summary sentence from chunks
-    for chunk in chunks:
-        for sentence in re.split(r"(?<=[.!?])\s+", chunk.text):
-            words = sentence.split()
-            if 8 <= len(words) <= 30:
-                cleaned = _clean_candidate_phrase(sentence.strip())
-                if not cleaned or len(cleaned.split()) < 6:
-                    continue
-                subtitle = _trim_words(cleaned, 25)
-                return _apply_audience_specific_subtitle(subtitle, brief)
+    extensions = brief.extensions or {}
 
-    # Use the outline item's message if it's substantive
-    if item.message and len(item.message.split()) >= 5:
-        subtitle = _trim_words(item.message, 25)
+    for candidate in [
+        extensions.get("one_sentence_thesis"),
+        *((extensions.get("key_takeaways") or [])[:2]),
+        item.message,
+        brief.goal,
+    ]:
+        subtitle = _prepare_title_subtitle_candidate(candidate)
+        if subtitle:
+            return _apply_audience_specific_subtitle(subtitle, brief)
+
+    subtitle = _best_chunk_subtitle_candidate(chunks)
+    if subtitle:
         return _apply_audience_specific_subtitle(subtitle, brief)
 
-    # Use the goal as last resort, but frame it better
-    subtitle = _trim_words(brief.goal, 20)
+    subtitle = _trim_words(brief.goal or item.message or "Executive overview", 20)
     return _apply_audience_specific_subtitle(subtitle, brief)
 
 
@@ -1125,6 +1350,69 @@ def _apply_audience_specific_subtitle(subtitle: str, brief: DeckBrief) -> str:
     if "oracle" in normalized_audience and "oracle" not in subtitle.lower():
         return _trim_words(f"{subtitle} For {brief.audience}.", 25)
     return subtitle
+
+
+def _prepare_title_subtitle_candidate(value: object) -> str:
+    cleaned = _clean_candidate_phrase(str(value or "").strip())
+    if not cleaned:
+        return ""
+    trimmed = _trim_words(cleaned, 25)
+    if len(trimmed.split()) < 4:
+        return ""
+    if TITLE_SUBTITLE_GENERIC_PATTERN.fullmatch(trimmed):
+        return ""
+    return trimmed
+
+
+def _best_chunk_subtitle_candidate(chunks: list[RetrievedChunk]) -> str:
+    ranked: list[tuple[int, str]] = []
+    for chunk_index, chunk in enumerate(chunks[:6]):
+        for phrase_index, candidate in enumerate(_candidate_phrases(chunk.text)):
+            prepared = _prepare_title_subtitle_candidate(candidate)
+            if not prepared:
+                continue
+            score = _score_title_subtitle_candidate(prepared, chunk_index=chunk_index, phrase_index=phrase_index)
+            ranked.append((score, prepared))
+    if not ranked:
+        return ""
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return ranked[0][1]
+
+
+def _score_title_subtitle_candidate(candidate: str, *, chunk_index: int, phrase_index: int) -> int:
+    lowered = candidate.lower()
+    words = candidate.split()
+    score = max(0, 10 - (chunk_index * 2))
+    score += max(0, 4 - phrase_index)
+    if 4 <= len(words) <= 12:
+        score += 6
+    elif len(words) <= 18:
+        score += 3
+    if any(term in lowered for term in TITLE_SUBTITLE_HIGH_LEVEL_TERMS):
+        score += 5
+    score -= _subtitle_jargon_penalty(candidate)
+    return score
+
+
+def _subtitle_jargon_penalty(candidate: str) -> int:
+    lowered = candidate.lower()
+    penalty = 0
+    if TITLE_SUBTITLE_CODELIKE_PATTERN.search(candidate):
+        penalty += 8
+    upper_tokens = len(re.findall(r"\b[A-Z]{2,}\b", candidate))
+    if upper_tokens >= 2:
+        penalty += 4
+    camelcase_tokens = len(TITLE_SUBTITLE_CAMELCASE_PATTERN.findall(candidate))
+    if camelcase_tokens:
+        penalty += 4
+    technical_hits = sum(1 for term in TITLE_SUBTITLE_TECHNICAL_TERMS if term in lowered)
+    if technical_hits >= 3:
+        penalty += 8
+    elif technical_hits == 2:
+        penalty += 4
+    elif technical_hits == 1:
+        penalty += 1
+    return penalty
 
 
 def _audience_focus_label(audience: str) -> str:

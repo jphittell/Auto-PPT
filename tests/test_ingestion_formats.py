@@ -55,10 +55,15 @@ def test_parse_pptx_extracts_slide_text_and_tables(make_pptx_file) -> None:
     request = parse_source(path)
     element_types = {element.type.value for element in request.document.elements}
     pages = {element.page for element in request.document.elements}
+    extensions = request.extensions or {}
 
     assert request.document.mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     assert {"title", "paragraph", "table"} <= element_types
     assert pages == {1, 2}
+    assert extensions["source_format"] == "pptx"
+    assert extensions["slide_count"] == 2
+    assert extensions["slide_types"]["title"] == 1
+    assert len(extensions["slide_blueprint"]) == 2
 
 
 def test_parse_json_emits_title_and_structured_elements(make_json_file) -> None:

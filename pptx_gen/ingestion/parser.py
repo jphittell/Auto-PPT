@@ -5,6 +5,7 @@ from __future__ import annotations
 import mimetypes
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,12 @@ class Figure(_FallbackElement):
     pass
 
 
+@dataclass(slots=True)
+class _PartitionResult:
+    elements: list[Any]
+    extensions: dict[str, Any] | None = None
+
+
 def parse_source(
     source_path: str | Path,
     *,
@@ -76,7 +83,8 @@ def parse_source(
     mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     doc_id = _make_doc_id(path)
     source_id = _make_source_id(path)
-    raw_elements = _partition_file(path)
+    partitioned = _partition_file(path)
+    raw_elements = partitioned.elements
 
     normalized_elements: list[ContentObject] = []
     title_claimed = False
@@ -114,28 +122,35 @@ def parse_source(
             elements=normalized_elements,
         ),
         options=options,
+        extensions=partitioned.extensions,
     )
 
 
-def _partition_file(path: Path) -> list[Any]:
+def _partition_file(path: Path) -> _PartitionResult:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
-        return _partition_pdf(path)
+        return _wrap_partition(_partition_pdf(path))
     if suffix in {".txt", ".md"}:
-        return _partition_text(path)
+        return _wrap_partition(_partition_text(path))
     if suffix == ".docx":
-        return _partition_docx(path)
+        return _wrap_partition(_partition_docx(path))
     if suffix == ".csv":
-        return _partition_csv(path)
+        return _wrap_partition(_partition_csv(path))
     if suffix == ".json":
-        return _partition_json(path)
+        return _wrap_partition(_partition_json(path))
     if suffix in {".xlsx", ".xlsm"}:
-        return _partition_xlsx(path)
+        return _wrap_partition(_partition_xlsx(path))
     if suffix == ".pptx":
         return _partition_pptx(path)
     if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
-        return _partition_image(path)
+        return _wrap_partition(_partition_image(path))
     raise ValueError(f"unsupported source type: {path.suffix}")
+
+
+def _wrap_partition(value: list[Any] | _PartitionResult) -> _PartitionResult:
+    if isinstance(value, _PartitionResult):
+        return value
+    return _PartitionResult(elements=value)
 
 
 def _partition_pdf(path: Path) -> list[Any]:
@@ -189,6 +204,156 @@ def _partition_docx(path: Path) -> list[Any]:
     return elements
 
 
+def _pptx_source_extensions(path: Path) -> dict[str, Any]:
+    from pptx import Presentation
+
+    presentation = Presentation(str(path))
+    slide_blueprint: list[dict[str, Any]] = []
+    slide_type_counts: Counter[str] = Counter()
+
+    for slide_index, slide in enumerate(presentation.slides, start=1):
+        _title_shape, title_text = _find_pptx_slide_title(slide)
+        body_texts, bullet_texts, table_count, picture_count, chart_count = _summarize_pptx_slide(slide, exclude_shape=_title_shape)
+        slide_type, purpose_hint, template_hint = _classify_pptx_slide(
+            slide_index=slide_index,
+            slide_count=len(presentation.slides),
+            title_text=title_text,
+            body_texts=body_texts,
+            bullet_texts=bullet_texts,
+            table_count=table_count,
+            picture_count=picture_count,
+            chart_count=chart_count,
+        )
+        slide_type_counts[slide_type] += 1
+        slide_blueprint.append(
+            {
+                "slide_number": slide_index,
+                "title": title_text or f"Slide {slide_index}",
+                "slide_type": slide_type,
+                "purpose_hint": purpose_hint,
+                "template_hint": template_hint,
+                "text_preview": _trim_words(" ".join([*body_texts[:2], *bullet_texts[:3]]), 24),
+                "text_count": len(body_texts),
+                "bullet_count": len(bullet_texts),
+                "table_count": table_count,
+                "picture_count": picture_count,
+                "chart_count": chart_count,
+            }
+        )
+
+    return {
+        "source_format": "pptx",
+        "slide_count": len(presentation.slides),
+        "slide_types": dict(sorted(slide_type_counts.items())),
+        "slide_blueprint": slide_blueprint,
+    }
+
+
+def _find_pptx_slide_title(slide: Any) -> tuple[Any | None, str]:
+    """Return (title_shape, title_text) for a pptx slide.
+
+    Prefers the formal title placeholder.  When none is present, falls back to
+    the first textbox whose text looks like a heading (single short line near
+    the top of the slide).
+    """
+    title_shape = getattr(slide.shapes, "title", None)
+    if title_shape is not None:
+        text = re.sub(r"\s+", " ", title_shape.text or "").strip()
+        if text:
+            return title_shape, text
+
+    # Fallback: pick the topmost single-line text shape as the title.
+    best_shape = None
+    best_text = ""
+    best_top = float("inf")
+    for shape in slide.shapes:
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        text = re.sub(r"\s+", " ", shape.text_frame.text or "").strip()
+        if not text or "\n" in text.strip():
+            continue
+        top = getattr(shape, "top", float("inf"))
+        if top < best_top and len(text.split()) <= 12:
+            best_top = top
+            best_shape = shape
+            best_text = text
+
+    return best_shape, best_text
+
+
+def _summarize_pptx_slide(slide: Any, *, exclude_shape: Any = None) -> tuple[list[str], list[str], int, int, int]:
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    body_texts: list[str] = []
+    bullet_texts: list[str] = []
+    table_count = 0
+    picture_count = 0
+    chart_count = 0
+
+    for shape in slide.shapes:
+        if exclude_shape is not None and shape is exclude_shape:
+            continue
+        if getattr(shape, "has_text_frame", False):
+            for paragraph in shape.text_frame.paragraphs:
+                text = re.sub(r"\s+", " ", paragraph.text or "").strip()
+                if not text:
+                    continue
+                if paragraph.level > 0 or re.match(r"^[-*â€¢]\s+", text):
+                    bullet_texts.append(re.sub(r"^[-*â€¢]\s+", "", text).strip())
+                else:
+                    body_texts.append(text)
+            continue
+        if getattr(shape, "has_table", False):
+            table_count += 1
+            continue
+        if getattr(shape, "has_chart", False):
+            chart_count += 1
+            continue
+        if getattr(shape, "shape_type", None) == MSO_SHAPE_TYPE.PICTURE:
+            picture_count += 1
+    return body_texts, bullet_texts, table_count, picture_count, chart_count
+
+
+def _classify_pptx_slide(
+    *,
+    slide_index: int,
+    slide_count: int,
+    title_text: str,
+    body_texts: list[str],
+    bullet_texts: list[str],
+    table_count: int,
+    picture_count: int,
+    chart_count: int,
+) -> tuple[str, str, str]:
+    lowered_title = title_text.lower().strip()
+    short_points = [text for text in [*bullet_texts, *body_texts] if 2 <= len(text.split()) <= 10]
+
+    if slide_index == 1:
+        return "title", "title", "title.cover"
+    if any(term in lowered_title for term in ("thank you", "questions", "q&a", "next steps", "action", "actions")):
+        return "closing", "closing", "closing.actions"
+    if chart_count:
+        return "chart", "content", "chart.takeaway"
+    if table_count:
+        return "table", "content", "compare.2col"
+    if any(term in lowered_title for term in ("overview", "summary", "executive")):
+        return "summary", "content", "exec.summary"
+    if len(short_points) >= 4:
+        return "matrix", "content", "compare.2col"
+    if len(short_points) == 3:
+        return "three_point", "content", "exec.summary"
+    if picture_count:
+        return "photo", "content", "headline.evidence"
+    if slide_index == slide_count:
+        return "closing", "closing", "closing.actions"
+    return "content", "content", "headline.evidence"
+
+
+def _trim_words(text: str, max_words: int) -> str:
+    words = [word for word in str(text).split() if word]
+    return " ".join(words[:max_words])
+
+
 def _partition_csv(path: Path) -> list[Any]:
     import csv
 
@@ -220,7 +385,7 @@ def _partition_xlsx(path: Path) -> list[Any]:
     return elements
 
 
-def _partition_pptx(path: Path) -> list[Any]:
+def _partition_pptx(path: Path) -> _PartitionResult:
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
 
@@ -229,16 +394,24 @@ def _partition_pptx(path: Path) -> list[Any]:
     title_claimed = False
 
     for slide_index, slide in enumerate(presentation.slides, start=1):
-        title_shape = getattr(slide.shapes, "title", None)
-        if title_shape is not None:
-            title_text = re.sub(r"\s+", " ", title_shape.text or "").strip()
-            if title_text:
-                cls = Title if not title_claimed else Header
-                elements.append(cls(text=title_text, metadata=_FallbackMetadata(page_number=slide_index)))
-                title_claimed = True
+        title_shape, title_text = _find_pptx_slide_title(slide)
+        if title_text:
+            cls = Title if not title_claimed else Header
+            elements.append(
+                cls(
+                    text=title_text,
+                    metadata=_FallbackMetadata(page_number=slide_index),
+                    extensions={
+                        "slide_index": slide_index,
+                        "slide_title": title_text,
+                        "shape_role": "title",
+                    },
+                )
+            )
+            title_claimed = True
 
         for shape in slide.shapes:
-            if title_shape is not None and shape == title_shape:
+            if title_shape is not None and shape is title_shape:
                 continue
             if getattr(shape, "has_text_frame", False):
                 paragraphs = []
@@ -264,7 +437,7 @@ def _partition_pptx(path: Path) -> list[Any]:
             elif getattr(shape, "shape_type", None) == MSO_SHAPE_TYPE.PICTURE:
                 elements.append(Figure(text=shape.name or "Figure", metadata=_FallbackMetadata(page_number=slide_index)))
 
-    return elements
+    return _PartitionResult(elements=elements, extensions=_pptx_source_extensions(path))
 
 
 def _partition_image(path: Path) -> list[Any]:

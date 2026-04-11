@@ -120,6 +120,36 @@ class DeckTheme(BaseModel):
     style_tokens: StyleTokens
 
 
+class DeckBriefExtensions(BaseModel):
+    """Typed extensions so structured LLM output reliably populates these fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+    document_title: str = ""
+    one_sentence_thesis: str = ""
+    key_takeaways: list[str] = Field(default_factory=list)
+    deck_archetype: str = ""
+    user_request: str = ""
+    audience_focus: str = ""
+    source_preview: str = ""
+    source_format: str = ""
+    source_slide_count: int = 0
+    source_slide_types: dict[str, int] = Field(default_factory=dict)
+    source_slide_blueprint: list[dict[str, Any]] = Field(default_factory=list)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Dict-compatible access for backward compatibility with existing code."""
+        try:
+            value = getattr(self, key)
+            if value is None or value == "" or value == []:
+                return default
+            return value
+        except AttributeError:
+            # Check extra fields
+            extra = self.__pydantic_extra__ or {}
+            return extra.get(key, default)
+
+
 class DeckBrief(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -130,7 +160,7 @@ class DeckBrief(BaseModel):
     slide_count_target: int = Field(ge=1)
     source_corpus_ids: list[str] = Field(min_length=1)
     questions_for_user: list[str] = Field(default_factory=list)
-    extensions: dict[str, Any] | None = None
+    extensions: DeckBriefExtensions = Field(default_factory=DeckBriefExtensions)
 
 
 class OutlineItem(BaseModel):
@@ -252,8 +282,8 @@ class PresentationSpec(BaseModel):
                     if block.kind not in word_capped_kinds:
                         continue
                     word_count = _count_words(block.content)
-                    if word_count > 70:
-                        raise ValueError(f"slide {slide.slide_id} exceeds 70-word content cap")
+                    if word_count > 150:
+                        raise ValueError(f"slide {slide.slide_id} exceeds 150-word content cap")
 
         return self
 

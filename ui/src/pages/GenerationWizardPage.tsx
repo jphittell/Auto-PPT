@@ -25,6 +25,11 @@ export function GenerationWizardPage() {
   const wizard = useWizardStore()
 
   useEffect(() => {
+    // Reset wizard state on fresh entry so users always start clean.
+    // Only preserve state when explicitly resuming (e.g., back-button navigation).
+    if (!searchParams.has('resume')) {
+      wizard.reset()
+    }
     getTemplates().then(setTemplates).catch(() => setTemplates([]))
   }, [])
 
@@ -37,6 +42,7 @@ export function GenerationWizardPage() {
     () => templates.filter((template) => template.deck_default_allowed),
     [templates],
   )
+  const hasPowerPointSource = wizard.ingestResults.some((result) => result.source_format === 'pptx')
 
   useEffect(() => {
     if (!deckLevelTemplates.length) return
@@ -45,7 +51,7 @@ export function GenerationWizardPage() {
   }, [deckLevelTemplates, wizard.selectedTemplateId])
 
   useEffect(() => {
-    if (wizard.step !== 3 || finalizingDeck || generationComplete || generationError || !wizard.plannedDraftId) return
+    if (wizard.step !== 4 || finalizingDeck || generationComplete || generationError || !wizard.plannedDraftId) return
     void handleFinalizeDeck()
   }, [wizard.step, wizard.plannedDraftId, finalizingDeck, generationComplete, generationError])
 
@@ -119,6 +125,7 @@ export function GenerationWizardPage() {
           template_id: slide.template_id,
         })),
         selected_template_id: wizard.selectedTemplateId,
+        theme_name: 'ONAC',
         brand_kit: wizard.brandKit,
       })
       wizard.setGeneratedDeckId(deck.id)
@@ -137,7 +144,13 @@ export function GenerationWizardPage() {
     if (wizard.step === 1) {
       return (
         <div className="space-y-6">
-          <FileDropzone accept=".pdf,.txt,.md" multiple loading={ingesting} onFilesSelect={handleFilesSelect} />
+          <FileDropzone
+            accept=".pdf,.txt,.md,.pptx"
+            acceptLabel=".pdf, .txt, .md, and .pptx"
+            multiple
+            loading={ingesting}
+            onFilesSelect={handleFilesSelect}
+          />
           {wizard.ingestResults.length > 0 ? (
             <div className="space-y-4">
               <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
@@ -169,6 +182,11 @@ export function GenerationWizardPage() {
             <p className="mt-2 text-sm text-slate-600">
               Describe the deck you want. We&apos;ll infer audience, framing, tone, and slide count from your prompt.
             </p>
+            {hasPowerPointSource ? (
+              <div className="mt-4 rounded-2xl bg-indigo-50 px-4 py-3 text-sm text-slate-700">
+                PowerPoint source detected. We&apos;ll keep the generated deck close to the uploaded slide count and structure unless your prompt says otherwise.
+              </div>
+            ) : null}
             <textarea
               value={wizard.prompt}
               onChange={(event) => wizard.setPrompt(event.target.value)}
@@ -179,6 +197,95 @@ export function GenerationWizardPage() {
           <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
             Example: <span className="font-medium text-slate-900">Create a 6-slide executive deck for Oracle consultants on AI presentation system architecture with polished, consulting-style slides.</span>
           </div>
+        </div>
+      )
+    }
+
+    if (wizard.step === 3) {
+      return (
+        <div className="space-y-6">
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-panel">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-950">Review outline</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Edit slide titles, reorder, add, or remove slides before generating. The outline drives the final deck.
+                </p>
+              </div>
+              <div className="text-sm text-slate-500">
+                {wizard.outline.length} slide{wizard.outline.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <div className="mt-6 space-y-3">
+              {wizard.outline.map((slide, index) => (
+                <div
+                  key={slide.id}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <span className="text-xs font-semibold text-slate-400 w-6 text-center">{index + 1}</span>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] capitalize text-slate-600">
+                    {slide.purpose}
+                  </span>
+                  <input
+                    type="text"
+                    value={slide.title}
+                    onChange={(e) => wizard.updateOutlineTitle(index, e.target.value)}
+                    className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-400"
+                  />
+                  <select
+                    value={slide.template_id}
+                    onChange={(e) => wizard.updateOutlineTemplate(index, e.target.value)}
+                    className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700"
+                  >
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-1">
+                    {index > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => wizard.reorderOutline(index, index - 1)}
+                        className="rounded p-1 text-xs text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                        title="Move up"
+                      >&#9650;</button>
+                    )}
+                    {index < wizard.outline.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => wizard.reorderOutline(index, index + 1)}
+                        className="rounded p-1 text-xs text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                        title="Move down"
+                      >&#9660;</button>
+                    )}
+                    {wizard.outline.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => wizard.removeOutlineSlide(index)}
+                        className="rounded p-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        title="Remove"
+                      >&#10005;</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => wizard.addOutlineSlide()}
+              className="mt-4 rounded-xl border border-dashed border-slate-300 px-4 py-2 text-sm text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+            >
+              + Add slide
+            </button>
+          </div>
+          {wizard.goal && (
+            <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
+              Inferred goal: <span className="font-medium text-slate-900">{wizard.goal}</span>
+              {wizard.audience && (
+                <> &middot; Audience: <span className="font-medium text-slate-900">{wizard.audience}</span></>
+              )}
+            </div>
+          )}
         </div>
       )
     }
@@ -216,6 +323,14 @@ export function GenerationWizardPage() {
       handleGenerateOutline()
       return
     }
+    if (wizard.step === 3) {
+      if (wizard.outline.length === 0) {
+        addToast('Outline must have at least one slide.', 'error')
+        return
+      }
+      wizard.setStep(4)
+      return
+    }
   }
 
   return (
@@ -228,13 +343,26 @@ export function GenerationWizardPage() {
             </Link>
             <h1 className="mt-3 text-4xl font-semibold text-slate-950">Generation wizard</h1>
           </div>
+          {wizard.step > 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                wizard.reset()
+                setGenerationComplete(false)
+                setGenerationError(null)
+              }}
+              className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            >
+              Start over
+            </button>
+          )}
         </div>
 
         <WizardStepIndicator step={wizard.step} />
 
         <div className="mt-8">{renderStep()}</div>
 
-        {wizard.step < 3 ? (
+        {wizard.step < 4 ? (
           <div className="mt-8 flex items-center justify-between">
             <button
               type="button"
@@ -250,7 +378,7 @@ export function GenerationWizardPage() {
               disabled={generatingOutline || finalizingDeck}
               className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-medium text-white disabled:opacity-60"
             >
-              {wizard.step === 2 ? 'Generate deck' : 'Continue'}
+              {wizard.step === 2 ? 'Plan outline' : wizard.step === 3 ? 'Generate deck' : 'Continue'}
             </button>
           </div>
         ) : null}

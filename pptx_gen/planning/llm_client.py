@@ -13,6 +13,7 @@ from dotenv import find_dotenv, load_dotenv
 from pydantic import BaseModel
 
 from pptx_gen.layout.templates import canonical_template_key, list_template_keys
+from pptx_gen.api_schemas import SlidePreviewLLMResponse
 from pptx_gen.planning.schemas import (
     DeckBrief,
     DesignRefinement,
@@ -28,6 +29,7 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "RetrievalPlan": RetrievalPlan,
     "PresentationSpec": PresentationSpec,
     "DesignRefinement": DesignRefinement,
+    "SlidePreviewLLMResponse": SlidePreviewLLMResponse,
 }
 
 
@@ -238,7 +240,39 @@ def _normalize_openai_payload(schema_name: str, payload: Any) -> Any:
         normalized.setdefault("applied", True)
         normalized.setdefault("rationale", [])
         return normalized
+    if schema_name == "SlidePreviewLLMResponse":
+        return _normalize_slide_preview_payload(payload)
     return payload
+
+
+def _normalize_slide_preview_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize LLM output that uses 'type' instead of 'kind' and 'content' instead of 'items'/'text'."""
+    normalized = dict(payload)
+    blocks = normalized.get("blocks")
+    if not isinstance(blocks, list):
+        return normalized
+    fixed_blocks: list[dict[str, Any]] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            fixed_blocks.append(block)
+            continue
+        fixed = dict(block)
+        # LLM often returns "type" instead of "kind"
+        if "kind" not in fixed and "type" in fixed:
+            fixed["kind"] = fixed.pop("type")
+        kind = fixed.get("kind", "text")
+        # LLM often returns "content" as a list (for bullets) or string (for text/callout)
+        if "content" in fixed and kind == "bullets" and "items" not in fixed:
+            content = fixed.pop("content")
+            if isinstance(content, list):
+                fixed["items"] = [str(item) for item in content]
+            elif isinstance(content, str):
+                fixed["items"] = [content]
+        elif "content" in fixed and kind in {"text", "callout"} and "text" not in fixed:
+            fixed["text"] = str(fixed.pop("content"))
+        fixed_blocks.append(fixed)
+    normalized["blocks"] = fixed_blocks
+    return normalized
 
 
 def _normalize_presentation_spec_payload(payload: dict[str, Any]) -> dict[str, Any]:
