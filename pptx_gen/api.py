@@ -51,7 +51,7 @@ from pptx_gen.api_schemas import (
 )
 from pptx_gen.ingestion.schemas import ChunkRecord, ContentClassification, ContentElementType
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
-from pptx_gen.observability import REQUEST_ID_HEADER, RequestIDMiddleware, configure_logging, current_request_id
+from pptx_gen.observability import REQUEST_ID_HEADER, ApiKeyMiddleware, RequestIDMiddleware, configure_logging, current_request_id
 from pptx_gen.settings import SETTINGS
 from pptx_gen.store import DraftState, StoredDeck, create_store
 from pptx_gen.layout.schemas import StyleTokens
@@ -250,6 +250,7 @@ app.add_exception_handler(RequestValidationError, _validation_exception_handler)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exception_handler)
 app.add_exception_handler(Exception, _unexpected_exception_handler)
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(ApiKeyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=SETTINGS.cors_allowed_origins,

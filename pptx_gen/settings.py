@@ -6,6 +6,10 @@ dependency-free (no pydantic-settings) to keep cold-start light.
 
 Environment variables (all optional; sensible dev defaults when absent):
 
+- AUTOPPT_API_KEY                Static bearer token required on all non-health endpoints.
+                                  Omit (or leave unset) to disable auth entirely for local dev.
+                                  Use a randomly generated 32-byte hex value in production:
+                                    python -c "import secrets; print(secrets.token_hex(32))"
 - AUTOPPT_CORS_ALLOWED_ORIGINS   Comma-separated list of allowed browser origins.
                                   Default: http://localhost:5173,http://127.0.0.1:5173
                                   Use "*" *only* when AUTOPPT_CORS_ALLOW_CREDENTIALS
@@ -63,6 +67,7 @@ def _env_origins(name: str) -> list[str]:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    api_key: str | None = None          # None → auth disabled (localhost dev mode)
     cors_allowed_origins: list[str] = field(default_factory=lambda: list(_DEFAULT_DEV_ORIGINS))
     cors_allow_credentials: bool = True
     max_upload_bytes: int = 50 * 1024 * 1024
@@ -86,6 +91,7 @@ class Settings:
 
 def load_settings() -> Settings:
     return Settings(
+        api_key=os.environ.get("AUTOPPT_API_KEY") or None,
         cors_allowed_origins=_env_origins("AUTOPPT_CORS_ALLOWED_ORIGINS"),
         cors_allow_credentials=_env_bool("AUTOPPT_CORS_ALLOW_CREDENTIALS", True),
         max_upload_bytes=_env_int("AUTOPPT_MAX_UPLOAD_MB", 50) * 1024 * 1024,

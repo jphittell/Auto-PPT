@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 from pptx import Presentation
 
@@ -1240,3 +1241,66 @@ def test_infer_chat_brief_tone_technical() -> None:
 def test_infer_chat_brief_tone_sales() -> None:
     result = api_module._infer_chat_brief("Bold investor pitch", "Startup")
     assert result["tone"] == 80.0
+
+
+# ---------------------------------------------------------------------------
+# API key auth tests
+# ---------------------------------------------------------------------------
+
+_TEST_API_KEY = "test-key-abc123"
+
+
+@pytest.fixture()
+def client():
+    """Unauthenticated client — no api_key set (local dev mode)."""
+    _reset_api_state()
+    return TestClient(api_module.app, raise_server_exceptions=False)
+
+
+@pytest.fixture()
+def authed_client(monkeypatch):
+    """Client with API key auth enabled."""
+    import pptx_gen.observability as obs_mod
+    import pptx_gen.settings as settings_mod
+
+    _reset_api_state()
+    keyed = settings_mod.Settings(api_key=_TEST_API_KEY)
+    monkeypatch.setattr(obs_mod, "SETTINGS", keyed)
+    return TestClient(api_module.app, raise_server_exceptions=False)
+
+
+class TestApiKeyMiddleware:
+    def test_health_exempt(self, authed_client, monkeypatch, deterministic_embedder):
+        monkeypatch.setattr(api_module, "_get_embedder", lambda: deterministic_embedder)
+        r = authed_client.get("/api/health")
+        # health may 200 or 503 depending on deps, but never 401
+        assert r.status_code != 401
+
+    def test_missing_key_returns_401(self, authed_client):
+        r = authed_client.get("/api/templates")
+        assert r.status_code == 401
+        assert r.json()["error"]["code"] == "unauthorized"
+
+    def test_wrong_key_returns_401(self, authed_client):
+        r = authed_client.get("/api/templates", headers={"X-API-Key": "wrong"})
+        assert r.status_code == 401
+        assert r.json()["error"]["code"] == "unauthorized"
+
+    def test_bearer_token_accepted(self, authed_client):
+        r = authed_client.get(
+            "/api/templates",
+            headers={"Authorization": f"Bearer {_TEST_API_KEY}"},
+        )
+        assert r.status_code == 200
+
+    def test_x_api_key_header_accepted(self, authed_client):
+        r = authed_client.get(
+            "/api/templates",
+            headers={"X-API-Key": _TEST_API_KEY},
+        )
+        assert r.status_code == 200
+
+    def test_auth_disabled_when_no_key_set(self, client):
+        """Default client (no api_key) should pass through freely."""
+        r = client.get("/api/templates")
+        assert r.status_code == 200

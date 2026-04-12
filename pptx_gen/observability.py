@@ -9,6 +9,7 @@ which is echoed back on the response and included in the access log.
 from __future__ import annotations
 
 import contextvars
+import hmac
 import json
 import logging
 import time
@@ -16,7 +17,7 @@ from uuid import uuid4
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from pptx_gen.settings import SETTINGS
@@ -71,6 +72,52 @@ def configure_logging() -> None:
         )
     root.addHandler(handler)
     root.setLevel(SETTINGS.log_level)
+
+
+_AUTH_HEADER = "Authorization"
+_API_KEY_HEADER = "X-API-Key"
+_HEALTH_PATH = "/api/health"
+
+
+class ApiKeyMiddleware(BaseHTTPMiddleware):
+    """Enforce AUTOPPT_API_KEY on all endpoints except /api/health.
+
+    Accepts the key in either of:
+      Authorization: Bearer <key>
+      X-API-Key: <key>
+
+    When SETTINGS.api_key is None the middleware is a no-op — local dev
+    servers can run without setting any key.
+    """
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        if SETTINGS.api_key is None:
+            return await call_next(request)
+        if request.url.path == _HEALTH_PATH:
+            return await call_next(request)
+
+        provided: str | None = None
+        auth_header = request.headers.get(_AUTH_HEADER, "")
+        if auth_header.lower().startswith("bearer "):
+            provided = auth_header[7:].strip()
+        if not provided:
+            provided = request.headers.get(_API_KEY_HEADER, "").strip() or None
+
+        if not provided or not hmac.compare_digest(provided, SETTINGS.api_key):
+            request_id = current_request_id() or uuid4().hex[:16]
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": {
+                        "code": "unauthorized",
+                        "message": "Missing or invalid API key.",
+                        "request_id": request_id,
+                    }
+                },
+                headers={REQUEST_ID_HEADER: request_id},
+            )
+
+        return await call_next(request)
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
