@@ -91,20 +91,28 @@ function previewTableRows(slide: SlideSpec) {
     .map((item, index) => [`Topic ${index + 1}`, item])
 }
 
-function previewColumns(slide: SlideSpec, count: number) {
+export type PreviewColumn = { title: string; text: string; isPlaceholder?: boolean }
+
+function previewColumns(slide: SlideSpec, count: number): PreviewColumn[] {
   const cards = previewCards(slide)
   if (cards.length > 0) {
     return cards.slice(0, count).map((card, index) => ({
       title: card.title || `Column ${index + 1}`,
-      text: card.text || 'Add content',
+      text: card.text || '',
+      isPlaceholder: !card.title && !card.text,
     }))
   }
 
   const items = previewItems(slide)
-  return Array.from({ length: count }, (_, index) => ({
-    title: `Column ${index + 1}`,
-    text: items[index] ?? previewPlainText(slide)[index] ?? 'Add supporting content',
-  }))
+  const plain = previewPlainText(slide)
+  return Array.from({ length: count }, (_, index) => {
+    const text = items[index] ?? plain[index] ?? ''
+    return {
+      title: text ? `Column ${index + 1}` : '',
+      text,
+      isPlaceholder: !text,
+    }
+  })
 }
 
 function PreviewImagePlaceholder({ label = 'Image', tall = false }: { label?: string; tall?: boolean }) {
@@ -210,17 +218,31 @@ function SlidePreviewSurface({
             </div>
             <div className="mt-auto flex gap-6 pt-8 text-sm" style={{ color: ONAC_PREVIEW_THEME.muted }}>
               <span>{footer}</span>
-              <span>{cards.length || 3} cards</span>
+              <span>{cards.length} cards</span>
             </div>
           </div>
 
           <div className="grid min-h-0 auto-rows-fr grid-cols-1 gap-4">
-            {(cards.length > 0 ? cards : Array.from({ length: 3 }, (_, index) => ({ title: `Point ${index + 1}`, text: 'Add consulting-style detail' }))).slice(0, 3).map((card, index) => (
-              <div key={`${card.title}-${index}`} className="rounded-2xl border p-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
-                <div className="text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{card.title}</div>
-                <div className="mt-2 text-sm leading-6" style={{ color: ONAC_PREVIEW_THEME.muted }}>{card.text}</div>
+            {cards.length > 0 ? (
+              cards.slice(0, 3).map((card, index) => (
+                <div key={`${card.title}-${index}`} className="rounded-2xl border p-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+                  <div className="text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{card.title}</div>
+                  <div className="mt-2 text-sm leading-6" style={{ color: ONAC_PREVIEW_THEME.muted }}>{card.text}</div>
+                </div>
+              ))
+            ) : (
+              <div
+                className="flex min-h-[12rem] flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center"
+                style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, color: ONAC_PREVIEW_THEME.muted }}
+              >
+                <div className="text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>
+                  No supporting points yet
+                </div>
+                <div className="mt-2 text-xs leading-5">
+                  Add slide text or regenerate with a source document to populate summary cards.
+                </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -358,9 +380,21 @@ function SlidePreviewSurface({
         </div>
         <div className={`mt-8 grid min-h-0 flex-1 gap-4 ${columnCount === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
           {columns.map((column, index) => (
-            <div key={`${column.title}-${index}`} className="rounded-2xl border p-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
-              <div className="text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{column.title}</div>
-              <div className="mt-3 text-sm leading-6" style={{ color: ONAC_PREVIEW_THEME.muted }}>{column.text}</div>
+            <div
+              key={`${column.title || 'empty'}-${index}`}
+              className={`rounded-2xl border p-5 ${column.isPlaceholder ? 'border-dashed' : 'shadow-[0_10px_24px_rgba(0,0,0,0.18)]'}`}
+              style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: column.isPlaceholder ? 'transparent' : ONAC_PREVIEW_THEME.panel }}
+            >
+              {column.isPlaceholder ? (
+                <div className="text-xs uppercase tracking-[0.18em]" style={{ color: ONAC_PREVIEW_THEME.muted }}>
+                  Column {index + 1} — add content
+                </div>
+              ) : (
+                <>
+                  <div className="text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{column.title}</div>
+                  <div className="mt-3 text-sm leading-6" style={{ color: ONAC_PREVIEW_THEME.muted }}>{column.text}</div>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -379,12 +413,24 @@ function SlidePreviewSurface({
         </div>
         <div className={`mt-8 grid min-h-0 flex-1 gap-4 ${iconCount === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
           {iconCards.map((card, index) => (
-            <div key={`${card.title}-${index}`} className="flex min-h-0 flex-col rounded-2xl border p-5 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+            <div
+              key={`${card.title || 'empty'}-${index}`}
+              className={`flex min-h-0 flex-col rounded-2xl border p-5 ${card.isPlaceholder ? 'border-dashed' : 'shadow-[0_10px_24px_rgba(0,0,0,0.18)]'}`}
+              style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: card.isPlaceholder ? 'transparent' : ONAC_PREVIEW_THEME.panel }}
+            >
               <div className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-semibold" style={{ backgroundColor: ONAC_PREVIEW_THEME.teal, color: ONAC_PREVIEW_THEME.softText }}>
                 {index + 1}
               </div>
-              <div className="mt-4 text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{card.title}</div>
-              <div className="mt-3 text-sm leading-6" style={{ color: ONAC_PREVIEW_THEME.muted }}>{card.text}</div>
+              {card.isPlaceholder ? (
+                <div className="mt-4 text-xs uppercase tracking-[0.18em]" style={{ color: ONAC_PREVIEW_THEME.muted }}>
+                  Add content
+                </div>
+              ) : (
+                <>
+                  <div className="mt-4 text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{card.title}</div>
+                  <div className="mt-3 text-sm leading-6" style={{ color: ONAC_PREVIEW_THEME.muted }}>{card.text}</div>
+                </>
+              )}
             </div>
           ))}
         </div>

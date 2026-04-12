@@ -142,6 +142,29 @@ class GenerateDeckRequest(BaseModel):
     brand_kit: BrandKitRequest = Field(default_factory=BrandKitRequest)
 
 
+class GenerationJobAcceptedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(min_length=1)
+    status: Literal["queued"] = "queued"
+    stream_url: str = Field(min_length=1)
+    status_url: str = Field(min_length=1)
+
+
+class GenerationJobStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(min_length=1)
+    status: Literal["queued", "running", "completed", "failed"]
+    stage: str = Field(min_length=1)
+    progress: float = Field(ge=0, le=1)
+    created_at: str = Field(min_length=1)
+    started_at: str | None = None
+    finished_at: str | None = None
+    deck_id: str | None = None
+    error: dict[str, str] | None = None
+
+
 class SlidePreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -152,6 +175,9 @@ class SlidePreviewRequest(BaseModel):
     content: str = Field(min_length=1)
     audience: str = Field(min_length=1)
     goal: str = Field(min_length=1)
+    # Optional: when provided, the server grounds the preview in the deck's
+    # ingested source documents rather than re-tokenizing the raw `content`.
+    deck_id: str | None = None
 
 
 class SlidePreviewBlockLLMResponse(BaseModel):
@@ -206,6 +232,13 @@ class ExportRequest(BaseModel):
     slides: list[ExportSlideRequest] | None = None
 
 
+class HealthDependencyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok"] = "ok"
+    latency_ms: int = Field(ge=0)
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -213,6 +246,8 @@ class HealthResponse(BaseModel):
     phase: Literal["1"] = "1"
     ingest: bool = True
     generation: Literal["live"] = "live"
+    embedder: HealthDependencyResponse
+    vector_store: HealthDependencyResponse
 
 
 class ChatMessageResponse(BaseModel):

@@ -44,6 +44,18 @@ class StructuredLLMClient(Protocol):
 # Chroma distances in this repo's deterministic tests map to very small scores,
 # so keep the gate conservative enough to trim only pathological near-zero hits.
 MIN_RETRIEVAL_SCORE = 0.0001
+PPTX_BLUEPRINT_VARIETY_TEMPLATES: tuple[str, ...] = (
+    "headline.evidence",
+    "compare.2col",
+    "exec.summary",
+    "kpi.big",
+    "chart.takeaway",
+)
+PPTX_BLUEPRINT_GENERIC_ROTATION: tuple[str, ...] = (
+    "headline.evidence",
+    "compare.2col",
+    "exec.summary",
+)
 PLANNING_LANGUAGE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b(?:codex|claude|llm|model)\s+should\b", re.IGNORECASE),
     re.compile(r"\b(?:should implement|must ensure|needs to|todo|fixme|hack|note:)\b", re.IGNORECASE),
@@ -517,31 +529,35 @@ def generate_presentation_spec(
             )
             continue
         if template_key == "compare.2col":
-            slides.append(
-                SlideSpec(
-                    slide_id=item.slide_id,
-                    purpose=item.purpose,
-                    archetype=SlideArchetype.COMPARISON,
-                    layout_intent=LayoutIntent(template_key="compare.2col", strict_template=True),
-                    headline=item.headline,
-                    speaker_notes=_speaker_notes(item.message, "Reference cited source material while presenting."),
-                    blocks=[
-                        PresentationBlock(
-                            block_id="b1",
-                            kind=PresentationBlockKind.BULLETS,
-                            content={"items": bullets[: max(1, (len(bullets) + 1) // 2)]},
-                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
-                        ),
-                        PresentationBlock(
-                            block_id="b2",
-                            kind=PresentationBlockKind.BULLETS,
-                            content={"items": bullets[max(1, (len(bullets) + 1) // 2):] or bullets[:1]},
-                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
-                        ),
-                    ],
+            if not _supports_comparison_layout(item.headline, item.message, bullets):
+                template_key = "headline.evidence"
+            else:
+                midpoint = max(1, (len(bullets) + 1) // 2)
+                slides.append(
+                    SlideSpec(
+                        slide_id=item.slide_id,
+                        purpose=item.purpose,
+                        archetype=SlideArchetype.COMPARISON,
+                        layout_intent=LayoutIntent(template_key="compare.2col", strict_template=True),
+                        headline=item.headline,
+                        speaker_notes=_speaker_notes(item.message, "Reference cited source material while presenting."),
+                        blocks=[
+                            PresentationBlock(
+                                block_id="b1",
+                                kind=PresentationBlockKind.BULLETS,
+                                content={"items": bullets[:midpoint]},
+                                source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                            ),
+                            PresentationBlock(
+                                block_id="b2",
+                                kind=PresentationBlockKind.BULLETS,
+                                content={"items": bullets[midpoint:]},
+                                source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                            ),
+                        ],
+                    )
                 )
-            )
-            continue
+                continue
         if template_key == "chart.takeaway":
             slides.append(
                 SlideSpec(
@@ -809,23 +825,44 @@ def _enforce_authoritative_fields(
             )
             continue
         if outline_item is not None and outline_item.template_key == "compare.2col" and not _slide_has_cards(slide):
-            cards = _cards_for_slide(slide, slide_chunks, title_prefix="Capability", desired_count=3) or _cards_from_points(
-                _slide_summary_points(slide, slide_chunks, fallback=outline_item.message, limit=3),
-                title_prefix="Capability",
-            )
-            slide = slide.model_copy(
-                update={
-                    "layout_intent": LayoutIntent(template_key="compare.2col", strict_template=True),
-                    "blocks": [
-                        PresentationBlock(
-                            block_id=slide.blocks[0].block_id if slide.blocks else "b1",
-                            kind=PresentationBlockKind.CALLOUT,
-                            content={"cards": cards},
-                            source_citations=_slide_citations(slide, slide_chunks, brief),
-                        )
-                    ],
-                }
-            )
+            summary_points = _slide_summary_points(slide, slide_chunks, fallback=outline_item.message, limit=3)
+            comparison_points = [
+                point for point in summary_points if _normalize_phrase(point) != _normalize_phrase(slide.headline)
+            ]
+            if slide.layout_intent.template_key != "compare.2col" and not _supports_comparison_layout(slide.headline, outline_item.message, comparison_points):
+                pass
+            elif not _supports_comparison_layout(slide.headline, outline_item.message, comparison_points):
+                slide = slide.model_copy(
+                    update={
+                        "layout_intent": LayoutIntent(template_key="headline.evidence", strict_template=True),
+                        "blocks": [
+                            PresentationBlock(
+                                block_id=slide.blocks[0].block_id if slide.blocks else "b1",
+                                kind=PresentationBlockKind.BULLETS,
+                                content={"items": comparison_points or summary_points or [_trim_words(outline_item.message, 12)]},
+                                source_citations=_slide_citations(slide, slide_chunks, brief),
+                            )
+                        ],
+                    }
+                )
+            else:
+                cards = _cards_for_slide(slide, slide_chunks, title_prefix="Capability", desired_count=3) or _cards_from_points(
+                    comparison_points,
+                    title_prefix="Capability",
+                )
+                slide = slide.model_copy(
+                    update={
+                        "layout_intent": LayoutIntent(template_key="compare.2col", strict_template=True),
+                        "blocks": [
+                            PresentationBlock(
+                                block_id=slide.blocks[0].block_id if slide.blocks else "b1",
+                                kind=PresentationBlockKind.CALLOUT,
+                                content={"cards": cards},
+                                source_citations=_slide_citations(slide, slide_chunks, brief),
+                            )
+                        ],
+                    }
+                )
 
         # Replace empty/degenerate block content with content from the outline message
         fallback_message = outline_messages.get(slide.slide_id, "")
@@ -990,6 +1027,7 @@ def _outline_from_source_blueprint(brief: DeckBrief) -> OutlineSpec | None:
             )
 
     items: list[OutlineItem] = []
+    used_templates: dict[str, int] = {}
     for index, slide in enumerate(selected_blueprint, start=1):
         title = str(slide.get("title") or f"Slide {index}").strip() or f"Slide {index}"
         text_preview = str(slide.get("text_preview") or "").strip()
@@ -1011,10 +1049,19 @@ def _outline_from_source_blueprint(brief: DeckBrief) -> OutlineSpec | None:
             evidence_queries = _evidence_queries_for_message(f"{title} {message}".strip())
         else:
             purpose = SlidePurpose.CONTENT
-            archetype = _archetype_from_blueprint_slide(slide_type, template_hint)
             template_key = _template_from_blueprint_slide(slide_type, template_hint)
+            if template_key == "headline.evidence":
+                template_key = _select_blueprint_content_template(
+                    slide=slide,
+                    brief=brief,
+                    title=title,
+                    text_preview=text_preview,
+                    used_templates=used_templates,
+                )
+            archetype = _archetype_for_template(template_key)
             message = _trim_words(text_preview or title or brief.goal, 18) or title
             evidence_queries = _evidence_queries_for_message(f"{title} {message}".strip())
+            used_templates[template_key] = used_templates.get(template_key, 0) + 1
 
         items.append(
             OutlineItem(
@@ -1046,8 +1093,61 @@ def _template_from_blueprint_slide(slide_type: str, template_hint: str) -> str:
     return "headline.evidence"
 
 
-def _archetype_from_blueprint_slide(slide_type: str, template_hint: str) -> SlideArchetype | None:
-    template_key = _template_from_blueprint_slide(slide_type, template_hint)
+def _select_blueprint_content_template(
+    *,
+    slide: dict[str, Any],
+    brief: DeckBrief,
+    title: str,
+    text_preview: str,
+    used_templates: dict[str, int],
+) -> str:
+    bullet_count = int(slide.get("bullet_count") or 0)
+    text_count = int(slide.get("text_count") or 0)
+    table_count = int(slide.get("table_count") or 0)
+    picture_count = int(slide.get("picture_count") or 0)
+    chart_count = int(slide.get("chart_count") or 0)
+    document_title = str((brief.extensions or {}).get("document_title", ""))
+    signal_text = f"{title} {text_preview}".strip()
+    numeric_signal = bool(re.search(r"\b[\d,.]+[%$]?\b", signal_text))
+
+    hint_terms: list[str] = []
+    if chart_count:
+        hint_terms.append("chart trend data series")
+    if table_count:
+        hint_terms.append("comparison matrix table")
+    elif bullet_count >= 4:
+        hint_terms.append("compare options tradeoff")
+    elif bullet_count == 3:
+        hint_terms.append("executive summary overview")
+    if numeric_signal:
+        hint_terms.append("kpi metric performance growth")
+    if picture_count and text_count <= 2 and bullet_count <= 2 and not hint_terms:
+        hint_terms.append("headline evidence visual")
+    if picture_count and text_count <= 2 and bullet_count <= 2 and not any((table_count, chart_count, numeric_signal)):
+        return _least_used_template(("headline.evidence", "exec.summary", "compare.2col"), used_templates)
+
+    candidate = _score_content_template(
+        " ".join(part for part in [signal_text, *hint_terms] if part),
+        brief.goal,
+        brief.audience,
+        document_title,
+        used_templates=used_templates,
+        candidates=PPTX_BLUEPRINT_VARIETY_TEMPLATES,
+    )
+
+    if candidate == "chart.takeaway" and not chart_count:
+        return _least_used_template(PPTX_BLUEPRINT_GENERIC_ROTATION, used_templates)
+    if candidate == "kpi.big" and not numeric_signal:
+        return _least_used_template(PPTX_BLUEPRINT_GENERIC_ROTATION, used_templates)
+    return candidate
+
+
+def _least_used_template(candidates: tuple[str, ...], used_templates: dict[str, int] | None = None) -> str:
+    usage = used_templates or {}
+    return min(candidates, key=lambda template: (usage.get(template, 0), candidates.index(template)))
+
+
+def _archetype_for_template(template_key: str) -> SlideArchetype | None:
     if template_key == "exec.summary":
         return SlideArchetype.EXECUTIVE_SUMMARY
     if template_key == "compare.2col":
@@ -1057,6 +1157,10 @@ def _archetype_from_blueprint_slide(slide_type: str, template_hint: str) -> Slid
     if template_key == "kpi.big":
         return SlideArchetype.METRICS
     return None
+
+
+def _archetype_from_blueprint_slide(slide_type: str, template_hint: str) -> SlideArchetype | None:
+    return _archetype_for_template(_template_from_blueprint_slide(slide_type, template_hint))
 
 
 def _infer_deck_archetype(
@@ -1167,6 +1271,7 @@ def _score_content_template(
     document_title: str = "",
     *,
     used_templates: dict[str, int] | None = None,
+    candidates: tuple[str, ...] | None = None,
 ) -> str:
     """Score all eligible templates and return the best fit with diversity awareness."""
     haystack = f"{message} {goal} {audience} {document_title}".lower()
@@ -1175,60 +1280,64 @@ def _score_content_template(
     bullet_count = haystack.count("\n") + 1
 
     # Content-eligible templates (exclude title.cover and section.divider)
-    candidates = [
+    candidate_templates = list(candidates) if candidates else [
         "headline.evidence", "kpi.big", "compare.2col", "chart.takeaway",
         "exec.summary", "closing.actions", "content.3col", "content.4col",
         "icons.3", "icons.4", "impact.statement", "split.content",
         "quote.texture", "agenda.table",
     ]
 
-    content_scores: dict[str, float] = {t: 0.0 for t in candidates}
-    purpose_scores: dict[str, float] = {t: 0.0 for t in candidates}
+    content_scores: dict[str, float] = {t: 0.0 for t in candidate_templates}
+    purpose_scores: dict[str, float] = {t: 0.0 for t in candidate_templates}
+
+    def _bump(scores: dict[str, float], template: str, amount: float) -> None:
+        if template in scores:
+            scores[template] += amount
 
     # --- Content structure signals ---
     if numeric_density >= 2:
-        content_scores["kpi.big"] += 0.8
-        content_scores["chart.takeaway"] += 0.4
+        _bump(content_scores, "kpi.big", 0.8)
+        _bump(content_scores, "chart.takeaway", 0.4)
     if any(t in haystack for t in ("compare", "comparison", "option", "versus", "tradeoff", "pros", "cons")):
-        content_scores["compare.2col"] += 0.8
+        _bump(content_scores, "compare.2col", 0.8)
     if any(t in haystack for t in ("quote", "said", "according to", '"')):
-        content_scores["quote.texture"] += 0.7
+        _bump(content_scores, "quote.texture", 0.7)
     if any(t in haystack for t in ("schedule", "agenda", "timeline", "matrix", "table")):
-        content_scores["agenda.table"] += 0.7
+        _bump(content_scores, "agenda.table", 0.7)
     if word_count < 15:
-        content_scores["impact.statement"] += 0.7
-        content_scores["quote.texture"] += 0.4
+        _bump(content_scores, "impact.statement", 0.7)
+        _bump(content_scores, "quote.texture", 0.4)
     if word_count > 40:
-        content_scores["headline.evidence"] += 0.4
-        content_scores["split.content"] += 0.3
+        _bump(content_scores, "headline.evidence", 0.4)
+        _bump(content_scores, "split.content", 0.3)
     if bullet_count == 3:
-        content_scores["content.3col"] += 0.6
-        content_scores["icons.3"] += 0.5
+        _bump(content_scores, "content.3col", 0.6)
+        _bump(content_scores, "icons.3", 0.5)
     elif bullet_count == 4:
-        content_scores["content.4col"] += 0.6
-        content_scores["icons.4"] += 0.5
+        _bump(content_scores, "content.4col", 0.6)
+        _bump(content_scores, "icons.4", 0.5)
     elif bullet_count >= 5:
-        content_scores["headline.evidence"] += 0.5
+        _bump(content_scores, "headline.evidence", 0.5)
     # General content gets a small baseline for variety candidates
     if any(t in haystack for t in ("capability", "feature", "pillar", "strategy", "benefit")):
-        content_scores["icons.3"] += 0.4
-        content_scores["icons.4"] += 0.3
-        content_scores["content.3col"] += 0.3
+        _bump(content_scores, "icons.3", 0.4)
+        _bump(content_scores, "icons.4", 0.3)
+        _bump(content_scores, "content.3col", 0.3)
 
     # --- Purpose signals ---
     if any(t in haystack for t in ("next step", "action", "closing", "recommendation", "call to action")):
-        purpose_scores["closing.actions"] += 0.8
+        _bump(purpose_scores, "closing.actions", 0.8)
     if any(t in haystack for t in ("overview", "summary", "executive", "landscape")):
-        purpose_scores["exec.summary"] += 0.7
+        _bump(purpose_scores, "exec.summary", 0.7)
     if any(t in haystack for t in ("chart", "trend", "graph", "data series", "plot", "visualization")):
-        purpose_scores["chart.takeaway"] += 0.8
+        _bump(purpose_scores, "chart.takeaway", 0.8)
     if any(t in haystack for t in ("metric", "kpi", "score", "rate", "roi", "growth", "performance")):
-        purpose_scores["kpi.big"] += 0.6
+        _bump(purpose_scores, "kpi.big", 0.6)
 
     # --- Diversity penalty ---
     best_score = -1.0
     best_template = "headline.evidence"
-    for template in candidates:
+    for template in candidate_templates:
         diversity_score = 1.0
         if used_templates and template in used_templates:
             diversity_score = max(0.0, 1.0 - used_templates[template] * 0.3)
@@ -1811,6 +1920,31 @@ def _slide_citations(
     for block in slide.blocks:
         citations.extend(block.source_citations)
     return citations or _citations_from_chunks(chunks)[:2] or _fallback_citation(brief.source_corpus_ids)
+
+
+def _supports_comparison_layout(headline: str, message: str, points: list[str]) -> bool:
+    if len(points) >= 3:
+        return True
+    normalized = f"{headline} {message}".lower()
+    comparison_terms = (
+        "compare",
+        "comparison",
+        "vs",
+        "versus",
+        "option",
+        "options",
+        "alternative",
+        "alternatives",
+        "tradeoff",
+        "trade-off",
+        "before",
+        "after",
+        "pros",
+        "cons",
+        "current state",
+        "future state",
+    )
+    return len(points) >= 2 and any(term in normalized for term in comparison_terms)
 
 
 def _slide_summary_points(

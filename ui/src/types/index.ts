@@ -99,6 +99,11 @@ export interface SlidePreviewParams {
   content: string
   audience: string
   goal: string
+  /**
+   * Optional deck id. When provided, the backend grounds the preview in the
+   * deck's ingested source documents instead of re-tokenizing `content`.
+   */
+  deck_id?: string
 }
 
 export type ExportResult =

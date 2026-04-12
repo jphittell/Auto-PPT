@@ -129,6 +129,110 @@ def test_generate_outline_uses_powerpoint_blueprint_when_available() -> None:
     assert outline.outline[1].purpose is SlidePurpose.CONTENT
 
 
+def test_generate_outline_diversifies_powerpoint_blueprint_content_templates() -> None:
+    brief = collect_deck_brief(
+        user_request="Refresh this imported deck with clearer variety",
+        audience="Executive leadership",
+        goal="Refresh the source deck while preserving its structure",
+        slide_count_target=6,
+        source_corpus_ids=["src-pptx"],
+        document_title="Imported Source Deck",
+        source_texts=[
+            "Imported Source Deck",
+            "Platform summary and delivery context",
+            "Four workstreams span onboarding governance analytics and support",
+            "Three decision themes frame the rollout",
+            "Revenue growth reached 18% with ROI at 3.2x",
+            "Questions and next steps",
+        ],
+        source_metadata={
+            "source_format": "pptx",
+            "slide_count": 6,
+            "slide_types": {"closing": 1, "content": 4, "title": 1},
+            "slide_blueprint": [
+                {
+                    "slide_number": 1,
+                    "title": "Imported Source Deck",
+                    "slide_type": "title",
+                    "purpose_hint": "title",
+                    "template_hint": "title.cover",
+                    "text_preview": "Program refresh overview",
+                },
+                {
+                    "slide_number": 2,
+                    "title": "Platform Context",
+                    "slide_type": "content",
+                    "purpose_hint": "content",
+                    "template_hint": "headline.evidence",
+                    "text_preview": "Platform summary and delivery context",
+                    "text_count": 2,
+                    "bullet_count": 1,
+                    "table_count": 0,
+                    "picture_count": 1,
+                    "chart_count": 0,
+                },
+                {
+                    "slide_number": 3,
+                    "title": "Workstream Coverage",
+                    "slide_type": "content",
+                    "purpose_hint": "content",
+                    "template_hint": "headline.evidence",
+                    "text_preview": "Onboarding governance analytics support",
+                    "text_count": 1,
+                    "bullet_count": 4,
+                    "table_count": 0,
+                    "picture_count": 0,
+                    "chart_count": 0,
+                },
+                {
+                    "slide_number": 4,
+                    "title": "Decision Themes",
+                    "slide_type": "content",
+                    "purpose_hint": "content",
+                    "template_hint": "headline.evidence",
+                    "text_preview": "Adoption governance readiness",
+                    "text_count": 1,
+                    "bullet_count": 3,
+                    "table_count": 0,
+                    "picture_count": 0,
+                    "chart_count": 0,
+                },
+                {
+                    "slide_number": 5,
+                    "title": "Performance Snapshot",
+                    "slide_type": "content",
+                    "purpose_hint": "content",
+                    "template_hint": "headline.evidence",
+                    "text_preview": "Revenue growth 18% ROI 3.2x adoption 74%",
+                    "text_count": 1,
+                    "bullet_count": 2,
+                    "table_count": 0,
+                    "picture_count": 0,
+                    "chart_count": 0,
+                },
+                {
+                    "slide_number": 6,
+                    "title": "Next Steps",
+                    "slide_type": "closing",
+                    "purpose_hint": "closing",
+                    "template_hint": "closing.actions",
+                    "text_preview": "Questions and next steps",
+                },
+            ],
+        },
+    )
+
+    outline = generate_outline(brief)
+
+    assert outline.outline[0].template_key == "title.cover"
+    assert outline.outline[-1].template_key == "closing.actions"
+    content_templates = [item.template_key for item in outline.outline if item.purpose is SlidePurpose.CONTENT]
+    assert len(set(content_templates)) >= 3
+    assert "headline.evidence" in content_templates
+    assert "compare.2col" in content_templates
+    assert "kpi.big" in content_templates
+
+
 def test_generate_outline_avoids_duplicate_headlines_for_pipeline_story() -> None:
     brief = DeckBrief(
         audience="Executive leadership",
@@ -585,6 +689,68 @@ def test_generate_presentation_spec_honors_card_template_with_card_blocks(style_
     assert content_slide.blocks[0].kind.value == "bullets"
     assert content_slide.blocks[1].kind.value == "bullets"
     assert summary_slide.layout_intent.template_key in {"compare.2col", "closing.actions", "headline.evidence"}
+
+
+def test_generate_presentation_spec_degrades_sparse_compare_layout(style_tokens_payload) -> None:
+    brief = DeckBrief(
+        audience="Operations leadership",
+        goal="Explain access configuration",
+        tone="analytical",
+        slide_count_target=3,
+        source_corpus_ids=["journeys-doc"],
+        questions_for_user=[],
+    )
+    outline = OutlineSpec(
+        outline=[
+            OutlineItem(
+                slide_id="s1",
+                purpose=SlidePurpose.TITLE,
+                headline="Journey Access",
+                message="Introduce the topic.",
+                evidence_queries=[],
+                template_key="title.cover",
+            ),
+            OutlineItem(
+                slide_id="s2",
+                purpose=SlidePurpose.CONTENT,
+                headline="Access to Journey Types",
+                message="Access depends on user roles and permissions.",
+                evidence_queries=["access journey types permissions"],
+                template_key="compare.2col",
+            ),
+            OutlineItem(
+                slide_id="s3",
+                purpose=SlidePurpose.CLOSING,
+                headline="Next steps",
+                message="Summarize actions.",
+                evidence_queries=[],
+                template_key="closing.actions",
+            ),
+        ]
+    )
+    retrieved_chunks = {
+        "s2": [
+            RetrievedChunk(
+                chunk_id="journeys-doc:1",
+                source_id="journeys-doc",
+                locator="journeys-doc:page1",
+                text="Access depends on user roles and permissions.",
+            )
+        ]
+    }
+
+    spec = generate_presentation_spec(
+        brief,
+        outline,
+        retrieved_chunks,
+        deck_title="Journey Access",
+        style_tokens=StyleTokens(**style_tokens_payload),
+    )
+
+    content_slide = next(slide for slide in spec.slides if slide.slide_id == "s2")
+    assert content_slide.layout_intent.template_key == "headline.evidence"
+    assert content_slide.blocks[0].kind.value == "bullets"
+    assert all(block.kind.value != "callout" or not isinstance(block.content.get("cards"), list) for block in content_slide.blocks)
 
 
 def test_title_slide_subtitle_prefers_brief_thesis_over_technical_chunk_text() -> None:

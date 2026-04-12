@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
+import hashlib
+import json
 import re
-import tempfile
-from collections import Counter
-from dataclasses import dataclass
+import shutil
+from collections import Counter, OrderedDict
 from datetime import datetime
+from time import perf_counter
+from threading import RLock
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 import pptx_gen.pipeline as pipeline_module
 from pptx_gen.api_schemas import (
@@ -26,6 +34,9 @@ from pptx_gen.api_schemas import (
     ExportRequest,
     ExportSlideRequest,
     GenerateDeckRequest,
+    GenerationJobAcceptedResponse,
+    GenerationJobStatusResponse,
+    HealthDependencyResponse,
     HealthResponse,
     IngestResponse,
     OutlineSlideRequest,
@@ -38,11 +49,15 @@ from pptx_gen.api_schemas import (
     TemplateResponse,
     ThemeSummaryResponse,
 )
-from pptx_gen.ingestion.schemas import ContentClassification
+from pptx_gen.ingestion.schemas import ChunkRecord, ContentClassification, ContentElementType
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
+from pptx_gen.observability import REQUEST_ID_HEADER, RequestIDMiddleware, configure_logging, current_request_id
+from pptx_gen.settings import SETTINGS
+from pptx_gen.store import DraftState, StoredDeck, create_store
 from pptx_gen.layout.schemas import StyleTokens
 from pptx_gen.layout.templates import TEMPLATE_ALIASES, TEMPLATE_REGISTRY, canonical_template_key, list_template_keys
 from pptx_gen.planning.prompt_chain import (
+    MIN_RETRIEVAL_SCORE,
     build_retrieval_plan,
     collect_deck_brief,
     execute_retrieval_plan,
@@ -68,44 +83,202 @@ from pptx_gen.planning.schemas import (
 from pptx_gen.renderer.markdown_strip import strip_markdown
 
 
+configure_logging()
+
+
+def _request_id_for_error(request: Request | None = None) -> str:
+    request_id = current_request_id()
+    if request_id:
+        return request_id
+    if request is not None:
+        header_request_id = request.headers.get(REQUEST_ID_HEADER, '').strip()
+        if header_request_id:
+            return header_request_id
+    return uuid4().hex[:16]
+
+
+def _error_payload(*, code: str, message: str, request: Request | None = None) -> dict[str, Any]:
+    return {
+        'error': {
+            'code': code,
+            'message': message,
+            'request_id': _request_id_for_error(request),
+        }
+    }
+
+
+def _error_response(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    request: Request | None = None,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    response = JSONResponse(
+        status_code=status_code,
+        content=_error_payload(code=code, message=message, request=request),
+    )
+    response.headers[REQUEST_ID_HEADER] = _request_id_for_error(request)
+    if headers:
+        for key, value in headers.items():
+            response.headers[key] = value
+    return response
+
+
+def _raise_api_error(status_code: int, code: str, message: str) -> None:
+    raise HTTPException(status_code=status_code, detail={'code': code, 'message': message})
+
+
+def _default_error_code(status_code: int) -> str:
+    return {
+        400: 'bad_request',
+        404: 'not_found',
+        413: 'payload_too_large',
+        422: 'invalid_request',
+        429: 'rate_limit_exceeded',
+        500: 'internal_error',
+        503: 'service_unavailable',
+    }.get(status_code, 'request_error')
+
+
+def _extract_error_detail(detail: Any, *, status_code: int) -> tuple[str, str]:
+    if isinstance(detail, dict):
+        error_detail = detail.get('error') if isinstance(detail.get('error'), dict) else detail
+        code = str(error_detail.get('code') or _default_error_code(status_code))
+        message = str(error_detail.get('message') or detail.get('detail') or 'Request failed.')
+        return code, message
+    if isinstance(detail, str) and detail.strip():
+        return _default_error_code(status_code), detail
+    return _default_error_code(status_code), 'Request failed.'
+
+
+async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    code, message = _extract_error_detail(exc.detail, status_code=exc.status_code)
+    headers = dict(exc.headers or {})
+    return _error_response(
+        status_code=exc.status_code,
+        code=code,
+        message=message,
+        request=request,
+        headers=headers,
+    )
+
+
+async def _validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    first_error = exc.errors()[0] if exc.errors() else {}
+    location = '.'.join(str(part) for part in first_error.get('loc', []) if part != 'body')
+    message = 'Invalid request payload.'
+    detail = str(first_error.get('msg') or '').strip()
+    if location and detail:
+        message = f'Invalid request payload for {location}: {detail}'
+    elif detail:
+        message = f'Invalid request payload: {detail}'
+    return _error_response(
+        status_code=422,
+        code='invalid_request',
+        message=message,
+        request=request,
+    )
+
+
+async def _rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    message = str(exc.detail or RATE_LIMIT_ERROR_MESSAGE)
+    headers = {'Retry-After': str(getattr(exc, 'retry_after', 60))}
+    return _error_response(
+        status_code=429,
+        code='rate_limit_exceeded',
+        message=message,
+        request=request,
+        headers=headers,
+    )
+
+
+async def _unexpected_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    import logging
+
+    logging.getLogger('pptx_gen.api').exception('unhandled api exception')
+    return _error_response(
+        status_code=500,
+        code='internal_error',
+        message='Internal server error.',
+        request=request,
+    )
+
+
+def _rate_limit_key(request: Request) -> str:
+    api_key = request.headers.get("x-api-key", "").strip()
+    if api_key:
+        return f"api-key:{api_key}"
+    forwarded_for = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded_for:
+        client = forwarded_for.split(",", 1)[0].strip()
+        if client:
+            return f"ip:{client}"
+    client = request.client.host if request.client else "unknown"
+    return f"ip:{client}"
+
+
+def _runtime_work_dir(prefix: str) -> Path:
+    RUNTIME_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    work_dir = RUNTIME_TEMP_DIR / f"{prefix}-{uuid4().hex[:10]}"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    return work_dir
+
+
+def _doc_id_from_filename(filename: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", Path(filename).stem.strip()).strip("-_.").lower()
+    return slug or "document"
+
+
+def _vector_store_for_doc(doc_id: str) -> InMemoryVectorStore:
+    return InMemoryVectorStore(collection_name=doc_id)
+
+
+INGEST_RATE_LIMIT = "6/minute"
+PLAN_RATE_LIMIT = "20/minute"
+GENERATION_RATE_LIMIT = "8/minute"
+EXPORT_RATE_LIMIT = "12/minute"
+RATE_LIMIT_ERROR_MESSAGE = "Rate limit exceeded. Try again later."
+PREVIEW_STRUCTURE_CACHE_MAX_ENTRIES = 256
+
 app = FastAPI(title="Auto-PPT API", version="0.1.0")
+limiter = Limiter(key_func=_rate_limit_key)
+app.state.limiter = limiter
+app.add_exception_handler(HTTPException, _http_exception_handler)
+app.add_exception_handler(RequestValidationError, _validation_exception_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exception_handler)
+app.add_exception_handler(Exception, _unexpected_exception_handler)
+app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=SETTINGS.cors_allowed_origins,
+    allow_credentials=SETTINGS.cors_safe_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SlowAPIMiddleware)
 
 
-@dataclass(slots=True)
-class DraftState:
-    draft_id: str
-    doc_ids: list[str]
-    source_ids: list[str]
-    title: str
-    goal: str
-    audience: str
-    tone_label: str
-    slide_count: int
-    brief: DeckBrief
-    outline: OutlineSpec
-    created_at: str
-
-
-_INGESTED_DOCS: dict[str, IngestResponse] = {}
-_INGESTED_RESULTS: dict[str, pipeline_module.IngestionIndexResult] = {}
+_store = create_store(
+    backend=SETTINGS.store_backend,
+    db_path=SETTINGS.store_path,
+)
+# Vector stores are compute caches rebuilt from stored chunks — not persisted.
 _INGESTED_VECTOR_STORES: dict[str, InMemoryVectorStore] = {}
-_DRAFTS: dict[str, DraftState] = {}
-_DECKS: dict[str, PresentationSpecResponse] = {}
-_RAW_DECK_SPECS: dict[str, PresentationSpec] = {}
-_CHAT_SESSIONS: dict[str, list[ChatMessageResponse]] = {}
 _EMBEDDER: Any | None = None
 _STRUCTURED_LLM_CLIENT: Any | bool | None = None
+_PREVIEW_STRUCTURE_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_PREVIEW_STRUCTURE_CACHE_LOCK = RLock()
+_GENERATION_QUEUE: asyncio.Queue[str] | None = None
+_GENERATION_QUEUE_LOOP: asyncio.AbstractEventLoop | None = None
+_GENERATION_WORKER_TASK: asyncio.Task[None] | None = None
+_GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = REPO_ROOT / "web"
 WEB_INDEX = WEB_DIR / "index.html"
 RUNTIME_ASSET_DIR = REPO_ROOT / "out" / "runtime_assets"
+RUNTIME_TEMP_DIR = REPO_ROOT / "out" / "tmp"
 ONAC_TEMPLATE_PATH = REPO_ROOT / "Input" / "Assets" / "PPTs" / "ONAC Presentation Template" / "ONAC Presentation Template.pptx"
 DECK_DEFAULT_TEMPLATE_IDS = {"headline.evidence", "compare.2col", "kpi.big"}
 SPECIALIST_TEMPLATE_IDS = {"exec.summary", "chart.takeaway", "closing.actions", "title.cover", "section.divider"}
@@ -127,28 +300,293 @@ BRAND_THEME_ALIASES = {
 }
 
 
+def _probe_embedder() -> HealthDependencyResponse:
+    started = perf_counter()
+    embedding = _get_embedder().encode(["health probe"])
+    if not embedding or not embedding[0]:
+        raise RuntimeError("Embedder returned an empty embedding.")
+    return HealthDependencyResponse(latency_ms=max(0, int((perf_counter() - started) * 1000)))
+
+
+def _probe_vector_store() -> HealthDependencyResponse:
+    started = perf_counter()
+    store = InMemoryVectorStore(collection_name=f"health-{uuid4().hex[:8]}", backend="memory")
+    probe_chunk = ChunkRecord(
+        chunk_id=f"health:{uuid4().hex[:8]}:0",
+        chunk_index=0,
+        doc_id="health-doc",
+        source_id="health-source",
+        element_id="health-element",
+        element_type=ContentElementType.PARAGRAPH,
+        classification=ContentClassification.AUDIENCE_CONTENT,
+        page=1,
+        locator="health:page1",
+        text="Health probe chunk.",
+    )
+    probe_embedding = [0.1, 0.2, 0.3]
+    store.upsert_chunks([probe_chunk], [probe_embedding])
+    retrieved = store.query(query_embedding=probe_embedding, n_results=1)
+    if not retrieved or retrieved[0].chunk_id != probe_chunk.chunk_id:
+        raise RuntimeError("Vector store probe failed to round-trip a chunk.")
+    return HealthDependencyResponse(latency_ms=max(0, int((perf_counter() - started) * 1000)))
+
+
+def _health_check_sync() -> HealthResponse:
+    failures: list[str] = []
+    embedder_status: HealthDependencyResponse | None = None
+    vector_store_status: HealthDependencyResponse | None = None
+
+    try:
+        embedder_status = _probe_embedder()
+    except Exception as exc:
+        failures.append(f"embedder: {exc}")
+
+    try:
+        vector_store_status = _probe_vector_store()
+    except Exception as exc:
+        failures.append(f"vector_store: {exc}")
+
+    if failures:
+        _raise_api_error(503, 'health_check_failed', '; '.join(failures))
+
+    assert embedder_status is not None
+    assert vector_store_status is not None
+    return HealthResponse(embedder=embedder_status, vector_store=vector_store_status)
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse()
+    return await asyncio.to_thread(_health_check_sync)
 
 
-@app.post("/api/ingest", response_model=IngestResponse)
-async def ingest_document(file: UploadFile = File(...)) -> IngestResponse:
+def _timestamp() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _generation_job_urls(job_id: str) -> tuple[str, str]:
+    return (f"/api/generate/jobs/{job_id}", f"/api/generate/jobs/{job_id}/events")
+
+
+def _generation_job_status_payload(job: dict[str, Any]) -> GenerationJobStatusResponse:
+    error = job.get("error")
+    return GenerationJobStatusResponse(
+        job_id=job["job_id"],
+        status=job["status"],
+        stage=job["stage"],
+        progress=job["progress"],
+        created_at=job["created_at"],
+        started_at=job.get("started_at"),
+        finished_at=job.get("finished_at"),
+        deck_id=job.get("deck_id"),
+        error=error,
+    )
+
+
+def _format_sse_event(event: str, payload: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, separators=(",", ":"))}\n\n"
+
+
+async def _publish_generation_event(job: dict[str, Any], event: str) -> None:
+    payload = _generation_job_status_payload(job).model_dump(mode="json")
+    for listener in list(job["listeners"]):
+        await listener.put(_format_sse_event(event, payload))
+
+
+async def _set_generation_job_state(
+    job: dict[str, Any],
+    *,
+    status: str,
+    stage: str,
+    progress: float,
+    deck_id: str | None = None,
+    error: dict[str, str] | None = None,
+) -> None:
+    job["status"] = status
+    job["stage"] = stage
+    job["progress"] = progress
+    if status == "running" and job.get("started_at") is None:
+        job["started_at"] = _timestamp()
+    if status in {"completed", "failed"}:
+        job["finished_at"] = _timestamp()
+    if deck_id is not None:
+        job["deck_id"] = deck_id
+    if error is not None:
+        job["error"] = error
+    await _publish_generation_event(job, status)
+
+
+async def _run_generation_job(job_id: str) -> None:
+    job = _GENERATION_JOBS[job_id]
+    await _set_generation_job_state(job, status="running", stage="loading_draft", progress=0.15)
+    try:
+        await _set_generation_job_state(job, status="running", stage="generating_deck", progress=0.45)
+        deck = await asyncio.to_thread(_generate_deck_from_draft_sync, job["payload"])
+        await _set_generation_job_state(
+            job,
+            status="completed",
+            stage="completed",
+            progress=1.0,
+            deck_id=deck.id,
+        )
+    except HTTPException as exc:
+        code, message = _extract_error_detail(exc.detail, status_code=exc.status_code)
+        await _set_generation_job_state(
+            job,
+            status="failed",
+            stage="failed",
+            progress=1.0,
+            error={"code": code, "message": message},
+        )
+    except Exception as exc:
+        await _set_generation_job_state(
+            job,
+            status="failed",
+            stage="failed",
+            progress=1.0,
+            error={"code": "generation_failed", "message": str(exc)},
+        )
+
+
+async def _generation_worker() -> None:
+    assert _GENERATION_QUEUE is not None
+    while True:
+        job_id = await _GENERATION_QUEUE.get()
+        try:
+            await _run_generation_job(job_id)
+        finally:
+            _GENERATION_QUEUE.task_done()
+
+
+async def _ensure_generation_worker() -> None:
+    global _GENERATION_QUEUE, _GENERATION_QUEUE_LOOP, _GENERATION_WORKER_TASK
+    current_loop = asyncio.get_running_loop()
+    if _GENERATION_QUEUE is None or _GENERATION_QUEUE_LOOP is not current_loop:
+        _GENERATION_QUEUE = asyncio.Queue()
+        _GENERATION_QUEUE_LOOP = current_loop
+    if _GENERATION_WORKER_TASK is None or _GENERATION_WORKER_TASK.done():
+        _GENERATION_WORKER_TASK = asyncio.create_task(_generation_worker())
+
+
+@app.on_event("startup")
+async def _startup_generation_worker() -> None:
+    await _ensure_generation_worker()
+
+
+@app.on_event("shutdown")
+async def _shutdown_generation_worker() -> None:
+    global _GENERATION_QUEUE, _GENERATION_QUEUE_LOOP, _GENERATION_WORKER_TASK
+    if _GENERATION_WORKER_TASK is not None:
+        _GENERATION_WORKER_TASK.cancel()
+        try:
+            await _GENERATION_WORKER_TASK
+        except asyncio.CancelledError:
+            pass
+        _GENERATION_WORKER_TASK = None
+    _GENERATION_QUEUE = None
+    _GENERATION_QUEUE_LOOP = None
+
+
+@app.get("/api/generate/jobs/{job_id}", response_model=GenerationJobStatusResponse)
+async def get_generation_job(job_id: str) -> GenerationJobStatusResponse:
+    job = _GENERATION_JOBS.get(job_id)
+    if job is None:
+        _raise_api_error(404, "generation_job_not_found", f"Unknown generation job: {job_id}")
+    return _generation_job_status_payload(job)
+
+
+@app.get("/api/generate/jobs/{job_id}/events")
+async def stream_generation_job(job_id: str) -> StreamingResponse:
+    job = _GENERATION_JOBS.get(job_id)
+    if job is None:
+        _raise_api_error(404, "generation_job_not_found", f"Unknown generation job: {job_id}")
+
+    listener: asyncio.Queue[str] = asyncio.Queue()
+    job["listeners"].add(listener)
+    await listener.put(_format_sse_event("snapshot", _generation_job_status_payload(job).model_dump(mode="json")))
+
+    async def event_stream() -> AsyncIterator[str]:
+        try:
+            while True:
+                if job["status"] in {"completed", "failed"} and listener.empty():
+                    break
+                try:
+                    message = await asyncio.wait_for(listener.get(), timeout=15)
+                    yield message
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            job["listeners"].discard(listener)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/api/generate/async", response_model=GenerationJobAcceptedResponse)
+@limiter.shared_limit(GENERATION_RATE_LIMIT, scope="generation-heavy", error_message=RATE_LIMIT_ERROR_MESSAGE)
+async def enqueue_deck_generation(request: Request, payload: GenerateDeckRequest) -> GenerationJobAcceptedResponse:
+    await _ensure_generation_worker()
+    assert _GENERATION_QUEUE is not None
+    job_id = f"genjob-{uuid4().hex[:10]}"
+    status_url, stream_url = _generation_job_urls(job_id)
+    job = {
+        "job_id": job_id,
+        "payload": payload,
+        "status": "queued",
+        "stage": "queued",
+        "progress": 0.0,
+        "created_at": _timestamp(),
+        "started_at": None,
+        "finished_at": None,
+        "deck_id": None,
+        "error": None,
+        "listeners": set(),
+    }
+    _GENERATION_JOBS[job_id] = job
+    await _GENERATION_QUEUE.put(job_id)
+    return GenerationJobAcceptedResponse(job_id=job_id, status="queued", stream_url=stream_url, status_url=status_url)
+
+
+@app.get("/api/generate/jobs/{job_id}/result", response_model=PresentationSpecResponse)
+async def get_generation_job_result(job_id: str) -> PresentationSpecResponse:
+    job = _GENERATION_JOBS.get(job_id)
+    if job is None:
+        _raise_api_error(404, "generation_job_not_found", f"Unknown generation job: {job_id}")
+    if job["status"] != "completed" or not job.get("deck_id"):
+        _raise_api_error(409, "generation_job_not_ready", f"Generation job is not complete: {job_id}")
+    stored = _store.get_deck_spec(job["deck_id"])
+    if stored is None:
+        _raise_api_error(404, "deck_not_found", f"Unknown deck_id: {job['deck_id']}")
+    return _to_api_presentation_spec(stored)
+
+
+async def _ingest_document(file: UploadFile) -> IngestResponse:
     original_name = Path(file.filename or "upload.txt").name
     suffix = Path(original_name).suffix.lower()
     if suffix not in {".pdf", ".txt", ".md", ".pptx"}:
-        raise HTTPException(status_code=400, detail="Only .pdf, .txt, .md, and .pptx uploads are supported.")
+        _raise_api_error(400, 'unsupported_upload_type', 'Only .pdf, .txt, .md, and .pptx uploads are supported.')
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir) / original_name
-        temp_path.write_bytes(await file.read())
-        doc_vector_store = InMemoryVectorStore()
-        result = pipeline_module.ingest_and_index(
-            temp_path,
-            title=Path(original_name).stem.replace("_", " "),
-            embedder=_get_embedder(),
-            vector_store=doc_vector_store,
-        )
+    payload = await file.read()
+    if len(payload) > SETTINGS.max_upload_bytes:
+        max_mb = SETTINGS.max_upload_bytes // (1024 * 1024)
+        _raise_api_error(413, 'upload_too_large', f'Upload exceeds the {max_mb} MB limit.')
+
+    work_dir = _runtime_work_dir("ingest")
+    doc_id = _doc_id_from_filename(original_name)
+    doc_vector_store = _vector_store_for_doc(doc_id)
+    try:
+        if doc_vector_store.has_data() and _store.has_ingestion_result(doc_id):
+            result = _store.get_ingestion_result(doc_id)
+            assert result is not None
+        else:
+            doc_vector_store.clear()
+            result = await asyncio.to_thread(
+                _ingest_and_index_sync,
+                work_dir / original_name,
+                payload,
+                Path(original_name).stem.replace("_", " "),
+                doc_vector_store,
+            )
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
     element_counts = Counter(element.type.value for element in result.ingestion_request.document.elements)
     source_metadata = dict(result.ingestion_request.extensions or {})
@@ -171,26 +609,35 @@ async def ingest_document(file: UploadFile = File(...)) -> IngestResponse:
         ),
         summary=summary,
     )
-    _INGESTED_DOCS[result.doc_id] = response
-    _INGESTED_RESULTS[result.doc_id] = result
+    _store.put_ingested_doc(result.doc_id, response)
+    _store.put_ingestion_result(result.doc_id, result)
     _INGESTED_VECTOR_STORES[result.doc_id] = doc_vector_store
     return response
 
 
+@app.post("/api/ingest", response_model=IngestResponse)
+@limiter.limit(INGEST_RATE_LIMIT, error_message=RATE_LIMIT_ERROR_MESSAGE)
+async def ingest_document(request: Request, file: UploadFile = File(...)) -> IngestResponse:
+    return await _ingest_document(file)
+
+
 @app.post("/api/plan", response_model=PlanDeckResponse)
-async def plan_deck(request: PlanDeckRequest) -> PlanDeckResponse:
-    return _plan_deck_response(
-        doc_ids=request.doc_ids,
-        goal=request.goal,
-        audience=request.audience,
-        tone=request.tone,
-        slide_count=request.slide_count,
+@limiter.limit(PLAN_RATE_LIMIT, error_message=RATE_LIMIT_ERROR_MESSAGE)
+async def plan_deck(request: Request, payload: PlanDeckRequest) -> PlanDeckResponse:
+    return await asyncio.to_thread(
+        _plan_deck_response,
+        doc_ids=payload.doc_ids,
+        goal=payload.goal,
+        audience=payload.audience,
+        tone=payload.tone,
+        slide_count=payload.slide_count,
     )
 
 
 @app.post("/api/plan/prompt", response_model=PlanDeckResponse)
-async def plan_deck_from_prompt(request: PlanPromptRequest) -> PlanDeckResponse:
-    ingestion_results = _ingested_results_for(request.doc_ids)
+@limiter.limit(PLAN_RATE_LIMIT, error_message=RATE_LIMIT_ERROR_MESSAGE)
+async def plan_deck_from_prompt(request: Request, payload: PlanPromptRequest) -> PlanDeckResponse:
+    ingestion_results = _ingested_results_for(payload.doc_ids)
     combined_title = " + ".join(result.ingestion_request.document.title for result in ingestion_results)
     content_chunk_count = sum(
         1 for result in ingestion_results
@@ -198,13 +645,14 @@ async def plan_deck_from_prompt(request: PlanPromptRequest) -> PlanDeckResponse:
         if chunk.classification is ContentClassification.AUDIENCE_CONTENT
     )
     inferred = _infer_chat_brief(
-        request.prompt,
+        payload.prompt,
         combined_title,
         content_chunk_count=content_chunk_count,
         source_context=_source_metadata_for_results(ingestion_results),
     )
-    return _plan_deck_response(
-        doc_ids=request.doc_ids,
+    return await asyncio.to_thread(
+        _plan_deck_response,
+        doc_ids=payload.doc_ids,
         goal=inferred["goal"],
         audience=inferred["audience"],
         tone=inferred["tone"],
@@ -248,11 +696,12 @@ def _plan_deck_response(
         generate_outline(brief, llm_client=_get_optional_structured_llm_client()),
         slide_count,
         goal,
+        ingestion_results=ingestion_results,
     )
 
     created_at = datetime.now().isoformat(timespec="seconds")
     draft_id = f"draft-{uuid4().hex[:10]}"
-    _DRAFTS[draft_id] = DraftState(
+    _store.put_draft(draft_id, DraftState(
         draft_id=draft_id,
         doc_ids=list(doc_ids),
         source_ids=source_ids,
@@ -264,7 +713,7 @@ def _plan_deck_response(
         brief=brief.model_copy(update={"slide_count_target": slide_count}),
         outline=outline,
         created_at=created_at,
-    )
+    ))
 
     return PlanDeckResponse(
         draft_id=draft_id,
@@ -284,35 +733,37 @@ def _plan_deck_response(
     )
 
 
-@app.post("/api/generate", response_model=PresentationSpecResponse)
-async def generate_deck_from_draft(request: GenerateDeckRequest) -> PresentationSpecResponse:
+def _generate_deck_from_draft_sync(request_model: GenerateDeckRequest) -> PresentationSpecResponse:
     import logging
     logger = logging.getLogger("pptx_gen.api")
 
-    draft = _DRAFTS.get(request.draft_id)
+    draft = _store.get_draft(request_model.draft_id)
     if draft is None:
-        raise HTTPException(status_code=404, detail=f"Unknown draft_id: {request.draft_id}")
-    if len(request.outline) != draft.slide_count:
-        draft.slide_count = len(request.outline)
-        draft.brief = draft.brief.model_copy(update={"slide_count_target": len(request.outline)})
+        _raise_api_error(404, 'draft_not_found', f'Unknown draft_id: {request_model.draft_id}')
+    if len(request_model.outline) != draft.slide_count:
+        draft = draft.model_copy(update={
+            "slide_count": len(request_model.outline),
+            "brief": draft.brief.model_copy(update={"slide_count_target": len(request_model.outline)}),
+        })
+        _store.put_draft(draft.draft_id, draft)
 
-    selected_template_id = canonical_template_key(request.selected_template_id)
+    selected_template_id = canonical_template_key(request_model.selected_template_id)
     if selected_template_id not in DECK_DEFAULT_TEMPLATE_IDS:
-        raise HTTPException(status_code=400, detail=f"Unsupported deck-level template: {request.selected_template_id}")
+        _raise_api_error(400, 'unsupported_deck_template', f'Unsupported deck-level template: {request_model.selected_template_id}')
 
     try:
-        outline = _apply_outline_edits(draft, request.outline)
+        outline = _apply_outline_edits(draft, request_model.outline)
         vector_store = _build_vector_store(draft.doc_ids)
         retrieved_chunks = execute_retrieval_plan(
             build_retrieval_plan(draft.brief, outline, llm_client=_get_optional_structured_llm_client()),
             vector_store=vector_store,
             embedder=_get_embedder(),
         )
-        theme_name = request.theme_name or "ONAC"
+        theme_name = request_model.theme_name or "ONAC"
         _theme_config(theme_name)
-        style_tokens = _style_tokens_from_brand_kit(request.brand_kit, theme_name)
-        deck_id = f"deck-{draft.doc_ids[0]}-{len(_DECKS) + 1}"
-        logo_path = _persist_logo_asset(deck_id, request.brand_kit.logo_data_url)
+        style_tokens = _style_tokens_from_brand_kit(request_model.brand_kit, theme_name)
+        deck_id = f"deck-{draft.doc_ids[0]}-{_store.count_decks() + 1}"
+        logo_path = _persist_logo_asset(deck_id, request_model.brand_kit.logo_data_url)
 
         spec = generate_presentation_spec(
             draft.brief.model_copy(update={"tone": draft.tone_label, "slide_count_target": draft.slide_count}),
@@ -328,43 +779,64 @@ async def generate_deck_from_draft(request: GenerateDeckRequest) -> Presentation
         spec = _apply_global_template_default(spec, selected_template_id)
         spec = _inject_brand_logo(spec, logo_path)
 
-        response = _to_api_presentation_spec(deck_id, draft.doc_ids, draft.goal, spec)
-        _RAW_DECK_SPECS[deck_id] = spec
-        _DECKS[deck_id] = response
-        return response
+        created_at = datetime.now().isoformat(timespec="seconds")
+        stored_deck = StoredDeck(
+            deck_id=deck_id,
+            doc_ids=draft.doc_ids,
+            goal=draft.goal,
+            created_at=created_at,
+            spec=spec,
+        )
+        _store.put_deck_spec(deck_id, stored_deck)
+        return _to_api_presentation_spec(stored_deck)
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("generate_deck_from_draft failed")
-        raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail={'code': 'generation_failed', 'message': f'Generation failed: {exc}'}) from exc
+
+
+@app.post("/api/generate", response_model=PresentationSpecResponse)
+@limiter.shared_limit(GENERATION_RATE_LIMIT, scope="generation-heavy", error_message=RATE_LIMIT_ERROR_MESSAGE)
+async def generate_deck_from_draft(request: Request, payload: GenerateDeckRequest) -> PresentationSpecResponse:
+    return await asyncio.to_thread(_generate_deck_from_draft_sync, payload)
 
 
 @app.post("/api/slide/preview", response_model=SlideSpecResponse)
-async def generate_slide_preview(request: SlidePreviewRequest) -> SlideSpecResponse:
+@limiter.shared_limit(GENERATION_RATE_LIMIT, scope="generation-heavy", error_message=RATE_LIMIT_ERROR_MESSAGE)
+async def generate_slide_preview(request: Request, payload: SlidePreviewRequest) -> SlideSpecResponse:
     import logging
     logger = logging.getLogger("pptx_gen.api")
 
     try:
-        purpose = SlidePurpose(request.purpose)
+        purpose = SlidePurpose(payload.purpose)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Unsupported slide purpose: {request.purpose}") from exc
+        raise HTTPException(status_code=400, detail={'code': 'unsupported_slide_purpose', 'message': f'Unsupported slide purpose: {payload.purpose}'}) from exc
 
-    content_text = request.content.strip()
-    chosen_template = canonical_template_key(request.template_id)
+    content_text = payload.content.strip()
+    chosen_template = canonical_template_key(payload.template_id)
+
+    grounding_text = await asyncio.to_thread(
+        _retrieve_grounding_for_preview,
+        deck_id=payload.deck_id,
+        title=payload.title,
+        content=content_text,
+    )
 
     try:
         structured = await _llm_structure_slide_content(
             content=content_text,
-            title=request.title,
-            audience=request.audience,
-            goal=request.goal,
+            title=payload.title,
+            audience=payload.audience,
+            goal=payload.goal,
             purpose=purpose,
             selected_template=chosen_template,
+            grounding_text=grounding_text,
         )
         slide = _build_preview_slide(
-            slide_id=request.slide_id,
+            slide_id=payload.slide_id,
             purpose=purpose,
-            headline=structured.get("headline", request.title),
+            headline=structured.get("headline", payload.title),
             template_key=chosen_template,
             blocks_data=structured.get("blocks", []),
             speaker_notes=structured.get("speaker_notes", ""),
@@ -372,16 +844,91 @@ async def generate_slide_preview(request: SlidePreviewRequest) -> SlideSpecRespo
         return _to_api_slide_spec(slide, index=1)
     except Exception as exc:
         logger.exception("slide preview generation failed")
-        raise HTTPException(status_code=500, detail=f"Preview generation failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail={'code': 'preview_generation_failed', 'message': f'Preview generation failed: {exc}'}) from exc
+
+
+def _retrieve_grounding_for_preview(
+    *,
+    deck_id: str | None,
+    title: str,
+    content: str,
+    max_chunks: int = 6,
+) -> str:
+    """Pull source-doc passages for a slide-preview regeneration.
+
+    Returns a newline-joined string of the top chunks most relevant to the
+    slide's title and current content. Empty string if no deck context is
+    available or retrieval fails — callers treat empty as "no grounding".
+    """
+    if not deck_id:
+        return ""
+    deck = _store.get_deck_spec(deck_id)
+    if deck is None or not deck.doc_ids:
+        return ""
+
+    import logging
+    logger = logging.getLogger("pptx_gen.api")
+    try:
+        available_doc_ids = [d for d in deck.doc_ids if _store.has_ingestion_result(d)]
+        if not available_doc_ids:
+            return ""
+        vector_store = _build_vector_store(available_doc_ids)
+        embedder = _get_embedder()
+
+        # Prefer the slide title as the query signal; add the first non-empty
+        # content line as a secondary query. Callers already pass stripped
+        # content, but defend against the empty case.
+        queries: list[str] = []
+        title_stripped = title.strip() if title else ""
+        if title_stripped:
+            queries.append(title_stripped)
+        content_stripped = content.strip() if content else ""
+        if content_stripped:
+            first_line = content_stripped.splitlines()[0].strip()
+            if first_line and first_line not in queries:
+                queries.append(first_line)
+        if not queries:
+            return ""
+
+        seen_ids: set[str] = set()
+        collected: list[str] = []
+        for query in queries[:2]:
+            embedding = embedder.encode([query])[0]
+            hits = vector_store.query(
+                query_embedding=embedding,
+                n_results=max_chunks,
+                exclude_classifications=[
+                    ContentClassification.META_PLANNING,
+                    ContentClassification.BOILERPLATE,
+                ],
+            )
+            for hit in hits:
+                if hit.chunk_id in seen_ids:
+                    continue
+                if hit.score is not None and hit.score < MIN_RETRIEVAL_SCORE:
+                    continue
+                seen_ids.add(hit.chunk_id)
+                collected.append(hit.text.strip())
+                if len(collected) >= max_chunks:
+                    break
+            if len(collected) >= max_chunks:
+                break
+        return "\n\n".join(collected)
+    except Exception as exc:
+        logger.warning("grounding retrieval failed for deck %s: %s", deck_id, exc)
+        return ""
 
 
 @app.post("/api/chat/generate", response_model=ChatGenerateResponse)
+@limiter.shared_limit(GENERATION_RATE_LIMIT, scope="generation-heavy", error_message=RATE_LIMIT_ERROR_MESSAGE)
 async def chat_generate_deck(
+    request: Request,
     prompt: str = Form(...),
     file: UploadFile = File(...),
 ) -> ChatGenerateResponse:
-    ingest = await ingest_document(file)
-    ingestion_result = _INGESTED_RESULTS[ingest.doc_id]
+    ingest = await _ingest_document(file)
+    ingestion_result = _store.get_ingestion_result(ingest.doc_id)
+    assert ingestion_result is not None  # just ingested above
     content_chunk_count = sum(
         1 for chunk in ingestion_result.chunks
         if chunk.classification is ContentClassification.AUDIENCE_CONTENT
@@ -392,16 +939,15 @@ async def chat_generate_deck(
         content_chunk_count=content_chunk_count,
         source_context=_source_metadata_for_results([ingestion_result]),
     )
-    planned = await plan_deck(
-        PlanDeckRequest(
-            doc_ids=[ingest.doc_id],
-            goal=inferred["goal"],
-            audience=inferred["audience"],
-            tone=inferred["tone"],
-            slide_count=inferred["slide_count"],
-        )
+    planned = await asyncio.to_thread(
+        _plan_deck_response,
+        doc_ids=[ingest.doc_id],
+        goal=inferred["goal"],
+        audience=inferred["audience"],
+        tone=inferred["tone"],
+        slide_count=inferred["slide_count"],
     )
-    deck = await generate_deck_from_draft(
+    deck = await asyncio.to_thread(_generate_deck_from_draft_sync,
         GenerateDeckRequest(
             draft_id=planned.draft_id,
             outline=[
@@ -439,7 +985,7 @@ async def chat_generate_deck(
             content=f"The deck is ready with {len(deck.slides)} slides and opens in the editor for refinement.",
         ),
     ]
-    _CHAT_SESSIONS[session_id] = messages
+    _store.put_chat_session(session_id, messages)
     return ChatGenerateResponse(
         session_id=session_id,
         prompt=prompt,
@@ -473,52 +1019,31 @@ async def get_themes() -> list[str]:
 
 @app.get("/api/deck/{deck_id}", response_model=PresentationSpecResponse)
 async def get_deck(deck_id: str) -> PresentationSpecResponse:
-    deck = _DECKS.get(deck_id)
-    if deck is None:
-        raise HTTPException(status_code=404, detail=f"Unknown deck_id: {deck_id}")
-    return deck
+    stored = _store.get_deck_spec(deck_id)
+    if stored is None:
+        _raise_api_error(404, 'deck_not_found', f'Unknown deck_id: {deck_id}')
+    return _to_api_presentation_spec(stored)
 
 
 @app.post("/api/export/{deck_id}", response_model=None)
-async def export_deck(deck_id: str, request: ExportRequest) -> Response:
-    if deck_id not in _DECKS:
-        raise HTTPException(status_code=404, detail=f"Unknown deck_id: {deck_id}")
+@limiter.limit(EXPORT_RATE_LIMIT, error_message=RATE_LIMIT_ERROR_MESSAGE)
+async def export_deck(request: Request, deck_id: str, payload: ExportRequest) -> Response:
+    stored = _store.get_deck_spec(deck_id)
+    if stored is None:
+        _raise_api_error(404, 'deck_not_found', f'Unknown deck_id: {deck_id}')
 
-    api_deck = _DECKS[deck_id]
+    export_spec = _merge_export_slides(stored.spec, payload.slides)
 
-    if request.format == "pptx":
-        planning_spec = _RAW_DECK_SPECS.get(deck_id)
-        if planning_spec is None:
-            raise HTTPException(status_code=404, detail=f"Missing planning spec for deck_id: {deck_id}")
-        export_spec = _merge_export_slides(planning_spec, request.slides)
+    if payload.format == "pptx":
+        pptx_bytes = await asyncio.to_thread(_export_pptx_sync, export_spec, deck_id)
+        return Response(
+            content=pptx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": f'attachment; filename="{deck_id}.pptx"'},
+        )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            export_path = Path(temp_dir) / f"{deck_id}.pptx"
-            template_path = _theme_template_path(export_spec.theme.name)
-            pipeline_module.generate_deck(
-                presentation_spec=export_spec,
-                output_path=export_path,
-                enable_refinement=False,
-                template_path=template_path,
-                theme_name=export_spec.theme.name,
-            )
-            if not export_path.exists():
-                raise HTTPException(status_code=500, detail="PPTX export failed.")
-
-            return Response(
-                content=export_path.read_bytes(),
-                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                headers={"Content-Disposition": f'attachment; filename="{deck_id}.pptx"'},
-            )
-
-    from pptx_gen.renderer.pdf_exporter import export_deck_to_pdf
-
-    planning_spec = _RAW_DECK_SPECS.get(deck_id)
-    if planning_spec is None:
-        raise HTTPException(status_code=404, detail=f"Missing planning spec for deck_id: {deck_id}")
-    export_spec = _merge_export_slides(planning_spec, request.slides)
-    deck_data = _to_api_presentation_spec(deck_id, api_deck.doc_ids, api_deck.goal, export_spec).model_dump()
-    pdf_bytes = export_deck_to_pdf(deck_data)
+    deck_data = _to_api_presentation_spec(stored, spec_override=export_spec).model_dump()
+    pdf_bytes = await asyncio.to_thread(_export_pdf_sync, deck_data)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -555,14 +1080,57 @@ def _get_optional_structured_llm_client():
 def _require_structured_llm_client():
     client = _get_optional_structured_llm_client()
     if client is None:
-        raise HTTPException(
-            status_code=503,
-            detail="No structured LLM client is configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.",
-        )
+        _raise_api_error(503, 'structured_llm_not_configured', 'No structured LLM client is configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.')
     return client
 
 
-async def _generate_document_summary(result: pipeline_module.IngestionIndexResult) -> str:
+def _ingest_and_index_sync(
+    temp_path: Path,
+    payload: bytes,
+    title: str,
+    vector_store: InMemoryVectorStore,
+) -> pipeline_module.IngestionIndexResult:
+    """Write upload bytes to disk and run the blocking ingest pipeline.
+
+    Runs entirely inside ``asyncio.to_thread`` so neither the file write
+    nor the embedder model load block the event loop.
+    """
+    temp_path.write_bytes(payload)
+    return pipeline_module.ingest_and_index(
+        temp_path,
+        title=title,
+        embedder=_get_embedder(),
+        vector_store=vector_store,
+    )
+
+
+def _export_pptx_sync(export_spec: PresentationSpec, deck_id: str) -> bytes:
+    """Render a PresentationSpec to PPTX bytes inside a worker thread."""
+    work_dir = _runtime_work_dir("export")
+    try:
+        export_path = work_dir / f"{deck_id}.pptx"
+        template_path = _theme_template_path(export_spec.theme.name)
+        pipeline_module.generate_deck(
+            presentation_spec=export_spec,
+            output_path=export_path,
+            enable_refinement=False,
+            template_path=template_path,
+            theme_name=export_spec.theme.name,
+        )
+        if not export_path.exists():
+            _raise_api_error(500, 'pptx_export_failed', 'PPTX export failed.')
+        return export_path.read_bytes()
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _export_pdf_sync(deck_data: dict) -> bytes:
+    """Render deck data to PDF bytes inside a worker thread."""
+    from pptx_gen.renderer.pdf_exporter import export_deck_to_pdf
+    return export_deck_to_pdf(deck_data)
+
+
+def _generate_document_summary_sync(result: pipeline_module.IngestionIndexResult) -> str:
     """Generate a natural-language summary of an ingested document using the LLM."""
     from pptx_gen.ingestion.schemas import ContentElementType
 
@@ -598,7 +1166,7 @@ async def _generate_document_summary(result: pipeline_module.IngestionIndexResul
         system = (
             "You summarize documents for presentation authors. Write a clear, informative 3-5 sentence overview "
             "describing what the document covers, its key topics, and the kind of content it contains. "
-            "Be specific about the subject matter — mention actual topics, findings, and themes, not just "
+            "Be specific about the subject matter ? mention actual topics, findings, and themes, not just "
             "structural details like page counts. Write in third person."
         )
         user_prompt = f"Document title: {title}\n\nExcerpt:\n{excerpt}"
@@ -637,11 +1205,20 @@ async def _generate_document_summary(result: pipeline_module.IngestionIndexResul
     return f'"{title}" was processed into {result.n_chunks} content segments.'
 
 
+async def _generate_document_summary(result: pipeline_module.IngestionIndexResult) -> str:
+    return await asyncio.to_thread(_generate_document_summary_sync, result)
+
+
 def _ingested_results_for(doc_ids: list[str]) -> list[pipeline_module.IngestionIndexResult]:
-    missing = [doc_id for doc_id in doc_ids if doc_id not in _INGESTED_RESULTS]
+    missing = [doc_id for doc_id in doc_ids if not _store.has_ingestion_result(doc_id)]
     if missing:
-        raise HTTPException(status_code=404, detail=f"Unknown doc_id(s): {', '.join(missing)}")
-    return [_INGESTED_RESULTS[doc_id] for doc_id in doc_ids]
+        _raise_api_error(404, 'document_not_found', f"Unknown doc_id(s): {', '.join(missing)}")
+    results: list[pipeline_module.IngestionIndexResult] = []
+    for doc_id in doc_ids:
+        result = _store.get_ingestion_result(doc_id)
+        assert result is not None  # confirmed by has_ingestion_result above
+        results.append(result)
+    return results
 
 
 def _source_metadata_for_results(
@@ -656,21 +1233,39 @@ def _source_metadata_for_results(
 
 
 def _build_vector_store(doc_ids: list[str]) -> InMemoryVectorStore:
-    # If there's only one doc and we already have its vector store cached, reuse it
+    # If there's only one doc and we already have its vector store cached, reuse it.
     if len(doc_ids) == 1 and doc_ids[0] in _INGESTED_VECTOR_STORES:
         return _INGESTED_VECTOR_STORES[doc_ids[0]]
 
-    # For multi-doc decks, merge cached stores when available, only re-embed misses
-    vector_store = InMemoryVectorStore()
+    # For a single doc, prefer reopening the persisted Chroma collection.
+    if len(doc_ids) == 1:
+        persisted = _vector_store_for_doc(doc_ids[0])
+        if persisted.has_data():
+            _INGESTED_VECTOR_STORES[doc_ids[0]] = persisted
+            return persisted
+
+    # For multi-doc decks, merge cached/persisted stores when available, only re-embed misses.
+    vector_store = InMemoryVectorStore(collection_name=f"merged-{uuid4().hex[:8]}", backend="memory")
     embedder = _get_embedder()
     for doc_id in doc_ids:
         cached = _INGESTED_VECTOR_STORES.get(doc_id)
+        if cached is None:
+            reopened = _vector_store_for_doc(doc_id)
+            if reopened.has_data():
+                cached = reopened
+                _INGESTED_VECTOR_STORES[doc_id] = reopened
         if cached is not None:
             vector_store.merge(cached)
-        else:
-            result = _INGESTED_RESULTS[doc_id]
-            embeddings = embedder.encode([chunk.text for chunk in result.chunks])
-            vector_store.upsert_chunks(result.chunks, embeddings)
+            continue
+        result = _store.get_ingestion_result(doc_id)
+        if result is None:
+            continue
+        embeddings = embedder.encode([chunk.text for chunk in result.chunks])
+        doc_store = _vector_store_for_doc(doc_id)
+        doc_store.clear()
+        doc_store.upsert_chunks(result.chunks, embeddings)
+        _INGESTED_VECTOR_STORES[doc_id] = doc_store
+        vector_store.merge(doc_store)
     return vector_store
 
 
@@ -708,7 +1303,7 @@ def _apply_outline_edits(draft: DraftState, outline_updates: list[OutlineSlideRe
     base_by_id = {item.slide_id: item for item in draft.outline.outline}
     requested_ids = [item.id for item in sorted(outline_updates, key=lambda item: item.index)]
     if set(requested_ids) != set(base_by_id):
-        raise HTTPException(status_code=400, detail="Outline slides must match the planned draft.")
+        _raise_api_error(400, 'outline_mismatch', 'Outline slides must match the planned draft.')
 
     outline_items: list[OutlineItem] = []
     explicit_template_by_slide_id: dict[str, str] = {}
@@ -738,7 +1333,22 @@ def _apply_outline_edits(draft: DraftState, outline_updates: list[OutlineSlideRe
     )
 
 
-def _normalize_outline_exact_count(outline: OutlineSpec, target_count: int, goal: str) -> OutlineSpec:
+def _normalize_outline_exact_count(
+    outline: OutlineSpec,
+    target_count: int,
+    goal: str,
+    *,
+    ingestion_results: list[pipeline_module.IngestionIndexResult] | None = None,
+) -> OutlineSpec:
+    """Trim or extend an outline to exactly `target_count` slides.
+
+    When the planner returns fewer items than the target, we try to pad with
+    *doc-derived* topics (unused headings/titles from the ingested source) so
+    every outline item points at real content. Only if the source has nothing
+    left to offer do we truncate the target; we never emit ordinal
+    "Supporting Detail N" placeholders whose evidence queries don't match the
+    source corpus.
+    """
     items = list(outline.outline)
     while len(items) > target_count:
         removable_index = next(
@@ -747,22 +1357,31 @@ def _normalize_outline_exact_count(outline: OutlineSpec, target_count: int, goal
         )
         items.pop(removable_index)
 
-    insert_at = next((index for index, item in enumerate(items) if item.purpose in {SlidePurpose.SUMMARY, SlidePurpose.CLOSING}), len(items))
-    while len(items) < target_count:
-        detail_number = 1 + sum(1 for item in items if item.purpose is SlidePurpose.CONTENT)
-        message = f"{goal} supporting detail {detail_number}"
-        items.insert(
-            insert_at,
-            OutlineItem(
-                slide_id=f"s{len(items) + 1}",
-                purpose=SlidePurpose.CONTENT,
-                headline=f"Supporting Detail {detail_number}",
-                message=message,
-                evidence_queries=[message, f"{message} evidence"],
-                template_key="headline.evidence",
-            ),
+    if len(items) < target_count:
+        source_topics = _derive_source_topics(items, ingestion_results or [])
+        insert_at = next(
+            (index for index, item in enumerate(items) if item.purpose in {SlidePurpose.SUMMARY, SlidePurpose.CLOSING}),
+            len(items),
         )
-        insert_at += 1
+        for topic in source_topics:
+            if len(items) >= target_count:
+                break
+            headline, message = topic
+            items.insert(
+                insert_at,
+                OutlineItem(
+                    slide_id=f"s{len(items) + 1}",
+                    purpose=SlidePurpose.CONTENT,
+                    headline=headline,
+                    message=message,
+                    evidence_queries=[headline, message],
+                    template_key="headline.evidence",
+                ),
+            )
+            insert_at += 1
+        # If we still can't reach target_count, silently truncate rather than
+        # emit ungrounded ordinal placeholders. The resulting deck will have
+        # fewer slides than requested but every slide will be grounded.
 
     normalized = [
         item.model_copy(update={"slide_id": f"s{index}"})
@@ -773,6 +1392,81 @@ def _normalize_outline_exact_count(outline: OutlineSpec, target_count: int, goal
         questions_for_user=list(outline.questions_for_user),
         extensions=outline.extensions,
     )
+
+
+def _derive_source_topics(
+    existing_items: list[OutlineItem],
+    ingestion_results: list[pipeline_module.IngestionIndexResult],
+) -> list[tuple[str, str]]:
+    """Pull candidate (headline, message) pairs from ingested source documents.
+
+    Prefers TITLE/HEADING chunks; falls back to the first sentence of longer
+    AUDIENCE_CONTENT chunks. Skips any candidate whose headline is already
+    covered (case-insensitive substring match) by an existing outline item.
+    Each headline is trimmed to ~10 words so it renders cleanly as a slide
+    title.
+    """
+    if not ingestion_results:
+        return []
+
+    covered = {(item.headline or "").strip().lower() for item in existing_items if item.headline}
+
+    def is_covered(candidate: str) -> bool:
+        norm = candidate.strip().lower()
+        if not norm:
+            return True
+        for existing in covered:
+            if norm == existing or norm in existing or existing in norm:
+                return True
+        return False
+
+    def trim_headline(text: str, max_words: int = 10) -> str:
+        words = text.split()
+        return " ".join(words[:max_words]).rstrip(",.;:—-")
+
+    candidates: list[tuple[str, str]] = []
+    seen_headlines: set[str] = set()
+
+    # Pass 1: TITLE/HEADING chunks are the highest-signal topic source.
+    for result in ingestion_results:
+        for chunk in result.chunks:
+            if chunk.classification is not ContentClassification.AUDIENCE_CONTENT:
+                continue
+            if chunk.element_type not in {ContentElementType.TITLE, ContentElementType.HEADING}:
+                continue
+            headline = trim_headline(chunk.text)
+            if not headline or is_covered(headline):
+                continue
+            key = headline.lower()
+            if key in seen_headlines:
+                continue
+            seen_headlines.add(key)
+            candidates.append((headline, chunk.text.strip()))
+
+    # Pass 2: first sentence of substantive paragraph chunks as backup.
+    # Always run when Pass 1 was sparse, even if the outline has no items yet
+    # (common when a caller uses this helper to prospectively mine topics).
+    if len(candidates) < max(len(existing_items), 3):
+        for result in ingestion_results:
+            for chunk in result.chunks:
+                if chunk.classification is not ContentClassification.AUDIENCE_CONTENT:
+                    continue
+                if chunk.element_type in {ContentElementType.TITLE, ContentElementType.HEADING}:
+                    continue
+                sentences = re.split(r"(?<=[.!?])\s+", chunk.text.strip())
+                first = sentences[0] if sentences else ""
+                if len(first.split()) < 4:
+                    continue
+                headline = trim_headline(first)
+                if not headline or is_covered(headline):
+                    continue
+                key = headline.lower()
+                if key in seen_headlines:
+                    continue
+                seen_headlines.add(key)
+                candidates.append((headline, chunk.text.strip()))
+
+    return candidates
 
 
 def _style_tokens_from_brand_kit(brand_kit: BrandKitRequest, theme_name: str = "ONAC") -> StyleTokens:
@@ -802,7 +1496,7 @@ def _theme_config(theme_name: str) -> dict[str, Any]:
     try:
         return BRAND_THEMES[canonical_theme_name]
     except KeyError as exc:
-        raise HTTPException(status_code=400, detail=f"Unsupported theme_name: {theme_name}") from exc
+        raise HTTPException(status_code=400, detail={'code': 'unsupported_theme', 'message': f'Unsupported theme_name: {theme_name}'}) from exc
 
 
 def _theme_template_path(theme_name: str) -> str | None:
@@ -816,9 +1510,9 @@ def _persist_logo_asset(deck_id: str, logo_data_url: str | None) -> str | None:
     try:
         header, payload = logo_data_url.split(",", 1)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid logo data URL.") from exc
+        raise HTTPException(status_code=400, detail={'code': 'invalid_logo_data_url', 'message': 'Invalid logo data URL.'}) from exc
     if ";base64" not in header:
-        raise HTTPException(status_code=400, detail="Logo data URL must be base64 encoded.")
+        _raise_api_error(400, 'logo_not_base64', 'Logo data URL must be base64 encoded.')
 
     extension = ".png"
     if "image/jpeg" in header:
@@ -902,6 +1596,10 @@ def _enforce_outline_authority(
                     "slide_id": item.slide_id,
                     "purpose": item.purpose,
                     "archetype": item.archetype or slide.archetype,
+                    "layout_intent": LayoutIntent(
+                        template_key=item.template_key or slide.layout_intent.template_key,
+                        strict_template=True,
+                    ),
                     "headline": item.headline,
                 }
             )
@@ -1184,26 +1882,68 @@ def _fallback_citation(source_ids: list[str]) -> list[SourceCitation]:
     return [SourceCitation(source_id=source_id, locator=f"{source_id}:page1")]
 
 
-async def _llm_structure_slide_content(
+def _preview_structure_cache_key(namespace: str, payload: dict[str, Any]) -> str:
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    return f"{namespace}:{digest}"
+
+
+def _get_preview_structure_cache(key: str) -> dict[str, Any] | None:
+    with _PREVIEW_STRUCTURE_CACHE_LOCK:
+        cached = _PREVIEW_STRUCTURE_CACHE.get(key)
+        if cached is None:
+            return None
+        _PREVIEW_STRUCTURE_CACHE.move_to_end(key)
+        return copy.deepcopy(cached)
+
+
+def _set_preview_structure_cache(key: str, value: dict[str, Any]) -> dict[str, Any]:
+    cached_value = copy.deepcopy(value)
+    with _PREVIEW_STRUCTURE_CACHE_LOCK:
+        if key in _PREVIEW_STRUCTURE_CACHE:
+            _PREVIEW_STRUCTURE_CACHE.pop(key)
+        _PREVIEW_STRUCTURE_CACHE[key] = cached_value
+        while len(_PREVIEW_STRUCTURE_CACHE) > PREVIEW_STRUCTURE_CACHE_MAX_ENTRIES:
+            _PREVIEW_STRUCTURE_CACHE.popitem(last=False)
+    return copy.deepcopy(cached_value)
+
+
+def _clear_preview_structure_cache() -> None:
+    with _PREVIEW_STRUCTURE_CACHE_LOCK:
+        _PREVIEW_STRUCTURE_CACHE.clear()
+
+
+def _preview_llm_cache_scope(llm_client: Any) -> str:
+    model = getattr(llm_client, "model", None)
+    return f"{llm_client.__class__.__name__}:{model or 'default'}"
+
+
+def _generate_structured_preview_with_llm(
     *,
+    llm_client: Any,
     content: str,
     title: str,
     audience: str,
     goal: str,
     purpose: SlidePurpose,
     selected_template: str,
+    grounding_text: str = "",
 ) -> dict[str, Any]:
-    """Use the structured client to turn editor notes into one well-formed preview slide."""
-    llm_client = _get_optional_structured_llm_client()
-    if llm_client is None:
-        return _fallback_structure_content(content, title, selected_template)
-
     system = (
         "You are a professional presentation writer. "
         "Given raw editor notes, produce a polished slide with a clear headline, speaker notes, and structured blocks. "
         "CRITICAL: Do NOT copy-paste the raw notes. Synthesize, summarize, and rewrite them into concise, "
         "audience-facing language with an executive tone. Each bullet should be 10-20 words of original phrasing. "
-        "Respect the selected template key and format blocks to fit that layout."
+        "Respect the selected template key and format blocks to fit that layout. "
+        "When source-document passages are provided, ground every factual claim in them; "
+        "prefer source-document content over editor notes when the two diverge."
+    )
+    source_section = (
+        f"\n\nSource-document passages (ground all factual claims in these; "
+        f"prefer these over the editor notes when they conflict):\n{grounding_text}"
+        if grounding_text.strip()
+        else ""
     )
     user_prompt = (
         f"Goal: {goal}\n"
@@ -1215,52 +1955,98 @@ async def _llm_structure_slide_content(
         "Return a JSON object with: headline (str), speaker_notes (str), blocks (list of block objects). "
         "Do NOT wrap in a PresentationSpec. The response IS the slide object directly.\n\n"
         f"Raw editor notes to synthesize (do NOT echo verbatim):\n{content}"
+        f"{source_section}"
     )
 
-    try:
-        result = llm_client.generate_json(
-            system_prompt=system,
-            user_prompt=user_prompt,
-            schema_name="SlidePreviewLLMResponse",
-        )
-        if not isinstance(result, dict):
-            raise ValueError("Structured preview returned a non-object payload")
+    result = llm_client.generate_json(
+        system_prompt=system,
+        user_prompt=user_prompt,
+        schema_name="SlidePreviewLLMResponse",
+    )
+    if not isinstance(result, dict):
+        raise ValueError("Structured preview returned a non-object payload")
 
-        blocks_payload = result.get("blocks", [])
-        if not isinstance(blocks_payload, list):
-            raise ValueError("Structured preview blocks must be a list")
+    blocks_payload = result.get("blocks", [])
+    if not isinstance(blocks_payload, list):
+        raise ValueError("Structured preview blocks must be a list")
 
-        normalized_blocks: list[dict[str, Any]] = []
-        for block in blocks_payload:
-            if not isinstance(block, dict):
-                raise ValueError("Structured preview blocks must contain objects")
-            kind = block.get("kind", "text")
-            if kind == "callout":
-                if isinstance(block.get("cards"), list):
-                    normalized_blocks.append({"kind": kind, "cards": block.get("cards", [])})
-                else:
-                    normalized_blocks.append({"kind": kind, "text": block.get("text", "")})
-            elif kind in {"bullets", "kpi_cards"}:
-                normalized_blocks.append({"kind": kind, "items": block.get("items", [])})
-            elif kind == "table":
-                normalized_blocks.append({"kind": kind, "columns": block.get("columns", []), "rows": block.get("rows", [])})
-            elif kind == "chart":
-                normalized_blocks.append({"kind": kind, "chart_type": block.get("chart_type", "bar"), "series": block.get("series", [])})
-            elif kind == "quote":
-                normalized_blocks.append({"kind": kind, "text": block.get("text", ""), "attribution": block.get("attribution", "")})
+    normalized_blocks: list[dict[str, Any]] = []
+    for block in blocks_payload:
+        if not isinstance(block, dict):
+            raise ValueError("Structured preview blocks must contain objects")
+        kind = block.get("kind", "text")
+        if kind == "callout":
+            if isinstance(block.get("cards"), list):
+                normalized_blocks.append({"kind": kind, "cards": block.get("cards", [])})
             else:
                 normalized_blocks.append({"kind": kind, "text": block.get("text", "")})
-        return {
-            "headline": result.get("headline", title),
-            "template_id": selected_template,
-            "speaker_notes": result.get("speaker_notes", ""),
-            "blocks": normalized_blocks,
-        }
+        elif kind in {"bullets", "kpi_cards"}:
+            normalized_blocks.append({"kind": kind, "items": block.get("items", [])})
+        elif kind == "table":
+            normalized_blocks.append({"kind": kind, "columns": block.get("columns", []), "rows": block.get("rows", [])})
+        elif kind == "chart":
+            normalized_blocks.append({"kind": kind, "chart_type": block.get("chart_type", "bar"), "series": block.get("series", [])})
+        elif kind == "quote":
+            normalized_blocks.append({"kind": kind, "text": block.get("text", ""), "attribution": block.get("attribution", "")})
+        else:
+            normalized_blocks.append({"kind": kind, "text": block.get("text", "")})
+    return {
+        "headline": result.get("headline", title),
+        "template_id": selected_template,
+        "speaker_notes": result.get("speaker_notes", ""),
+        "blocks": normalized_blocks,
+    }
+
+
+async def _llm_structure_slide_content(
+    *,
+    content: str,
+    title: str,
+    audience: str,
+    goal: str,
+    purpose: SlidePurpose,
+    selected_template: str,
+    grounding_text: str = "",
+) -> dict[str, Any]:
+    """Use the structured client to turn editor notes into one well-formed preview slide."""
+    llm_client = _get_optional_structured_llm_client()
+    if llm_client is None:
+        return _fallback_structure_content(content, title, selected_template, grounding_text=grounding_text)
+
+    cache_key = _preview_structure_cache_key(
+        "llm_preview",
+        {
+            "scope": _preview_llm_cache_scope(llm_client),
+            "content": content,
+            "title": title,
+            "audience": audience,
+            "goal": goal,
+            "purpose": purpose.value,
+            "selected_template": selected_template,
+            "grounding_text": grounding_text,
+        },
+    )
+    cached = _get_preview_structure_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        structured = _generate_structured_preview_with_llm(
+            llm_client=llm_client,
+            content=content,
+            title=title,
+            audience=audience,
+            goal=goal,
+            purpose=purpose,
+            selected_template=selected_template,
+            grounding_text=grounding_text,
+        )
+        return _set_preview_structure_cache(cache_key, structured)
     except Exception as llm_exc:
         import logging
-        logging.getLogger("pptx_gen.api").warning("LLM slide preview failed, using fallback: %s", llm_exc)
-        return _fallback_structure_content(content, title, selected_template)
 
+        logging.getLogger("pptx_gen.api").warning("LLM slide preview failed, using fallback: %s", llm_exc)
+        return _fallback_structure_content(content, title, selected_template, grounding_text=grounding_text)
 
 def _preview_template_guidance(template_key: str) -> str:
     guidance = {
@@ -1288,9 +2074,44 @@ def _preview_template_guidance(template_key: str) -> str:
     return guidance.get(template_key, "Format the content to fit the selected layout cleanly and concisely.")
 
 
-def _fallback_structure_content(content: str, title: str, template: str) -> dict[str, Any]:
-    """Structure content into slide blocks without LLM."""
-    lines = [line.strip() for line in content.splitlines() if line.strip()]
+def _fallback_structure_content(
+    content: str,
+    title: str,
+    template: str,
+    *,
+    grounding_text: str = "",
+) -> dict[str, Any]:
+    cache_key = _preview_structure_cache_key(
+        "fallback_preview",
+        {
+            "content": content,
+            "title": title,
+            "template": template,
+            "grounding_text": grounding_text,
+        },
+    )
+    cached = _get_preview_structure_cache(cache_key)
+    if cached is not None:
+        return cached
+    structured = _fallback_structure_content_uncached(content, title, template, grounding_text=grounding_text)
+    return _set_preview_structure_cache(cache_key, structured)
+
+
+def _fallback_structure_content_uncached(
+    content: str,
+    title: str,
+    template: str,
+    *,
+    grounding_text: str = "",
+) -> dict[str, Any]:
+    """Structure content into slide blocks without LLM.
+
+    When `grounding_text` is provided (retrieved source-document passages),
+    it takes priority over the raw editor notes in `content` so regenerate
+    pulls from the source doc rather than re-tokenizing residual prompt text.
+    """
+    source_text = grounding_text.strip() or content
+    lines = [line.strip() for line in source_text.splitlines() if line.strip()]
     bullet_lines = [line.lstrip("-•* ").strip() for line in lines if line.startswith(("-", "•", "*"))]
     plain_lines = [line for line in lines if not line.startswith(("-", "•", "*"))]
 
@@ -1298,18 +2119,38 @@ def _fallback_structure_content(content: str, title: str, template: str) -> dict
     for line in lines:
         sentences.extend(re.split(r"(?<=[.!?])\s+", line))
     sentences = [s.strip() for s in sentences if len(s.split()) >= 5]
-    points = bullet_lines or plain_lines or sentences or [content.strip() or title]
+    # Prefer sentence-level points when the plain-line split would collapse
+    # multiple distinct sentences into a single paragraph. This keeps
+    # multi-sentence editor notes from degrading into one-point layouts.
+    sentence_split_preferred = len(sentences) >= 2 and len(sentences) > len(plain_lines)
+    points = (
+        bullet_lines
+        or (sentences if sentence_split_preferred else plain_lines)
+        or sentences
+        or [source_text.strip() or title]
+    )
 
     def cards_from_points(count: int) -> list[dict[str, str]]:
+        """Build up to `count` cards from available points.
+
+        Never pad with generic "Add supporting detail" filler — if fewer
+        real points exist, return fewer cards and let the renderer handle
+        the empty slots. This keeps user-facing slides free of placeholder
+        text even on the deterministic fallback path.
+        """
         cards: list[dict[str, str]] = []
+        seen_titles: set[str] = set()
         for point in points[:count]:
             words = point.split()
-            cards.append({
-                "title": " ".join(words[:4]) or "Point",
-                "text": " ".join(words[:18]) or point,
-            })
-        while len(cards) < count:
-            cards.append({"title": f"Point {len(cards)+1}", "text": "Add supporting detail."})
+            if not words:
+                continue
+            card_title = " ".join(words[:4])
+            card_text = " ".join(words[:18]) or point
+            key = card_title.lower()
+            if key in seen_titles:
+                continue
+            seen_titles.add(key)
+            cards.append({"title": card_title, "text": card_text})
         return cards
 
     def bullets_from_points(count: int = 5) -> list[str]:
@@ -1317,14 +2158,23 @@ def _fallback_structure_content(content: str, title: str, template: str) -> dict
         return values or [title]
 
     if template == "kpi.big":
-        items = []
+        items: list[dict[str, str]] = []
+        seen_labels: set[str] = set()
         for sentence in points[:3]:
+            words = sentence.split()
+            if not words:
+                continue
             numbers = re.findall(r"\b[\d,.]+[%$]?\b", sentence)
-            value = numbers[0] if numbers else str(len(items) + 1)
-            label = " ".join(sentence.split()[:6])
-            items.append({"value": value, "label": label})
-        while len(items) < 3:
-            items.append({"value": "N/A", "label": f"Metric {len(items)+1}"})
+            if not numbers:
+                # Only emit a KPI card when the source actually carries a metric;
+                # inventing "N/A" / "Metric N" filler is the class of bug we just killed.
+                continue
+            label = " ".join(words[:6])
+            key = label.lower()
+            if key in seen_labels:
+                continue
+            seen_labels.add(key)
+            items.append({"value": numbers[0], "label": label})
         return {
             "headline": title,
             "template_id": template,
@@ -1334,14 +2184,19 @@ def _fallback_structure_content(content: str, title: str, template: str) -> dict
 
     if template == "compare.2col":
         midpoint = max(1, (len(points) + 1) // 2)
+        left_items = [" ".join(point.split()[:16]) for point in points[:midpoint]]
+        right_items = [" ".join(point.split()[:16]) for point in points[midpoint:]]
+        # No filler: if the source only supports one column, emit a single
+        # bullets block. The renderer/UI renders the missing side as an
+        # empty column rather than fabricated comparison text.
+        blocks: list[dict[str, Any]] = [{"kind": "bullets", "items": left_items}]
+        if right_items:
+            blocks.append({"kind": "bullets", "items": right_items})
         return {
             "headline": title,
             "template_id": template,
             "speaker_notes": "",
-            "blocks": [
-                {"kind": "bullets", "items": [" ".join(point.split()[:16]) for point in points[:midpoint]]},
-                {"kind": "bullets", "items": [" ".join(point.split()[:16]) for point in points[midpoint:]] or ["Add right-side comparison"]},
-            ],
+            "blocks": blocks,
         }
 
     if template == "exec.summary":
@@ -1565,11 +2420,17 @@ def _preview_archetype_for_template(template_key: str) -> SlideArchetype | None:
 
 
 def _to_api_presentation_spec(
-    deck_id: str,
-    doc_ids: list[str],
-    goal: str,
-    planning_spec: PresentationSpec,
+    stored: StoredDeck,
+    *,
+    spec_override: PresentationSpec | None = None,
 ) -> PresentationSpecResponse:
+    """Derive a ``PresentationSpecResponse`` from the canonical ``StoredDeck``.
+
+    Pass ``spec_override`` when the export path has merged user-edited slides
+    into a modified ``PresentationSpec`` that should drive the response
+    instead of the stored spec.
+    """
+    planning_spec = spec_override if spec_override is not None else stored.spec
     slides = [
         SlideSpecResponse(
             id=slide.slide_id,
@@ -1598,14 +2459,14 @@ def _to_api_presentation_spec(
         for slide in planning_spec.slides
     )
     return PresentationSpecResponse(
-        id=deck_id,
-        doc_id=doc_ids[0],
-        doc_ids=doc_ids,
+        id=stored.deck_id,
+        doc_id=stored.doc_ids[0],
+        doc_ids=stored.doc_ids,
         title=planning_spec.title,
-        goal=goal,
+        goal=stored.goal,
         audience=planning_spec.audience,
         slides=slides,
-        created_at=datetime.now().isoformat(timespec="seconds"),
+        created_at=stored.created_at,
         theme=ThemeSummaryResponse(
             name=planning_spec.theme.name,
             primary_color=planning_spec.theme.style_tokens.colors.accent,
@@ -1881,12 +2742,18 @@ def _expand_card_blocks(blocks: list[PresentationBlock], target_count: int) -> l
     if first_block.kind is not PresentationBlockKind.CALLOUT or not isinstance(cards, list):
         return blocks
 
+    # Only expand cards that actually have content. The UI renders empty
+    # slots as dashed-border placeholders, so we deliberately stop short
+    # of target_count rather than emit "Add supporting detail" filler.
     expanded_blocks: list[PresentationBlock] = []
-    for index in range(target_count):
-        card = cards[index] if index < len(cards) and isinstance(cards[index], dict) else {}
+    for index, card in enumerate(cards[:target_count]):
+        if not isinstance(card, dict):
+            continue
         title = str(card.get("title", "")).strip()
         body = str(card.get("text", "")).strip()
-        text = "\n".join(part for part in (title, body) if part).strip() or "Add supporting detail."
+        text = "\n".join(part for part in (title, body) if part).strip()
+        if not text:
+            continue
         expanded_blocks.append(
             first_block.model_copy(
                 update={
@@ -1959,13 +2826,13 @@ def _escape_pdf_text(value: str) -> str:
 
 def _serve_frontend_path(full_path: str) -> Response:
     if not WEB_INDEX.exists():
-        raise HTTPException(status_code=404, detail="Frontend build not found. Run `npm run build` in ui/.")
+        _raise_api_error(404, 'frontend_build_not_found', 'Frontend build not found. Run `npm run build` in ui/.')
 
     requested = (WEB_DIR / full_path).resolve()
     try:
         requested.relative_to(WEB_DIR.resolve())
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail="Invalid frontend path.") from exc
+        raise HTTPException(status_code=404, detail={'code': 'invalid_frontend_path', 'message': 'Invalid frontend path.'}) from exc
 
     if full_path and requested.exists() and requested.is_file():
         response = FileResponse(requested)

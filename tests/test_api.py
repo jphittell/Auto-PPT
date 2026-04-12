@@ -1,23 +1,42 @@
 from __future__ import annotations
 
 import io
+import time
 
 from fastapi.testclient import TestClient
 from pptx import Presentation
 
 import pptx_gen.api as api_module
 from pptx_gen.api_schemas import ExportBlockRequest, ExportSlideRequest
+from pptx_gen.layout.schemas import StyleTokens
+from pptx_gen.planning.schemas import (
+    DeckTheme,
+    LayoutIntent,
+    OutlineItem,
+    OutlineSpec,
+    PresentationBlock,
+    PresentationBlockKind,
+    PresentationSpec,
+    SlideArchetype,
+    SlidePurpose,
+    SlideSpec,
+)
 
 
 def _reset_api_state() -> None:
-    api_module._INGESTED_DOCS.clear()
-    api_module._INGESTED_RESULTS.clear()
-    api_module._DRAFTS.clear()
-    api_module._DECKS.clear()
-    api_module._RAW_DECK_SPECS.clear()
-    api_module._CHAT_SESSIONS.clear()
+    api_module._store.clear()
+    api_module._INGESTED_VECTOR_STORES.clear()
+    limiter = getattr(api_module.app.state, "limiter", None)
+    storage = getattr(limiter, "_storage", None)
+    if storage is not None and hasattr(storage, "reset"):
+        storage.reset()
     api_module._EMBEDDER = None
     api_module._STRUCTURED_LLM_CLIENT = False
+    api_module._clear_preview_structure_cache()
+    api_module._GENERATION_JOBS.clear()
+    api_module._GENERATION_QUEUE = None
+    api_module._GENERATION_QUEUE_LOOP = None
+    api_module._GENERATION_WORKER_TASK = None
 
 
 def _ingest_fixture(client: TestClient, sample_pdf_path) -> str:
@@ -29,12 +48,37 @@ def _ingest_fixture(client: TestClient, sample_pdf_path) -> str:
     return response.json()["doc_id"]
 
 
-def test_api_health_and_templates() -> None:
+def _assert_error(response, *, status_code: int, code: str, message_fragment: str | None = None) -> dict:
+    assert response.status_code == status_code
+    payload = response.json()
+    assert set(payload) == {"error"}
+    error = payload["error"]
+    assert error["code"] == code
+    assert isinstance(error["message"], str) and error["message"]
+    assert isinstance(error["request_id"], str) and error["request_id"]
+    if message_fragment is not None:
+        assert message_fragment in error["message"]
+    assert response.headers["x-request-id"] == error["request_id"]
+    return error
+
+
+def test_api_health_and_templates(monkeypatch, deterministic_embedder) -> None:
+    _reset_api_state()
+    monkeypatch.setattr(api_module, "_get_embedder", lambda: deterministic_embedder)
     client = TestClient(api_module.app)
 
     health = client.get("/api/health")
     assert health.status_code == 200
-    assert health.json() == {"status": "ok", "phase": "1", "ingest": True, "generation": "live"}
+    assert health.json() == {
+        "status": "ok",
+        "phase": "1",
+        "ingest": True,
+        "generation": "live",
+        "embedder": {"status": "ok", "latency_ms": health.json()["embedder"]["latency_ms"]},
+        "vector_store": {"status": "ok", "latency_ms": health.json()["vector_store"]["latency_ms"]},
+    }
+    assert isinstance(health.json()["embedder"]["latency_ms"], int)
+    assert isinstance(health.json()["vector_store"]["latency_ms"], int)
 
     templates = client.get("/api/templates")
     assert templates.status_code == 200
@@ -130,6 +174,52 @@ def test_api_plan_from_prompt_uses_powerpoint_slide_count(monkeypatch, make_pptx
     assert payload["slides"][0]["template_id"] == "title.cover"
     assert payload["slides"][1]["title"] == "Decision Summary"
     assert payload["slides"][1]["template_id"] == "compare.2col"
+
+
+def test_enforce_outline_authority_preserves_outline_template_key(style_tokens_payload) -> None:
+    spec = PresentationSpec(
+        title="Imported deck",
+        audience="Executive leadership",
+        theme=DeckTheme(name="Auto PPT", style_tokens=StyleTokens(**style_tokens_payload)),
+        slides=[
+            SlideSpec(
+                slide_id="llm-slide",
+                purpose=SlidePurpose.CONTENT,
+                archetype=None,
+                layout_intent=LayoutIntent(template_key="headline.evidence", strict_template=False),
+                headline="Working title",
+                blocks=[
+                    PresentationBlock(
+                        block_id="b1",
+                        kind=PresentationBlockKind.TEXT,
+                        content={"text": "Compare rollout options across regions"},
+                    )
+                ],
+            )
+        ],
+    )
+    outline = OutlineSpec(
+        outline=[
+            OutlineItem(
+                slide_id="s2",
+                purpose=SlidePurpose.CONTENT,
+                archetype=SlideArchetype.COMPARISON,
+                headline="Decision Summary",
+                message="Compare rollout options across regions",
+                evidence_queries=["rollout options across regions"],
+                template_key="compare.2col",
+            )
+        ],
+        questions_for_user=[],
+    )
+
+    enforced = api_module._enforce_outline_authority(spec, outline, source_ids=["src-1"])
+
+    assert enforced.slides[0].slide_id == "s2"
+    assert enforced.slides[0].headline == "Decision Summary"
+    assert enforced.slides[0].archetype is SlideArchetype.COMPARISON
+    assert enforced.slides[0].layout_intent.template_key == "compare.2col"
+    assert enforced.slides[0].layout_intent.strict_template is True
 
 
 def test_api_plan_and_generate_honor_authoritative_inputs(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
@@ -687,6 +777,45 @@ def test_api_slide_preview_calls_llm_and_returns_consulting_style() -> None:
     assert any(block.get("data", {}).get("cards") for block in payload["blocks"] if isinstance(block.get("data"), dict))
 
 
+def test_api_slide_preview_caches_identical_llm_requests() -> None:
+    _reset_api_state()
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate_json(self, *, system_prompt: str, user_prompt: str, schema_name: str) -> dict:
+            self.calls += 1
+            return {
+                "headline": "Executive Overview",
+                "speaker_notes": "Consulting style preview",
+                "blocks": [
+                    {"kind": "text", "text": "Consulting-style summary for Oracle delivery leaders."},
+                ],
+            }
+
+    fake_client = FakeClient()
+    api_module._STRUCTURED_LLM_CLIENT = fake_client
+    client = TestClient(api_module.app)
+    payload = {
+        "slide_id": "slide-preview-cache",
+        "title": "Executive Overview",
+        "purpose": "content",
+        "template_id": "exec.summary",
+        "content": "Current draft text about ingestion, retrieval, layout, and export.",
+        "audience": "Oracle consultants",
+        "goal": "Explain the delivery architecture",
+    }
+
+    first = client.post("/api/slide/preview", json=payload)
+    second = client.post("/api/slide/preview", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert fake_client.calls == 1
+
+
 def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed() -> None:
     _reset_api_state()
 
@@ -707,7 +836,7 @@ def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed()
             "title": "Fallback Preview",
             "purpose": "content",
             "template_id": "compare.2col",
-            "content": "First point explains ingestion. Second point covers retrieval. Third point summarizes export.",
+            "content": "First point explains the ingestion pipeline. Second point covers the retrieval layer. Third point summarizes the export system.",
             "audience": "Operators",
             "goal": "Explain the workflow",
         },
@@ -720,9 +849,286 @@ def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed()
     assert payload["template_id"] == "compare.2col"
     assert payload["blocks"]
     assert all(isinstance(block.get("data"), dict) for block in payload["blocks"])
-    assert len(payload["blocks"]) == 2
+    # compare.2col emits 2 bullet blocks when the source has enough points
+    # to split, or 1 when there's insufficient content (no filler padding).
+    assert len(payload["blocks"]) in {1, 2}
     assert all(block["kind"] == "bullets" for block in payload["blocks"])
     assert all(block.get("data", {}).get("items") for block in payload["blocks"])
+
+
+def test_fallback_structure_content_caches_identical_inputs(monkeypatch) -> None:
+    _reset_api_state()
+
+    calls = 0
+    real_impl = api_module._fallback_structure_content_uncached
+
+    def recording_impl(content: str, title: str, template: str, *, grounding_text: str = "") -> dict:
+        nonlocal calls
+        calls += 1
+        return real_impl(content, title, template, grounding_text=grounding_text)
+
+    monkeypatch.setattr(api_module, "_fallback_structure_content_uncached", recording_impl)
+
+    first = api_module._fallback_structure_content(
+        "First point explains the ingestion pipeline. Second point covers retrieval.",
+        "Fallback Preview",
+        "exec.summary",
+    )
+    second = api_module._fallback_structure_content(
+        "First point explains the ingestion pipeline. Second point covers retrieval.",
+        "Fallback Preview",
+        "exec.summary",
+    )
+
+    assert first == second
+    assert first is not second
+    assert calls == 1
+
+
+def test_api_async_generate_job_completes_and_returns_result(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
+    _reset_api_state()
+    monkeypatch.setattr(api_module, "_get_embedder", lambda: deterministic_embedder)
+    with TestClient(api_module.app) as client:
+        doc_id = _ingest_fixture(client, sample_pdf_path)
+        planned = client.post(
+            "/api/plan",
+            json={
+                "doc_ids": [doc_id],
+                "goal": "Board update",
+                "audience": "Executive Steering Committee",
+                "tone": 15,
+                "slide_count": 6,
+            },
+        )
+        assert planned.status_code == 200
+        draft = planned.json()
+
+        queued = client.post(
+            "/api/generate/async",
+            json={
+                "draft_id": draft["draft_id"],
+                "outline": [
+                    {
+                        "id": slide["id"],
+                        "index": slide["index"],
+                        "purpose": slide["purpose"],
+                        "title": slide["title"],
+                        "template_id": slide["template_id"],
+                    }
+                    for slide in draft["slides"]
+                ],
+                "selected_template_id": "headline.evidence",
+                "theme_name": "ONAC",
+                "brand_kit": {
+                    "logo_data_url": None,
+                    "primary_color": "#112233",
+                    "accent_color": "#445566",
+                    "font_pair": "DM Sans/DM Serif Display",
+                },
+            },
+        )
+        assert queued.status_code == 200
+        payload = queued.json()
+        assert payload["status"] == "queued"
+
+        status_payload = None
+        for _ in range(40):
+            status = client.get(payload["status_url"])
+            assert status.status_code == 200
+            status_payload = status.json()
+            if status_payload["status"] == "completed":
+                break
+            time.sleep(0.05)
+
+        assert status_payload is not None
+        assert status_payload["status"] == "completed"
+        assert status_payload["deck_id"]
+
+        result = client.get(f"/api/generate/jobs/{payload['job_id']}/result")
+        assert result.status_code == 200
+        assert result.json()["id"] == status_payload["deck_id"]
+
+
+def test_api_async_generate_job_streams_sse_events(monkeypatch) -> None:
+    _reset_api_state()
+
+    def fake_generate(request_model):
+        time.sleep(0.05)
+        return api_module.PresentationSpecResponse(
+            id="deck-sse",
+            doc_id="doc-sse",
+            doc_ids=["doc-sse"],
+            title="Queued Deck",
+            goal="Explain queueing",
+            audience="Operators",
+            slides=[],
+            created_at="2026-04-11T20:00:00",
+            theme=None,
+        )
+
+    monkeypatch.setattr(api_module, "_generate_deck_from_draft_sync", fake_generate)
+
+    with TestClient(api_module.app) as client:
+        queued = client.post(
+            "/api/generate/async",
+            json={
+                "draft_id": "draft-sse",
+                "outline": [
+                    {
+                        "id": "s1",
+                        "index": 1,
+                        "purpose": "content",
+                        "title": "Queued slide",
+                        "template_id": "headline.evidence",
+                    }
+                ],
+                "selected_template_id": "headline.evidence",
+                "theme_name": "ONAC",
+                "brand_kit": {
+                    "logo_data_url": None,
+                    "primary_color": "#112233",
+                    "accent_color": "#445566",
+                    "font_pair": "DM Sans/DM Serif Display",
+                },
+            },
+        )
+        assert queued.status_code == 200
+        stream_url = queued.json()["stream_url"]
+
+        events: list[str] = []
+        with client.stream("GET", stream_url) as response:
+            assert response.status_code == 200
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8")
+                events.append(line)
+                if '"status":"completed"' in line:
+                    break
+
+        joined = "\n".join(events)
+        assert "event: snapshot" in joined
+        assert '"status":"completed"' in joined
+
+
+def test_api_build_vector_store_reuses_persisted_collection(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
+    _reset_api_state()
+    monkeypatch.setattr(api_module, "_get_embedder", lambda: deterministic_embedder)
+    client = TestClient(api_module.app)
+
+    doc_id = _ingest_fixture(client, sample_pdf_path)
+    api_module._INGESTED_VECTOR_STORES.clear()
+
+    def fail_embedder():
+        raise AssertionError("embedder should not be needed when persisted vectors exist")
+
+    monkeypatch.setattr(api_module, "_get_embedder", fail_embedder)
+    store = api_module._build_vector_store([doc_id])
+    query_embedding = deterministic_embedder.encode(["sample ingestion"])[0]
+
+    assert store.has_data()
+    assert store.query(query_embedding=query_embedding, n_results=1)
+
+
+def test_api_async_handlers_offload_blocking_work(monkeypatch, sample_pdf_path, deterministic_embedder) -> None:
+    _reset_api_state()
+    monkeypatch.setattr(api_module, "_get_embedder", lambda: deterministic_embedder)
+
+    calls: list[str] = []
+    real_to_thread = api_module.asyncio.to_thread
+
+    async def recording_to_thread(func, /, *args, **kwargs):
+        calls.append(getattr(func, "__name__", repr(func)))
+        return await real_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr(api_module.asyncio, "to_thread", recording_to_thread)
+    client = TestClient(api_module.app)
+
+    ingest = client.post(
+        "/api/ingest",
+        files={"file": ("sample_ingestion.pdf", sample_pdf_path.read_bytes(), "application/pdf")},
+    )
+    assert ingest.status_code == 200
+    doc_id = ingest.json()["doc_id"]
+
+    planned = client.post(
+        "/api/plan",
+        json={
+            "doc_ids": [doc_id],
+            "goal": "Board update",
+            "audience": "Executive Steering Committee",
+            "tone": 15,
+            "slide_count": 6,
+        },
+    )
+    assert planned.status_code == 200
+    draft = planned.json()
+
+    generated = client.post(
+        "/api/generate",
+        json={
+            "draft_id": draft["draft_id"],
+            "outline": [
+                {
+                    "id": slide["id"],
+                    "index": slide["index"],
+                    "purpose": slide["purpose"],
+                    "title": slide["title"],
+                    "template_id": slide["template_id"],
+                }
+                for slide in draft["slides"]
+            ],
+            "selected_template_id": "headline.evidence",
+            "brand_kit": {
+                "logo_data_url": None,
+                "primary_color": "#112233",
+                "accent_color": "#445566",
+                "font_pair": "DM Sans/DM Serif Display",
+            },
+        },
+    )
+    assert generated.status_code == 200
+
+    assert "_ingest_and_index_sync" in calls
+    assert "_generate_document_summary_sync" in calls
+    assert "_plan_deck_response" in calls
+    assert "_generate_deck_from_draft_sync" in calls
+
+
+def test_api_rate_limits_generation_requests_by_api_key() -> None:
+    _reset_api_state()
+    client = TestClient(api_module.app)
+    payload = {
+        "slide_id": "slide-preview-rate-limit",
+        "title": "Executive Overview",
+        "purpose": "content",
+        "template_id": "headline.evidence",
+        "content": "Current draft text about ingestion, retrieval, layout, and export.",
+        "audience": "Oracle consultants",
+        "goal": "Explain the delivery architecture",
+    }
+
+    for _ in range(8):
+        response = client.post("/api/slide/preview", json=payload, headers={"x-api-key": "alpha"})
+        assert response.status_code == 200
+
+    limited = client.post("/api/slide/preview", json=payload, headers={"x-api-key": "alpha"})
+    error = _assert_error(limited, status_code=429, code="rate_limit_exceeded", message_fragment="Rate limit exceeded")
+    assert limited.headers["retry-after"]
+    assert error["request_id"]
+
+    bypass = client.post("/api/slide/preview", json=payload, headers={"x-api-key": "beta"})
+    assert bypass.status_code == 200
+
+
+def test_api_not_found_errors_use_structured_envelope() -> None:
+    _reset_api_state()
+    client = TestClient(api_module.app)
+
+    response = client.get("/api/deck/missing-deck")
+
+    _assert_error(response, status_code=404, code="deck_not_found", message_fragment="Unknown deck_id: missing-deck")
 
 
 def test_api_serves_built_frontend(monkeypatch, tmp_path) -> None:
@@ -749,6 +1155,29 @@ def test_api_serves_built_frontend(monkeypatch, tmp_path) -> None:
     asset = client.get("/assets/app.js")
     assert asset.status_code == 200
     assert asset.text == "console.log('ui')"
+
+
+def test_api_validation_errors_use_structured_envelope() -> None:
+    _reset_api_state()
+    client = TestClient(api_module.app)
+
+    response = client.post("/api/plan", json={"doc_ids": []})
+
+    _assert_error(response, status_code=422, code="invalid_request", message_fragment="Invalid request payload")
+
+
+def test_api_health_returns_503_when_dependency_probe_fails(monkeypatch) -> None:
+    _reset_api_state()
+    client = TestClient(api_module.app)
+
+    def failing_probe():
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(api_module, "_probe_embedder", failing_probe)
+
+    response = client.get("/api/health")
+
+    _assert_error(response, status_code=503, code="health_check_failed", message_fragment="embedder: model unavailable")
 
 
 # ---------------------------------------------------------------------------

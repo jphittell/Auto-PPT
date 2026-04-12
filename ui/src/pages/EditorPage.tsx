@@ -67,6 +67,7 @@ export function EditorPage() {
         content,
         audience: currentDeck.audience,
         goal: currentDeck.goal,
+        deck_id: currentDeck.id,
       })
       setPreviewSlide(preview)
       replaceSlide(selectedSlideIndex, { ...preview, index: slide.index })

@@ -194,9 +194,6 @@ export function GenerationWizardPage() {
               className="mt-4 min-h-48 w-full resize-y rounded-3xl border border-slate-200 px-5 py-4 text-base leading-7 text-slate-900 outline-none"
             />
           </div>
-          <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
-            Example: <span className="font-medium text-slate-900">Create a 6-slide executive deck for Oracle consultants on AI presentation system architecture with polished, consulting-style slides.</span>
-          </div>
         </div>
       )
     }

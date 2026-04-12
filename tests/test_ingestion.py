@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pptx_gen.ingestion.chunker import _classify_chunk, chunk_document
@@ -84,3 +86,30 @@ def test_ingest_and_index_round_trip_with_chroma(sample_pdf_path, deterministic_
     assert hits[0].source_id == result.source_id
     assert hits[0].locator == result.chunks[0].locator
     assert hits[0].metadata["classification"] == result.chunks[0].classification.value
+
+
+def test_vector_store_persists_to_disk_across_instances(sample_pdf_path, deterministic_embedder, sample_ingestion_request) -> None:
+    chunks = chunk_document(sample_ingestion_request)
+    embeddings = deterministic_embedder.encode([chunk.text for chunk in chunks])
+    persist_path = sample_pdf_path.parent / ".test-chroma-persist"
+    if persist_path.exists():
+        for child in persist_path.glob("**/*"):
+            if child.is_file():
+                child.unlink()
+        for child in sorted((p for p in persist_path.glob("**/*") if p.is_dir()), reverse=True):
+            child.rmdir()
+        persist_path.rmdir()
+
+    first = InMemoryVectorStore(collection_name="persist-doc", backend="disk", persist_path=persist_path)
+    first.clear()
+    first.upsert_chunks(chunks, embeddings)
+
+    second = InMemoryVectorStore(collection_name="persist-doc", backend="disk", persist_path=persist_path)
+    hits = second.query(query_embedding=embeddings[0], n_results=1)
+
+    assert second.has_data()
+    assert hits
+    assert hits[0].chunk_id == chunks[0].chunk_id
+
+    second.clear()
+
