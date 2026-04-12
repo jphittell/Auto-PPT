@@ -80,8 +80,13 @@ def validate_layout(layout: ResolvedDeckLayout, *, style_tokens: StyleTokens) ->
                 overflow_item = _overflow_item(slide.slide_id, element, style_tokens)
                 if overflow_item is not None:
                     text_items.append(overflow_item)
+                bullet_item = _bullet_density_item(slide.slide_id, element)
+                if bullet_item is not None:
+                    text_items.append(bullet_item)
             if element.kind in {ResolvedElementKind.IMAGE, ResolvedElementKind.CHART}:
                 image_items.extend(_image_items(slide.slide_id, element))
+            if element.kind is ResolvedElementKind.CHART:
+                image_items.extend(_chart_data_size_items(slide.slide_id, element))
             if element.kind in {ResolvedElementKind.TEXTBOX, ResolvedElementKind.SHAPE}:
                 color_items.extend(_contrast_items(slide.slide_id, element, style_tokens))
 
@@ -316,6 +321,56 @@ def _contrast_items(slide_id: str, element: ResolvedElement, style_tokens: Style
             metric=ratio,
         )
     ]
+
+
+def _bullet_density_item(slide_id: str, element: ResolvedElement) -> QAItem | None:
+    lines = extract_text_lines((element.payload or {}).get("content"))
+    bullet_count = sum(1 for line in lines if str(line).strip())
+    if bullet_count > 7:
+        return QAItem(
+            dimension="text",
+            check="text.bullet_density",
+            status=QAStatus.WARN,
+            message=f"element has {bullet_count} bullets; consider trimming to ≤7",
+            slide_id=slide_id,
+            element_id=element.element_id,
+            metric=float(bullet_count),
+        )
+    return None
+
+
+def _chart_data_size_items(slide_id: str, element: ResolvedElement) -> list[QAItem]:
+    payload = element.payload or {}
+    content = payload.get("content")
+    data = content if isinstance(content, dict) else payload
+    items: list[QAItem] = []
+    series = data.get("series") if isinstance(data, dict) else None
+    categories = data.get("categories") if isinstance(data, dict) else None
+    if isinstance(series, list) and len(series) > 8:
+        items.append(
+            QAItem(
+                dimension="image",
+                check="chart.series_count",
+                status=QAStatus.WARN,
+                message=f"chart has {len(series)} series; >8 reduces legibility",
+                slide_id=slide_id,
+                element_id=element.element_id,
+                metric=float(len(series)),
+            )
+        )
+    if isinstance(categories, list) and len(categories) > 20:
+        items.append(
+            QAItem(
+                dimension="image",
+                check="chart.category_count",
+                status=QAStatus.WARN,
+                message=f"chart has {len(categories)} categories; >20 reduces legibility",
+                slide_id=slide_id,
+                element_id=element.element_id,
+                metric=float(len(categories)),
+            )
+        )
+    return items
 
 
 def _intersection_area(left: ResolvedElement, right: ResolvedElement) -> float:

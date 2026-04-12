@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from enum import Enum
 from pathlib import Path
+from time import perf_counter
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -38,6 +40,7 @@ ONAC_STYLE_TOKENS = {
     "images": {"source_policy": "provided_only", "style_prompt": "clean editorial visuals"},
 }
 DEFAULT_STYLE_TOKENS = ONAC_STYLE_TOKENS
+_INGEST_LOGGER = logging.getLogger("pptx_gen.ingest")
 
 
 class ExportStatus(str, Enum):
@@ -126,16 +129,46 @@ def ingest_and_index(
     embedder: SupportsEmbedding | None = None,
     vector_store: InMemoryVectorStore | None = None,
 ) -> IngestionIndexResult:
+    total_started = perf_counter()
+
+    parse_started = perf_counter()
     request = parse_source(source_path, title=title, language=language, options=options)
+    parse_ms = int((perf_counter() - parse_started) * 1000)
+
+    chunk_started = perf_counter()
     chunks = chunk_document(request)
+    chunk_ms = int((perf_counter() - chunk_started) * 1000)
 
     embedder = embedder or SentenceTransformerEmbedder()
     vector_store = vector_store or InMemoryVectorStore()
+
+    embed_started = perf_counter()
     embeddings = embedder.encode([chunk.text for chunk in chunks])
+    embed_ms = int((perf_counter() - embed_started) * 1000)
+
+    upsert_started = perf_counter()
     vector_store.upsert_chunks(chunks, embeddings)
+    upsert_ms = int((perf_counter() - upsert_started) * 1000)
+
+    total_ms = int((perf_counter() - total_started) * 1000)
+
+    _INGEST_LOGGER.info(
+        "ingest_and_index_timing",
+        extra={
+            "doc_id": request.document.elements[0].doc_id if request.document.elements else request.source.id,
+            "source_id": request.source.id,
+            "n_elements": len(request.document.elements),
+            "n_chunks": len(chunks),
+            "parse_ms": parse_ms,
+            "chunk_ms": chunk_ms,
+            "embed_ms": embed_ms,
+            "vector_upsert_ms": upsert_ms,
+            "total_ms": total_ms,
+        },
+    )
 
     return IngestionIndexResult(
-        doc_id=request.document.elements[0].doc_id,
+        doc_id=request.document.elements[0].doc_id if request.document.elements else request.source.id,
         source_id=request.source.id,
         ingestion_request=request,
         n_elements=len(request.document.elements),
@@ -175,9 +208,8 @@ def generate_deck(
     style_tokens = style_tokens or StyleTokens(**DEFAULT_STYLE_TOKENS)
     embedder = embedder or SentenceTransformerEmbedder()
     vector_store = vector_store or InMemoryVectorStore()
-    requested_llm_client = llm_client
+    _used_auto_client = llm_client is None  # snapshot before build_default fills it in
     llm_client = llm_client or build_default_structured_llm_client()
-    allow_deterministic_fallback = requested_llm_client is None and llm_client is not None
 
     brief: DeckBrief | None = None
     outline: OutlineSpec | None = None
@@ -232,8 +264,13 @@ def generate_deck(
                 llm_client=llm_client,
             )
         except Exception:
-            if not allow_deterministic_fallback:
+            if not _used_auto_client:
+                # Caller explicitly supplied an LLM client — propagate so they know it failed.
                 raise
+            _INGEST_LOGGER.warning(
+                "llm_planning_failed_falling_back_to_deterministic",
+                exc_info=True,
+            )
             brief = collect_deck_brief(llm_client=None, **planning_inputs)
             outline = generate_outline(brief, llm_client=None)
             retrieval_plan = build_retrieval_plan(brief, outline, llm_client=None)

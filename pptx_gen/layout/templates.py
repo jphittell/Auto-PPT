@@ -55,6 +55,10 @@ class TemplateDefinition:
     layout_index: int | None
     slots: tuple[TemplateSlot, ...]
     planner_tier: int = 1  # 1=core, 2=frequent, 3=situational, 0=deprecated/hidden
+    # Slide archetypes this template is well-suited for.  Maps to SlideArchetype enum values
+    # in planning/schemas.py.  Empty tuple means the template is purpose-driven (title, section,
+    # closing) and archetype selection does not apply.
+    compatible_archetypes: tuple[str, ...] = ()
 
 
 def _slot(
@@ -91,6 +95,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=0,
         planner_tier=1,
+        compatible_archetypes=(),  # structural — archetype does not apply
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.87, 2.35, 7.0, 1.4, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.87, 3.85, 7.0, 0.37, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=33),
@@ -106,6 +111,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=12,
         planner_tier=1,
+        compatible_archetypes=(),  # structural
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 2.56, 7.0, 1.4, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("tagline", ResolvedElementKind.TEXTBOX, 0.85, 4.52, 7.0, 0.75, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="tagline"), placeholder_idx=33),
@@ -119,6 +125,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=32,
         planner_tier=1,
+        compatible_archetypes=("executive_summary", "executive_overview"),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 0.75, 11.67, 0.35, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("key_points", ResolvedElementKind.TEXTBOX, 0.75, 1.70, 5.20, 2.50, 0, "body", SlotBinding(source="block", block_index=0)),
@@ -135,6 +142,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=55,
         planner_tier=1,
+        compatible_archetypes=("generic", "executive_overview"),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -150,6 +158,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=21,
         planner_tier=1,
+        compatible_archetypes=("metrics",),  # 3-up large KPIs; dashboard archetype → dashboard.kpi
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 0.76, 8.96, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.84, 1.10, 8.96, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -165,6 +174,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=57,
         planner_tier=2,
+        compatible_archetypes=("comparison",),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -179,6 +189,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=62,
         planner_tier=1,
+        compatible_archetypes=("chart",),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 7.43, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 7.43, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -194,6 +205,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=23,
         planner_tier=1,
+        compatible_archetypes=(),  # structural — purpose-driven closing
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 4.18, 5.50, 0.53, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("action_items", ResolvedElementKind.TEXTBOX, 0.83, 5.29, 5.50, 0.22, 0, "body", SlotBinding(source="block", block_index=0), placeholder_idx=37),
@@ -208,6 +220,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=19,
         planner_tier=3,
+        compatible_archetypes=(),  # decorative/situational — no archetype match
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 2.00, 6.86, 2.22, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("quote", ResolvedElementKind.TEXTBOX, 0.83, 5.33, 5.83, 0.98, 0, "body", SlotBinding(source="block_field", block_index=0, field="text"), placeholder_idx=36),
@@ -222,6 +235,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=17,
         planner_tier=0,
+        compatible_archetypes=(),  # deprecated
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 2.61, 9.57, 1.60, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("quote", ResolvedElementKind.TEXTBOX, 0.83, 1.25, 3.16, 0.50, 0, "body", SlotBinding(source="block_field", block_index=0, field="text"), placeholder_idx=45),
@@ -235,6 +249,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=14,
         planner_tier=2,
+        compatible_archetypes=(),  # decorative — chosen by purpose, not archetype
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 3.30, 6.68, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
         ),
@@ -246,6 +261,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=59,
         planner_tier=3,
+        compatible_archetypes=("generic", "comparison"),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -261,6 +277,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=60,
         planner_tier=0,
+        compatible_archetypes=(),  # deprecated
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -277,6 +294,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=68,
         planner_tier=3,
+        compatible_archetypes=("generic",),  # parallel concepts/features; process flow → process.steps
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=45),
@@ -295,6 +313,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=70,
         planner_tier=3,
+        compatible_archetypes=("generic",),  # parallel concepts/features; process flow → process.steps
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.84, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.84, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -315,6 +334,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=62,
         planner_tier=3,
+        compatible_archetypes=("generic",),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 7.43, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 7.43, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -329,6 +349,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=80,
         planner_tier=0,
+        compatible_archetypes=(),  # deprecated
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 3.30, 5.03, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("image", ResolvedElementKind.IMAGE, 6.67, 0.00, 6.66, 7.50, 0, "image", SlotBinding(source="block_field", block_index=1, field="path"), placeholder_idx=34),
@@ -341,6 +362,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=73,
         planner_tier=0,
+        compatible_archetypes=(),  # deprecated
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 3.30, 3.43, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("body_left", ResolvedElementKind.TEXTBOX, 0.84, 1.75, 5.56, 4.93, 0, "body", SlotBinding(source="block", block_index=0)),
@@ -354,6 +376,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=35,
         planner_tier=3,
+        compatible_archetypes=(),  # table layout; "matrix" archetype routes to matrix.2x2
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 0.75, 8.20, 0.35, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("table_lead", ResolvedElementKind.TEXTBOX, 0.84, 1.41, 0.48, 4.06, 0, "body", SlotBinding(source="static"), placeholder_idx=14),
@@ -367,6 +390,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=82,
         planner_tier=0,
+        compatible_archetypes=(),  # deprecated/low-exec
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 2.70, 4.11, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("body", ResolvedElementKind.TEXTBOX, 0.83, 3.90, 4.11, 1.34, 0, "body", SlotBinding(source="block", block_index=0), placeholder_idx=24),
@@ -381,6 +405,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=None,
         planner_tier=2,
+        compatible_archetypes=("timeline",),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle")),
@@ -394,6 +419,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=None,
         planner_tier=2,
+        compatible_archetypes=("matrix",),  # 2x2 quadrant; side-by-side comparison → compare.2col
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
             _slot("x_axis_label", ResolvedElementKind.TEXTBOX, 3.50, 6.90, 6.33, 0.30, 0, "meta", SlotBinding(source="block_field", block_index=0, field="x_axis_label")),
@@ -411,6 +437,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=None,
         planner_tier=2,
+        compatible_archetypes=("team",),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
             _slot("team_cards", ResolvedElementKind.SHAPE, 0.83, 1.50, 11.67, 5.25, 0, "body", SlotBinding(source="block", block_index=0)),
@@ -423,6 +450,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=None,
         planner_tier=2,
+        compatible_archetypes=("process",),
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
             _slot("steps", ResolvedElementKind.SHAPE, 0.83, 1.70, 11.67, 4.93, 0, "body", SlotBinding(source="block", block_index=0)),
@@ -435,6 +463,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=None,
         planner_tier=2,
+        compatible_archetypes=("dashboard",),  # 4-6 tile KPI grid; 3-up metrics → kpi.big
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
             _slot("kpi_grid", ResolvedElementKind.SHAPE, 0.83, 1.50, 11.67, 5.25, 0, "body", SlotBinding(source="block", block_index=0)),
@@ -448,6 +477,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=None,
         planner_tier=3,
+        compatible_archetypes=("financial",),
         slots=(
             _slot("headline",   ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
             _slot("table_main", ResolvedElementKind.TABLE,   0.83, 1.30, 11.67, 5.50, 0, "table",    SlotBinding(source="block", block_index=0)),
@@ -461,6 +491,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         strict_default=True,
         layout_index=None,
         planner_tier=3,
+        compatible_archetypes=("status",),
         slots=(
             _slot("headline",     ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
             _slot("status_cards", ResolvedElementKind.SHAPE,   0.83, 1.30, 11.67, 5.70, 0, "body",     SlotBinding(source="block", block_index=0)),

@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import ast
+import json
+import logging
 import re
 from datetime import date
 from pathlib import Path
 from typing import Any, Protocol
 
+_log = logging.getLogger("pptx_gen.prompt_chain")
+
 from pptx_gen.indexing.embedder import SupportsEmbedding
 from pptx_gen.indexing.vector_store import InMemoryVectorStore
 from pptx_gen.ingestion.schemas import ContentClassification
 from pptx_gen.layout.schemas import StyleTokens
+from pptx_gen.layout.templates import TEMPLATE_REGISTRY, list_template_keys
 from pptx_gen.planning.schemas import (
     DeckBrief,
     DeckTheme,
@@ -27,6 +32,7 @@ from pptx_gen.planning.schemas import (
     RetrievalQuery,
     RetrievedChunk,
     SlideArchetype,
+    SlideRemediationSpec,
     SlidePurpose,
     SlideSpec,
     SourceCitation,
@@ -44,6 +50,13 @@ class StructuredLLMClient(Protocol):
 # Chroma distances in this repo's deterministic tests map to very small scores,
 # so keep the gate conservative enough to trim only pathological near-zero hits.
 MIN_RETRIEVAL_SCORE = 0.0001
+# All tier-1+ templates eligible for content slides (excludes structural title/section).
+# Built from the registry so new templates are automatically included.
+_CONTENT_TEMPLATE_CANDIDATES: tuple[str, ...] = tuple(
+    key for key in list_template_keys(min_tier=1)
+    if key not in {"title.cover", "section.divider"}
+)
+
 PPTX_BLUEPRINT_VARIETY_TEMPLATES: tuple[str, ...] = (
     "headline.evidence",
     "compare.2col",
@@ -192,6 +205,47 @@ def collect_deck_brief(
     )
 
 
+def _sanitize_outline(spec: OutlineSpec) -> OutlineSpec:
+    """Replace stub headlines (list numbers, single words, bare fragments like
+    'Tool /' or 'Export &') with a phrase derived from the slide's message."""
+    _SINGLE_WORD_OK = {"Overview", "Summary", "Introduction", "Conclusion", "Agenda", "Appendix"}
+
+    def _needs_replacement(h: str) -> bool:
+        # Reject JSON schema fragments (e.g. '"text": { "type": "string"}')
+        if re.search(r'[{}]', h) or re.search(r'"[^"]+"\s*:', h):
+            return True
+        # Reject arrow/diagram notation (e.g. "J --> K", "A -> B", "X => Y")
+        if re.search(r'--?>|=>|<--?', h):
+            return True
+        # Reject headlines that are mostly non-alphabetic (code, formulas, etc.)
+        alpha = sum(1 for ch in h if ch.isalpha())
+        if len(h) > 3 and alpha / len(h) < 0.4:
+            return True
+        # Count tokens that contain at least one alphanumeric character.
+        real_words = [w for w in h.split() if re.search(r"[a-zA-Z0-9]", w)]
+        # Fewer than 2 real words → definitely a stub ("1", "Tool /", "Architectural")
+        if len(real_words) < 2:
+            return real_words[0] not in _SINGLE_WORD_OK if real_words else True
+        return False
+
+    cleaned: list[OutlineItem] = []
+    for item in spec.outline:
+        headline = item.headline
+        if _needs_replacement(headline):
+            # Try message first; if it's also a stub (e.g. message="1" too),
+            # fall through candidates until we find something with ≥2 real words.
+            for candidate in (item.message, item.slide_id):
+                replacement = _short_headline(candidate, fallback="")
+                if not _needs_replacement(replacement) and replacement:
+                    headline = replacement
+                    break
+            else:
+                # Absolute last resort — generic label from slide_id.
+                headline = f"Slide {re.sub(r'[^0-9]', '', item.slide_id) or item.slide_id}"
+        cleaned.append(item if headline == item.headline else item.model_copy(update={"headline": headline}))
+    return spec if cleaned == spec.outline else spec.model_copy(update={"outline": cleaned})
+
+
 def generate_outline(
     brief: DeckBrief,
     *,
@@ -199,7 +253,7 @@ def generate_outline(
 ) -> OutlineSpec:
     pptx_outline = _outline_from_source_blueprint(brief)
     if pptx_outline is not None:
-        return pptx_outline
+        return _sanitize_outline(pptx_outline)
 
     if llm_client is not None:
         result = llm_client.generate_json(
@@ -213,7 +267,7 @@ def generate_outline(
             ),
             schema_name="OutlineSpec",
         )
-        return OutlineSpec.model_validate(result)
+        return _sanitize_outline(OutlineSpec.model_validate(result))
 
     takeaways = _outline_takeaways(brief)
     deck_title = str((brief.extensions or {}).get("document_title", brief.goal))
@@ -238,13 +292,15 @@ def generate_outline(
     used_templates: dict[str, int] = {}
     next_index = 2
     for content_index, message in enumerate(content_messages):
-        archetype = SlideArchetype.GENERIC
+        _detected = _detect_archetype(message.lower())
+        archetype = _detected if _detected is not None else SlideArchetype.GENERIC
         headline = _short_headline(message, fallback=f"Slide {next_index}")
         template_key = _score_content_template(
             message,
             brief.goal,
             brief.audience,
             str((brief.extensions or {}).get("document_title", "")),
+            archetype=archetype.value,
             used_templates=used_templates,
         )
         used_templates[template_key] = used_templates.get(template_key, 0) + 1
@@ -290,7 +346,7 @@ def generate_outline(
         )
     )
 
-    return OutlineSpec(outline=outline, questions_for_user=[])
+    return _sanitize_outline(OutlineSpec(outline=outline, questions_for_user=[]))
 
 
 def build_retrieval_plan(
@@ -370,6 +426,154 @@ def execute_retrieval_plan(
     return slide_hits
 
 
+# ---------------------------------------------------------------------------
+# Quality check + remediation
+# ---------------------------------------------------------------------------
+
+_QC_SKIP_PURPOSES = {SlidePurpose.TITLE, SlidePurpose.SECTION, SlidePurpose.AGENDA}
+
+
+def _detect_low_quality_slides(
+    spec: PresentationSpec,
+) -> list[tuple[str, str]]:
+    """Return (slide_id, reason) for slides with repetitive or trivial content.
+
+    A slide is flagged if:
+    - All blocks have the same normalized text (headline=bullet=callout repetition), OR
+    - Every block's content normalizes to the same value as the slide headline, OR
+    - Every block's content normalizes to the same value as the deck title.
+    """
+    deck_title_norm = _normalize_phrase(spec.title)
+    flagged: list[tuple[str, str]] = []
+
+    for slide in spec.slides:
+        if slide.purpose in _QC_SKIP_PURPOSES:
+            continue
+
+        all_lines: list[str] = []
+        for block in slide.blocks:
+            lines = _block_lines(block)
+            all_lines.extend(_normalize_phrase(line) for line in lines if line.strip())
+
+        if not all_lines:
+            continue
+
+        unique = set(all_lines)
+        headline_norm = _normalize_phrase(slide.headline)
+
+        if len(unique) == 1:
+            sole = next(iter(unique))
+            if sole == headline_norm:
+                flagged.append((slide.slide_id, "all_blocks_equal_headline"))
+            elif sole == deck_title_norm:
+                flagged.append((slide.slide_id, "all_blocks_equal_deck_title"))
+            else:
+                flagged.append((slide.slide_id, "all_blocks_identical"))
+
+    return flagged
+
+
+def remediate_low_quality_slides(
+    spec: PresentationSpec,
+    brief: DeckBrief,
+    outline: OutlineSpec,
+    retrieved_chunks_by_slide: dict[str, list[RetrievedChunk]],
+    *,
+    llm_client: "StructuredLLMClient",
+) -> PresentationSpec:
+    """Run a targeted LLM re-pass for any slides flagged by the quality detector.
+
+    Returns the original spec if no slides are flagged or the LLM call fails.
+    """
+    flagged = _detect_low_quality_slides(spec)
+    if not flagged:
+        return spec
+
+    flagged_ids = {slide_id for slide_id, _ in flagged}
+    _log.warning(
+        "llm_fallback",
+        extra={
+            "event": "llm_fallback",
+            "reason": "quality_remediation_triggered",
+            "context": ", ".join(f"{sid}:{reason}" for sid, reason in flagged),
+            "recovery": "calling remediation LLM pass",
+        },
+    )
+
+    # Build the context for just the flagged slides
+    flagged_slides_info = []
+    for slide in spec.slides:
+        if slide.slide_id not in flagged_ids:
+            continue
+        reason = next(r for sid, r in flagged if sid == slide.slide_id)
+        flagged_slides_info.append({
+            "slide_id": slide.slide_id,
+            "headline": slide.headline,
+            "purpose": slide.purpose.value,
+            "issue": reason,
+            "current_blocks": [b.model_dump() for b in slide.blocks],
+        })
+
+    chunks_for_flagged: dict[str, list[RetrievedChunk]] = {
+        sid: retrieved_chunks_by_slide.get(sid, []) for sid in flagged_ids
+    }
+
+    try:
+        result = llm_client.generate_json(
+            system_prompt=_load_prompt("step0_system.md"),
+            user_prompt=_render_prompt(
+                "step4b_quality_remediation.md",
+                {
+                    "{deck_brief_json}": brief.model_dump_json(indent=2),
+                    "{outline_json}": outline.model_dump_json(indent=2),
+                    "{flagged_slides_json}": json.dumps(flagged_slides_info, indent=2, default=str),
+                    "{retrieved_chunks_json}": _serialize_retrieved_chunks(chunks_for_flagged),
+                },
+            ),
+            schema_name="SlideRemediationSpec",
+        )
+        remediation = SlideRemediationSpec.model_validate(result)
+    except Exception as exc:
+        _log.warning(
+            "llm_fallback",
+            extra={
+                "event": "llm_fallback",
+                "reason": "quality_remediation_failed",
+                "context": str(exc),
+                "recovery": "keeping original blocks",
+            },
+        )
+        return spec
+
+    if not remediation.remediations:
+        return spec
+
+    remediation_map = {r.slide_id: r.blocks for r in remediation.remediations}
+    updated_slides: list[SlideSpec] = []
+    for slide in spec.slides:
+        if slide.slide_id not in remediation_map:
+            updated_slides.append(slide)
+            continue
+        new_blocks = remediation_map[slide.slide_id]
+        # Run the same dedup + citation backfill we apply to LLM output normally
+        updated_slides.append(
+            slide.model_copy(update={"blocks": new_blocks})
+        )
+
+    updated_spec = spec.model_copy(update={"slides": updated_slides})
+    # Re-run dedup and citation injection on the patched spec
+    updated_spec = _deduplicate_slide_blocks(updated_spec, retrieved_chunks_by_slide)
+    updated_spec = _inject_missing_citations(updated_spec, retrieved_chunks_by_slide, brief)
+    _log.info(
+        "quality_remediation_applied",
+        extra={
+            "event": "quality_remediation_applied",
+            "slides_fixed": list(remediation_map.keys()),
+        },
+    )
+    return updated_spec
+
+
 def generate_presentation_spec(
     brief: DeckBrief,
     outline: OutlineSpec,
@@ -439,7 +643,9 @@ def generate_presentation_spec(
                 ]
                 derived = _derive_takeaways(all_chunk_texts, brief.goal)
                 summary_items = [_trim_words(text, 20) for text in derived][:6]
-            summary_block_citations = summary_citations[:1] or _citations_from_chunks(slide_chunks)[:1] or _fallback_citation(brief.source_corpus_ids)
+            summary_block_citations = summary_citations[:1] or _citations_from_chunks(slide_chunks)[:1]
+            if not summary_block_citations:
+                summary_block_citations = _fallback_citation(brief.source_corpus_ids)
             summary_template = item.template_key or "closing.actions"
             if summary_template == "exec.summary" or item.archetype is SlideArchetype.EXECUTIVE_SUMMARY:
                 slides.append(
@@ -513,6 +719,8 @@ def generate_presentation_spec(
         used_phrases = _UsedPhrases()
         bullets = _bullets_from_chunks(slide_chunks, fallback=item.message, used=used_phrases)
         citations = _citations_from_chunks(slide_chunks)[:2]
+        if not citations:
+            citations = _fallback_citation(brief.source_corpus_ids)
         if citations:
             summary_citations.extend(citations)
         template_key = item.template_key or "headline.evidence"
@@ -523,15 +731,13 @@ def generate_presentation_spec(
                     brief=brief,
                     tone_label=tone_label,
                     slide_chunks=slide_chunks,
-                    citations=citations or _fallback_citation(brief.source_corpus_ids),
+                    citations=citations,
                     summary_items=bullets,
                 )
             )
             continue
         if template_key == "compare.2col":
-            if not _supports_comparison_layout(item.headline, item.message, bullets):
-                template_key = "headline.evidence"
-            else:
+            if _supports_comparison_layout(item.headline, item.message, bullets):
                 midpoint = max(1, (len(bullets) + 1) // 2)
                 slides.append(
                     SlideSpec(
@@ -546,18 +752,21 @@ def generate_presentation_spec(
                                 block_id="b1",
                                 kind=PresentationBlockKind.BULLETS,
                                 content={"items": bullets[:midpoint]},
-                                source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                                source_citations=citations,
                             ),
                             PresentationBlock(
                                 block_id="b2",
                                 kind=PresentationBlockKind.BULLETS,
                                 content={"items": bullets[midpoint:]},
-                                source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                                source_citations=citations,
                             ),
                         ],
                     )
                 )
                 continue
+            # Sparse evidence — can't split into two meaningful columns.
+            # Downgrade to headline.evidence so the slide still renders.
+            template_key = "headline.evidence"
         if template_key == "chart.takeaway":
             slides.append(
                 SlideSpec(
@@ -572,13 +781,13 @@ def generate_presentation_spec(
                             block_id="b1",
                             kind=PresentationBlockKind.CHART,
                             content={"chart_type": "bar", "data": [{"label": f"Point {index + 1}", "value": index + 1} for index, _ in enumerate(bullets[:3])]},
-                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                            source_citations=citations,
                         ),
                         PresentationBlock(
                             block_id="b2",
                             kind=PresentationBlockKind.CALLOUT,
                             content={"text": _callout_from_chunks(slide_chunks, fallback=item.message, used=used_phrases), "tone_hint": tone_label},
-                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                            source_citations=citations,
                         ),
                     ],
                 )
@@ -598,7 +807,7 @@ def generate_presentation_spec(
                             block_id=f"b{index + 1}",
                             kind=PresentationBlockKind.TEXT,
                             content={"text": value},
-                            source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                            source_citations=citations,
                         )
                         for index, value in enumerate(_kpi_points_from_bullets(bullets))
                     ],
@@ -621,7 +830,7 @@ def generate_presentation_spec(
                         block_id="b1",
                         kind=PresentationBlockKind.BULLETS,
                         content={"items": bullets},
-                        source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                        source_citations=citations,
                     ),
                     PresentationBlock(
                         block_id="b2",
@@ -630,7 +839,7 @@ def generate_presentation_spec(
                             "text": _callout_from_chunks(slide_chunks, fallback=item.message, used=used_phrases),
                             "tone_hint": tone_label,
                         },
-                        source_citations=citations or _fallback_citation(brief.source_corpus_ids),
+                        source_citations=citations,
                     ),
                 ],
             )
@@ -713,28 +922,15 @@ def _inject_missing_citations(
         PresentationBlockKind.CALLOUT,
         PresentationBlockKind.KPI_CARDS,
     }
-    # Build a global fallback citation from any retrieved chunk or brief source IDs
-    global_fallback: list[SourceCitation] = []
-    for chunks in retrieved_chunks_by_slide.values():
-        if chunks:
-            global_fallback = _citations_from_chunks(chunks[:1])
-            break
-    if not global_fallback:
-        global_fallback = _fallback_citation(brief.source_corpus_ids)
-
     updated_slides = []
     for slide in spec.slides:
         if slide.purpose not in citation_required_purposes:
             updated_slides.append(slide)
             continue
-        slide_fallback = (
-            _citations_from_chunks(retrieved_chunks_by_slide.get(slide.slide_id, [])[:1])
-            or global_fallback
-        )
         updated_blocks = []
         for block in slide.blocks:
             if block.kind in citation_required_kinds and not block.source_citations:
-                block = block.model_copy(update={"source_citations": list(slide_fallback)})
+                block = block.model_copy(update={"source_citations": _fallback_citation(brief.source_corpus_ids)})
             updated_blocks.append(block)
         updated_slides.append(slide.model_copy(update={"blocks": updated_blocks}))
     return spec.model_copy(update={"slides": updated_slides})
@@ -864,8 +1060,7 @@ def _enforce_authoritative_fields(
                     }
                 )
 
-        # Replace empty/degenerate block content with content from the outline message
-        fallback_message = outline_messages.get(slide.slide_id, "")
+        headline_norm = _normalize_phrase(slide.headline)
         updated_blocks = []
         for block in slide.blocks:
             if block.kind is PresentationBlockKind.BULLETS:
@@ -873,10 +1068,11 @@ def _enforce_authoritative_fields(
                 items = content.get("items") if isinstance(content, dict) else None
                 if isinstance(items, list):
                     clean = [str(i).strip() for i in items if str(i).strip()]
-                    if not clean and fallback_message:
-                        clean = [_trim_words(fallback_message, 12)]
+                    if not clean:
+                        _log.warning("llm_fallback", extra={"event": "llm_fallback", "reason": "empty_bullets", "context": f"{slide.slide_id}:{block.block_id}", "recovery": "block dropped"})
+                        continue  # drop empty bullets block rather than crashing
                     if clean != items:
-                        block = block.model_copy(update={"content": {"items": clean or [fallback_message or "See source"]}})
+                        block = block.model_copy(update={"content": {"items": clean}})
             elif block.kind is PresentationBlockKind.TEXT:
                 content = block.content or {}
                 text = content.get("text", "") if isinstance(content, dict) else ""
@@ -889,8 +1085,9 @@ def _enforce_authoritative_fields(
                         }
                     )
                     slide = slide.model_copy(update={"layout_intent": LayoutIntent(template_key="compare.2col", strict_template=True)})
-                if not str(text).strip() and fallback_message:
-                    block = block.model_copy(update={"content": {"text": _trim_words(fallback_message, 12)}})
+                elif not str(text).strip():
+                    _log.warning("llm_fallback", extra={"event": "llm_fallback", "reason": "empty_text", "context": f"{slide.slide_id}:{block.block_id}", "recovery": "block dropped"})
+                    continue  # drop empty text block rather than crashing
             elif block.kind is PresentationBlockKind.TABLE:
                 content = block.content or {}
                 if isinstance(content, dict):
@@ -901,14 +1098,53 @@ def _enforce_authoritative_fields(
                         or not rows
                         or all(not any(str(cell).strip() for cell in row) for row in rows)
                     )
-                    if is_degenerate and fallback_message:
-                        # Demote to bullets rather than show an empty table
-                        block = block.model_copy(update={
-                            "kind": PresentationBlockKind.BULLETS,
-                            "content": {"items": [_trim_words(fallback_message, 12)]},
-                        })
-                        slide = slide.model_copy(update={"layout_intent": LayoutIntent(template_key="headline.evidence", strict_template=True)})
+                    if is_degenerate:
+                        _log.warning("llm_fallback", extra={"event": "llm_fallback", "reason": "degenerate_table", "context": f"{slide.slide_id}:{block.block_id}", "recovery": "block dropped"})
+                        continue  # drop degenerate table block rather than crashing
+
+            # Drop blocks whose entire content is identical to the slide headline
+            # (e.g. headline="Magic Design", bullet="Magic Design", callout="Magic Design")
+            block_lines = _block_lines(block)
+            if block_lines and headline_norm:
+                block_norm = _normalize_phrase(" ".join(block_lines))
+                if block_norm == headline_norm:
+                    _log.warning("llm_fallback", extra={"event": "llm_fallback", "reason": "block_equals_headline", "context": f"{slide.slide_id}:{block.block_id}", "recovery": "block dropped"})
+                    continue
+
             updated_blocks.append(block)
+
+        # If all blocks were dropped, regenerate from non-headline content.
+        # Avoid recreating the same headline text that caused the blocks to be dropped.
+        if not updated_blocks:
+            fallback_text = outline_item.message if outline_item else slide.headline
+            # If the fallback itself equals the headline, look for something better
+            if _normalize_phrase(fallback_text) == headline_norm:
+                # Try any chunk text that isn't just the headline
+                for _chunk in slide_chunks:
+                    for _phrase in _candidate_phrases(_chunk.text):
+                        if _normalize_phrase(_phrase) != headline_norm and len(_phrase.split()) >= 4:
+                            fallback_text = _phrase
+                            break
+                    if _normalize_phrase(fallback_text) != headline_norm:
+                        break
+                # Still nothing? Try key_takeaways or brief.goal
+                if _normalize_phrase(fallback_text) == headline_norm:
+                    takeaways = list((brief.extensions or {}).get("key_takeaways", []))
+                    for t in takeaways:
+                        if _normalize_phrase(str(t)) != headline_norm and len(str(t).split()) >= 4:
+                            fallback_text = str(t)
+                            break
+                if _normalize_phrase(fallback_text) == headline_norm and brief.goal:
+                    fallback_text = brief.goal
+            updated_blocks = [
+                PresentationBlock(
+                    block_id="b1",
+                    kind=PresentationBlockKind.BULLETS,
+                    content={"items": [_trim_words(fallback_text, 15)]},
+                    source_citations=_slide_citations(slide, slide_chunks, brief),
+                )
+            ]
+            slide = slide.model_copy(update={"layout_intent": LayoutIntent(template_key="headline.evidence", strict_template=True)})
         if updated_blocks != list(slide.blocks):
             slide = slide.model_copy(update={"blocks": updated_blocks})
         slides.append(slide)
@@ -982,6 +1218,13 @@ def _augment_brief(
         ext["one_sentence_thesis"] = thesis
     if not ext.get("key_takeaways"):
         ext["key_takeaways"] = takeaways
+    else:
+        # Strip list-marker items (e.g. "1", "2.", "•") from LLM-populated takeaways
+        # so they don't pollute the outline LLM prompt.
+        ext["key_takeaways"] = [
+            t for t in ext["key_takeaways"]
+            if re.search(r"[a-zA-Z]", str(t)) and len(str(t).split()) >= 2
+        ]
     if not ext.get("user_request"):
         ext["user_request"] = user_request
     if not ext.get("deck_archetype"):
@@ -1031,6 +1274,10 @@ def _outline_from_source_blueprint(brief: DeckBrief) -> OutlineSpec | None:
     for index, slide in enumerate(selected_blueprint, start=1):
         title = str(slide.get("title") or f"Slide {index}").strip() or f"Slide {index}"
         text_preview = str(slide.get("text_preview") or "").strip()
+        # Guard: if the blueprint title has no letters (e.g. "1", "•", "2."), it's a
+        # list-item marker masquerading as a slide title — use text_preview instead.
+        if not re.search(r"[a-zA-Z]", title):
+            title = text_preview or f"Slide {index}"
         slide_type = str(slide.get("slide_type") or "content").strip().lower()
         purpose_hint = str(slide.get("purpose_hint") or "content").strip().lower()
         template_hint = str(slide.get("template_hint") or "headline.evidence").strip() or "headline.evidence"
@@ -1264,28 +1511,56 @@ def _overview_message(brief: DeckBrief, takeaways: list[str]) -> str:
     return _trim_words(f"{thesis}. {supporting}.", 18)
 
 
+def _detect_archetype(haystack: str) -> SlideArchetype | None:
+    """Detect the most specific content archetype from keyword signals in a slide message.
+
+    Returns None when the content is generic or ambiguous — the caller falls back to
+    pure keyword scoring.  Signals are intentionally conservative: common words like
+    "team" or "process" alone do not fire; compound phrases are required so that false
+    positives don't force a specialist template onto the wrong slide.
+    """
+    if any(t in haystack for t in ("matrix", "quadrant", "2x2", "2×2", "four-box")):
+        return SlideArchetype.MATRIX
+    if any(t in haystack for t in ("timeline", "roadmap", "milestone", "gantt", "phased rollout")):
+        return SlideArchetype.TIMELINE
+    if any(t in haystack for t in ("meet the team", "our team", "team members", "team leads", "org chart", "personnel")):
+        return SlideArchetype.TEAM
+    if any(t in haystack for t in ("step-by-step", "process flow", "how it works", "process steps", "key steps", "workflow")):
+        return SlideArchetype.PROCESS
+    if any(t in haystack for t in ("budget", "p&l", "income statement", "balance sheet", "financial forecast", "cost breakdown")):
+        return SlideArchetype.FINANCIAL
+    if any(t in haystack for t in ("project status", "initiative status", "on track", "at risk", "behind schedule", "rag status")):
+        return SlideArchetype.STATUS
+    _numeric_count = len(re.findall(r"\b[\d,.]+[%$]?\b", haystack))
+    if any(t in haystack for t in ("dashboard", "scorecard")) and _numeric_count >= 3:
+        return SlideArchetype.DASHBOARD
+    if any(t in haystack for t in ("metric", "kpi", "roi", "csat", "nps")) and _numeric_count >= 2:
+        return SlideArchetype.METRICS
+    if any(t in haystack for t in ("chart", "trend", "graph", "data series", "visualization")):
+        return SlideArchetype.CHART
+    if any(t in haystack for t in (" vs ", " vs.", "versus", "tradeoff", "pros and cons", "side by side", "compare")):
+        return SlideArchetype.COMPARISON
+    return None
+
+
 def _score_content_template(
     message: str,
     goal: str,
     audience: str = "",
     document_title: str = "",
     *,
+    archetype: str | None = None,
     used_templates: dict[str, int] | None = None,
     candidates: tuple[str, ...] | None = None,
 ) -> str:
-    """Score all eligible templates and return the best fit with diversity awareness."""
+    """Score all eligible templates and return the best fit with diversity and archetype awareness."""
     haystack = f"{message} {goal} {audience} {document_title}".lower()
     word_count = len(re.findall(r"\b\w+\b", haystack))
     numeric_density = len(re.findall(r"\b[\d,.]+[%$]?\b", haystack))
     bullet_count = haystack.count("\n") + 1
 
-    # Content-eligible templates (exclude title.cover and section.divider)
-    candidate_templates = list(candidates) if candidates else [
-        "headline.evidence", "kpi.big", "compare.2col", "chart.takeaway",
-        "exec.summary", "closing.actions", "content.3col", "content.4col",
-        "icons.3", "icons.4", "impact.statement", "split.content",
-        "quote.texture", "agenda.table",
-    ]
+    # Content-eligible templates — built from registry so new templates are automatically included.
+    candidate_templates = list(candidates) if candidates else list(_CONTENT_TEMPLATE_CANDIDATES)
 
     content_scores: dict[str, float] = {t: 0.0 for t in candidate_templates}
     purpose_scores: dict[str, float] = {t: 0.0 for t in candidate_templates}
@@ -1302,7 +1577,7 @@ def _score_content_template(
         _bump(content_scores, "compare.2col", 0.8)
     if any(t in haystack for t in ("quote", "said", "according to", '"')):
         _bump(content_scores, "quote.texture", 0.7)
-    if any(t in haystack for t in ("schedule", "agenda", "timeline", "matrix", "table")):
+    if any(t in haystack for t in ("schedule", "agenda", "table")):
         _bump(content_scores, "agenda.table", 0.7)
     if word_count < 15:
         _bump(content_scores, "impact.statement", 0.7)
@@ -1333,6 +1608,20 @@ def _score_content_template(
         _bump(purpose_scores, "chart.takeaway", 0.8)
     if any(t in haystack for t in ("metric", "kpi", "score", "rate", "roi", "growth", "performance")):
         _bump(purpose_scores, "kpi.big", 0.6)
+
+    # --- Archetype-based boost (uses compatible_archetypes metadata on TemplateDefinition) ---
+    # Boosts both content_scores (+1.0) and purpose_scores (+0.8) for templates whose
+    # compatible_archetypes includes the detected archetype.  Combined contribution at
+    # their respective weights (0.4 + 0.3) is 0.64 — larger than the maximum any single
+    # keyword signal can produce (0.8 * 0.4 = 0.32 content, or 0.8 * 0.3 = 0.24 purpose).
+    # This ensures the archetype-matched template wins even when competing templates
+    # receive independent content + purpose keyword bumps from the same message.
+    if archetype:
+        for _tkey in candidate_templates:
+            _defn = TEMPLATE_REGISTRY.get(_tkey)
+            if _defn and archetype in _defn.compatible_archetypes:
+                _bump(content_scores, _tkey, 1.0)
+                _bump(purpose_scores, _tkey, 0.8)
 
     # --- Diversity penalty ---
     best_score = -1.0
@@ -1559,8 +1848,12 @@ def _exec_summary_slide(
 ) -> SlideSpec:
     used = _UsedPhrases.from_phrases(summary_items)
     summary_points = _bullets_from_chunks(slide_chunks, fallback=item.message, used=used)[:5]
-    if not summary_points:
+    # If chunks had no grounded evidence, _bullets_from_chunks returns [item.message].
+    # Prefer the outline's summary_items — they're richer than a single repeated sentence.
+    _fallback_norm = _normalize_phrase(item.message)
+    if len(summary_points) == 1 and _normalize_phrase(summary_points[0]) == _fallback_norm:
         summary_points = summary_items[:5] or [_trim_words(brief.goal, 12)]
+        used.mark_all(summary_points)
     callout_text = _specialist_callout(brief, slide_chunks, fallback=item.message, used=used)
     summary_signature = _normalize_phrase(" ".join(summary_points))
     if _phrases_are_near_duplicate(summary_signature, _normalize_phrase(callout_text)):
@@ -1700,10 +1993,13 @@ def _overview_cards(
     if semantic_cards:
         return semantic_cards
     points: list[str] = []
+    seen_norm: set[str] = set()
     for item in summary_items:
         if used is not None and used.is_used(item):
             continue
-        if item not in points:
+        n = _normalize_phrase(item)
+        if n and n not in seen_norm:
+            seen_norm.add(n)
             points.append(item)
             if used is not None:
                 used.mark(item)
@@ -1711,7 +2007,9 @@ def _overview_cards(
         for phrase in _candidate_phrases(chunk.text):
             if used is not None and used.is_used(phrase):
                 continue
-            if phrase not in points:
+            n = _normalize_phrase(phrase)
+            if n and n not in seen_norm:
+                seen_norm.add(n)
                 points.append(phrase)
                 if used is not None:
                     used.mark(phrase)
@@ -1758,11 +2056,14 @@ def _architecture_cards(
     if semantic_cards:
         return semantic_cards
     components: list[str] = []
+    seen_norm: set[str] = set()
     for chunk in slide_chunks:
         for phrase in _candidate_phrases(chunk.text):
             if used is not None and used.is_used(phrase):
                 continue
-            if phrase not in components:
+            n = _normalize_phrase(phrase)
+            if n and n not in seen_norm:
+                seen_norm.add(n)
                 components.append(phrase)
                 if used is not None:
                     used.mark(phrase)
@@ -1771,7 +2072,9 @@ def _architecture_cards(
     for item in summary_items:
         if used is not None and used.is_used(item):
             continue
-        if item not in components:
+        n = _normalize_phrase(item)
+        if n and n not in seen_norm:
+            seen_norm.add(n)
             components.append(item)
             if used is not None:
                 used.mark(item)
@@ -2493,16 +2796,12 @@ def _bullets_from_chunks(chunks: list[RetrievedChunk], *, fallback: str, used: "
             if len(bullets) == 3:
                 return bullets
     if not bullets:
-        # Avoid repeating the headline — produce distinct sub-points from the fallback
-        words = [w for w in str(fallback).split() if w]
-        if len(words) >= 6:
-            mid = len(words) // 2
-            bullets.append(" ".join(words[:mid]).rstrip(",:;"))
-            bullets.append(" ".join(words[mid:]).rstrip(",:;"))
-        else:
-            bullets.append(" ".join(words).rstrip(",:;"))
+        # Sparse or fully-deduplicated evidence — return the fallback so callers degrade
+        # gracefully rather than aborting slide generation. Mark it used so downstream
+        # calls (e.g. _callout_from_chunks) don't return the identical text.
         if used is not None:
-            used.mark_all(bullets)
+            used.mark(fallback)
+        return [fallback]
     return bullets[:3]
 
 
@@ -2515,9 +2814,11 @@ def _callout_from_chunks(chunks: list[RetrievedChunk], *, fallback: str, used: "
                 if used is not None:
                     used.mark(candidate)
                 return _trim_words(candidate, 15)
-    if used is not None:
-        used.mark("Supported evidence")
-    return "Supported evidence"
+    # No novel phrase — if the fallback is already tracked as used, signal the caller
+    # to drop this callout block entirely (avoids headline = bullet = callout repetition).
+    if used is not None and used.is_used(fallback):
+        return ""
+    return _trim_words(fallback, 15)
 
 
 def _citations_from_chunks(chunks: list[RetrievedChunk]) -> list[SourceCitation]:
@@ -2537,11 +2838,27 @@ def _fallback_citation(source_ids: list[str]) -> list[SourceCitation]:
     return [SourceCitation(source_id=source_id, locator=f"{source_id}:page1")]
 
 
+_MAX_CHARS_PER_CHUNK_TEXT = 600  # ~150 tokens per chunk
+_MAX_TOTAL_RETRIEVED_CHARS = 80_000  # ~20k tokens; leaves room for schema, brief, outline
+
+
 def _serialize_retrieved_chunks(retrieved_chunks_by_slide: dict[str, list[RetrievedChunk]]) -> str:
-    payload = {slide_id: [chunk.model_dump() for chunk in chunks] for slide_id, chunks in retrieved_chunks_by_slide.items()}
     import json
 
-    return json.dumps(payload, indent=2)
+    def _cap(text: str) -> str:
+        return text[:_MAX_CHARS_PER_CHUNK_TEXT] if len(text) > _MAX_CHARS_PER_CHUNK_TEXT else text
+
+    payload = {
+        slide_id: [
+            {**chunk.model_dump(), "text": _cap(chunk.text)}
+            for chunk in chunks
+        ]
+        for slide_id, chunks in retrieved_chunks_by_slide.items()
+    }
+    serialized = json.dumps(payload, indent=2)
+    if len(serialized) > _MAX_TOTAL_RETRIEVED_CHARS:
+        serialized = serialized[:_MAX_TOTAL_RETRIEVED_CHARS] + "\n... [truncated for token budget]"
+    return serialized
 
 
 def _trim_words(text: str, max_words: int) -> str:

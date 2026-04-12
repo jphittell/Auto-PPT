@@ -256,13 +256,17 @@ def _find_pptx_slide_title(slide: Any) -> tuple[Any | None, str]:
     the first textbox whose text looks like a heading (single short line near
     the top of the slide).
     """
+    def _looks_like_title(t: str) -> bool:
+        """A title must contain at least one letter; reject bare numbers/bullets."""
+        return bool(re.search(r"[a-zA-Z]", t))
+
     title_shape = getattr(slide.shapes, "title", None)
     if title_shape is not None:
         text = re.sub(r"\s+", " ", title_shape.text or "").strip()
-        if text:
+        if text and _looks_like_title(text):
             return title_shape, text
 
-    # Fallback: pick the topmost single-line text shape as the title.
+    # Fallback: pick the topmost single-line text shape that looks like a heading.
     best_shape = None
     best_text = ""
     best_top = float("inf")
@@ -271,6 +275,8 @@ def _find_pptx_slide_title(slide: Any) -> tuple[Any | None, str]:
             continue
         text = re.sub(r"\s+", " ", shape.text_frame.text or "").strip()
         if not text or "\n" in text.strip():
+            continue
+        if not _looks_like_title(text):
             continue
         top = getattr(shape, "top", float("inf"))
         if top < best_top and len(text.split()) <= 12:
@@ -298,8 +304,8 @@ def _summarize_pptx_slide(slide: Any, *, exclude_shape: Any = None) -> tuple[lis
                 text = re.sub(r"\s+", " ", paragraph.text or "").strip()
                 if not text:
                     continue
-                if paragraph.level > 0 or re.match(r"^[-*â€¢]\s+", text):
-                    bullet_texts.append(re.sub(r"^[-*â€¢]\s+", "", text).strip())
+                if paragraph.level > 0 or re.match(r"^[-*•]\s+", text):
+                    bullet_texts.append(re.sub(r"^[-*•]\s+", "", text).strip())
                 else:
                     body_texts.append(text)
             continue
@@ -371,17 +377,19 @@ def _partition_xlsx(path: Path) -> list[Any]:
     from openpyxl import load_workbook
 
     workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
-    elements: list[Any] = [Title(text=path.stem.replace("_", " "), metadata=_FallbackMetadata(page_number=1))]
-    for sheet_index, sheet in enumerate(workbook.worksheets, start=1):
-        elements.append(Header(text=sheet.title, metadata=_FallbackMetadata(page_number=sheet_index)))
-        rows: list[list[str]] = []
-        for row in sheet.iter_rows(values_only=True):
-            normalized = ["" if value is None else str(value).strip() for value in row]
-            if any(normalized):
-                rows.append(normalized)
-        if rows:
-            elements.append(Table(text=_stringify_rows(rows), metadata=_FallbackMetadata(page_number=sheet_index)))
-    workbook.close()
+    try:
+        elements: list[Any] = [Title(text=path.stem.replace("_", " "), metadata=_FallbackMetadata(page_number=1))]
+        for sheet_index, sheet in enumerate(workbook.worksheets, start=1):
+            elements.append(Header(text=sheet.title, metadata=_FallbackMetadata(page_number=sheet_index)))
+            rows: list[list[str]] = []
+            for row in sheet.iter_rows(values_only=True):
+                normalized = ["" if value is None else str(value).strip() for value in row]
+                if any(normalized):
+                    rows.append(normalized)
+            if rows:
+                elements.append(Table(text=_stringify_rows(rows), metadata=_FallbackMetadata(page_number=sheet_index)))
+    finally:
+        workbook.close()
     return elements
 
 

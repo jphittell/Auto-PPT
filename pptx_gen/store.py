@@ -193,6 +193,18 @@ class MemoryStore:
 # SQLiteStore — file-backed persistence
 # ---------------------------------------------------------------------------
 
+# Allowlists for SQL identifier interpolation.
+# All (table, key_column) pairs must be registered here before use.
+# This prevents SQL injection if a future caller ever passes a non-literal value.
+_VALID_TABLE_KEY_PAIRS: frozenset[tuple[str, str]] = frozenset({
+    ("ingested_docs",    "doc_id"),
+    ("ingestion_results","doc_id"),
+    ("drafts",           "draft_id"),
+    ("deck_specs",       "deck_id"),
+    ("chat_sessions",    "session_id"),
+})
+_VALID_TABLES: frozenset[str] = frozenset(t for t, _ in _VALID_TABLE_KEY_PAIRS)
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS ingested_docs (
     doc_id TEXT PRIMARY KEY,
@@ -248,7 +260,24 @@ class SQLiteStore:
 
     # -- generic helpers --
 
+    @staticmethod
+    def _check_table_key(table: str, key_col: str) -> None:
+        if (table, key_col) not in _VALID_TABLE_KEY_PAIRS:
+            raise ValueError(
+                f"Disallowed table/column combination: {table!r}/{key_col!r}. "
+                "Add it to _VALID_TABLE_KEY_PAIRS to permit it."
+            )
+
+    @staticmethod
+    def _check_table(table: str) -> None:
+        if table not in _VALID_TABLES:
+            raise ValueError(
+                f"Disallowed table name: {table!r}. "
+                "Add it to _VALID_TABLES to permit it."
+            )
+
     def _get(self, table: str, key_col: str, key: str) -> str | None:
+        self._check_table_key(table, key_col)
         with self._lock:
             conn = self._connect()
             try:
@@ -260,6 +289,7 @@ class SQLiteStore:
                 conn.close()
 
     def _put(self, table: str, key_col: str, key: str, payload: str) -> None:
+        self._check_table_key(table, key_col)
         with self._lock:
             conn = self._connect()
             try:
@@ -272,6 +302,7 @@ class SQLiteStore:
                 conn.close()
 
     def _has(self, table: str, key_col: str, key: str) -> bool:
+        self._check_table_key(table, key_col)
         with self._lock:
             conn = self._connect()
             try:
@@ -283,6 +314,7 @@ class SQLiteStore:
                 conn.close()
 
     def _count(self, table: str) -> int:
+        self._check_table(table)
         with self._lock:
             conn = self._connect()
             try:
@@ -352,7 +384,8 @@ class SQLiteStore:
         with self._lock:
             conn = self._connect()
             try:
-                for table in ("ingested_docs", "ingestion_results", "drafts", "deck_specs", "chat_sessions"):
+                for table in _VALID_TABLES:
+                    self._check_table(table)  # belt-and-suspenders: validates before interpolation
                     conn.execute(f"DELETE FROM {table}")
                 conn.commit()
             finally:

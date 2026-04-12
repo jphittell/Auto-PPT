@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 SCHEMA_VERSION_PATTERN = r"^\d+\.\d+\.\d+$"
 CHUNK_ID_PATTERN = r"^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:\d+$"
-LOCATOR_PATTERN = r"^[A-Za-z0-9_.-]+:page\d+$"
+LOCATOR_PATTERN = r"^[A-Za-z0-9_.-]+:(?:page|chunk)\d+$"
 
 
 class SourceType(str, Enum):
@@ -103,7 +103,7 @@ class IngestionOptions(BaseModel):
 
     chunking: ChunkingMode = ChunkingMode.BY_ELEMENT
     redact_pii: bool = True
-    max_chunk_chars: int = Field(default=1200, ge=1, le=1200)
+    max_chunk_chars: int = Field(default=1200, ge=1, le=8000)
 
 
 class IngestionRequest(BaseModel):

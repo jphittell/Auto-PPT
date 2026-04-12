@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -17,6 +18,10 @@ _PERSISTENT_CLIENTS: dict[str, Any] = {}
 _PERSISTENT_CLIENTS_LOCK = Lock()
 
 
+_CHROMA_NAME_MAX = 63
+_HASH_SUFFIX_LEN = 8  # hex chars appended when truncation is needed
+
+
 def _normalize_collection_name(collection_name: str | None) -> str:
     base = (collection_name or f"pptx-gen-{uuid4().hex[:8]}").strip().lower()
     if not base.startswith("pptx-gen-"):
@@ -25,7 +30,15 @@ def _normalize_collection_name(collection_name: str | None) -> str:
     normalized = normalized.strip("-_") or f"pptx-gen-{uuid4().hex[:8]}"
     if len(normalized) < 3:
         normalized = f"pptx-gen-{normalized}"
-    return normalized[:63]
+    if len(normalized) <= _CHROMA_NAME_MAX:
+        return normalized
+    # Truncation would silently collapse distinct doc_ids that share a long
+    # common prefix (e.g. two filenames differing only at character 64+).
+    # Instead, keep a readable prefix and replace the tail with a hash of the
+    # full name so every distinct input maps to a distinct collection name.
+    suffix = sha256(normalized.encode()).hexdigest()[:_HASH_SUFFIX_LEN]
+    prefix = normalized[: _CHROMA_NAME_MAX - _HASH_SUFFIX_LEN - 1]  # -1 for separator
+    return f"{prefix}-{suffix}"
 
 
 def _persistent_client(persist_path: str | Path) -> Any:

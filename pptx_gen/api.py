@@ -7,14 +7,17 @@ import base64
 import copy
 import hashlib
 import json
+import logging
+import mimetypes
 import re
 import shutil
 from collections import Counter, OrderedDict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from threading import RLock
 from pathlib import Path
 from typing import Any, AsyncIterator
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -63,6 +66,7 @@ from pptx_gen.planning.prompt_chain import (
     execute_retrieval_plan,
     generate_outline,
     generate_presentation_spec,
+    remediate_low_quality_slides,
 )
 from pptx_gen.planning.llm_client import build_default_structured_llm_client
 from pptx_gen.planning.schemas import (
@@ -84,6 +88,7 @@ from pptx_gen.renderer.markdown_strip import strip_markdown
 
 
 configure_logging()
+_INGEST_LOGGER = logging.getLogger("pptx_gen.ingest")
 
 
 def _request_id_for_error(request: Request | None = None) -> str:
@@ -210,13 +215,17 @@ def _rate_limit_key(request: Request) -> str:
     api_key = request.headers.get("x-api-key", "").strip()
     if api_key:
         return f"api-key:{api_key}"
-    forwarded_for = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded_for:
-        client = forwarded_for.split(",", 1)[0].strip()
-        if client:
-            return f"ip:{client}"
-    client = request.client.host if request.client else "unknown"
-    return f"ip:{client}"
+    peer = request.client.host if request.client else None
+    # Only trust X-Forwarded-For when the immediate TCP peer is a known proxy.
+    # An attacker can set this header to any value; trusting it unconditionally
+    # lets them cycle through spoofed IPs to bypass the rate limiter.
+    if peer and peer in SETTINGS.trusted_proxy_ips:
+        forwarded_for = request.headers.get("x-forwarded-for", "").strip()
+        if forwarded_for:
+            leftmost = forwarded_for.split(",", 1)[0].strip()
+            if leftmost:
+                return f"ip:{leftmost}"
+    return f"ip:{peer or 'unknown'}"
 
 
 def _runtime_work_dir(prefix: str) -> Path:
@@ -274,7 +283,10 @@ _PREVIEW_STRUCTURE_CACHE_LOCK = RLock()
 _GENERATION_QUEUE: asyncio.Queue[str] | None = None
 _GENERATION_QUEUE_LOOP: asyncio.AbstractEventLoop | None = None
 _GENERATION_WORKER_TASK: asyncio.Task[None] | None = None
+_GENERATION_PRUNER_TASK: asyncio.Task[None] | None = None
 _GENERATION_JOBS: dict[str, dict[str, Any]] = {}
+_JOB_TTL_SECONDS: int = 3600       # evict finished jobs after 1 hour
+_JOB_PRUNE_INTERVAL_SECONDS: int = 300  # scan every 5 minutes
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = REPO_ROOT / "web"
 WEB_INDEX = WEB_DIR / "index.html"
@@ -305,6 +317,10 @@ BRAND_THEMES = {
 BRAND_THEME_ALIASES = {
     "Auto PPT": "ONAC",
     "Default": "ONAC",
+    "Executive Theme": "ONAC",
+    "Executive": "ONAC",
+    "Corporate": "ONAC",
+    "Professional": "ONAC",
 }
 
 
@@ -368,7 +384,7 @@ async def health() -> HealthResponse:
 
 
 def _timestamp() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _generation_job_urls(job_id: str) -> tuple[str, str]:
@@ -391,7 +407,8 @@ def _generation_job_status_payload(job: dict[str, Any]) -> GenerationJobStatusRe
 
 
 def _format_sse_event(event: str, payload: dict[str, Any]) -> str:
-    return f"event: {event}\ndata: {json.dumps(payload, separators=(",", ":"))}\n\n"
+    data = json.dumps(payload, separators=(",", ":"))
+    return f"event: {event}\ndata: {data}\n\n"
 
 
 async def _publish_generation_event(job: dict[str, Any], event: str) -> None:
@@ -465,6 +482,43 @@ async def _generation_worker() -> None:
             _GENERATION_QUEUE.task_done()
 
 
+async def _prune_generation_jobs() -> None:
+    """Background task: evict completed/failed jobs that are older than _JOB_TTL_SECONDS.
+
+    Only removes a job when:
+    - its status is "completed" or "failed" (never touches in-progress jobs)
+    - it has no active SSE listeners (no client is still streaming it)
+    - its finished_at timestamp is past the TTL window
+    """
+    while True:
+        await asyncio.sleep(_JOB_PRUNE_INTERVAL_SECONDS)
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=_JOB_TTL_SECONDS)
+        stale: list[str] = []
+        for job_id, job in list(_GENERATION_JOBS.items()):
+            if job["status"] not in {"completed", "failed"}:
+                continue
+            if job["listeners"]:  # a client is still streaming this job
+                continue
+            finished_at = job.get("finished_at")
+            if not finished_at:
+                continue
+            try:
+                ts = datetime.fromisoformat(finished_at)
+                # Handle naive timestamps from pre-fix data by assuming UTC.
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts < cutoff:
+                    stale.append(job_id)
+            except ValueError:
+                pass  # malformed timestamp — leave it for the next cycle
+        for job_id in stale:
+            _GENERATION_JOBS.pop(job_id, None)
+        if stale:
+            logging.getLogger("pptx_gen.api").debug(
+                "generation_jobs_pruned", extra={"count": len(stale)}
+            )
+
+
 async def _ensure_generation_worker() -> None:
     global _GENERATION_QUEUE, _GENERATION_QUEUE_LOOP, _GENERATION_WORKER_TASK
     current_loop = asyncio.get_running_loop()
@@ -477,19 +531,43 @@ async def _ensure_generation_worker() -> None:
 
 @app.on_event("startup")
 async def _startup_generation_worker() -> None:
+    global _GENERATION_PRUNER_TASK
     await _ensure_generation_worker()
+    if _GENERATION_PRUNER_TASK is None or _GENERATION_PRUNER_TASK.done():
+        _GENERATION_PRUNER_TASK = asyncio.create_task(_prune_generation_jobs())
+    if SETTINGS.warm_embedder_on_startup:
+        started = perf_counter()
+        try:
+            await asyncio.to_thread(_get_embedder().encode, ["startup warmup"])
+            _INGEST_LOGGER.info(
+                "embedder_startup_warmup",
+                extra={
+                    "duration_ms": int((perf_counter() - started) * 1000),
+                    "status": "ok",
+                },
+            )
+        except Exception:
+            _INGEST_LOGGER.exception(
+                "embedder_startup_warmup_failed",
+                extra={
+                    "duration_ms": int((perf_counter() - started) * 1000),
+                    "status": "error",
+                },
+            )
 
 
 @app.on_event("shutdown")
 async def _shutdown_generation_worker() -> None:
-    global _GENERATION_QUEUE, _GENERATION_QUEUE_LOOP, _GENERATION_WORKER_TASK
-    if _GENERATION_WORKER_TASK is not None:
-        _GENERATION_WORKER_TASK.cancel()
-        try:
-            await _GENERATION_WORKER_TASK
-        except asyncio.CancelledError:
-            pass
-        _GENERATION_WORKER_TASK = None
+    global _GENERATION_QUEUE, _GENERATION_QUEUE_LOOP, _GENERATION_WORKER_TASK, _GENERATION_PRUNER_TASK
+    for task in (_GENERATION_WORKER_TASK, _GENERATION_PRUNER_TASK):
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+    _GENERATION_WORKER_TASK = None
+    _GENERATION_PRUNER_TASK = None
     _GENERATION_QUEUE = None
     _GENERATION_QUEUE_LOOP = None
 
@@ -566,7 +644,13 @@ async def get_generation_job_result(job_id: str) -> PresentationSpecResponse:
     return _to_api_presentation_spec(stored)
 
 
+@app.get("/api/assets/local")
+async def get_local_preview_asset(path: str) -> Response:
+    return FileResponse(_resolve_local_preview_asset(path))
+
+
 async def _ingest_document(file: UploadFile) -> IngestResponse:
+    total_started = perf_counter()
     original_name = Path(file.filename or "upload.txt").name
     suffix = Path(original_name).suffix.lower()
     if suffix not in {".pdf", ".txt", ".md", ".pptx"}:
@@ -580,12 +664,16 @@ async def _ingest_document(file: UploadFile) -> IngestResponse:
     work_dir = _runtime_work_dir("ingest")
     doc_id = _doc_id_from_filename(original_name)
     doc_vector_store = _vector_store_for_doc(doc_id)
+    cache_hit = False
+    pipeline_ms = 0
     try:
         if doc_vector_store.has_data() and _store.has_ingestion_result(doc_id):
+            cache_hit = True
             result = _store.get_ingestion_result(doc_id)
             assert result is not None
         else:
             doc_vector_store.clear()
+            pipeline_started = perf_counter()
             result = await asyncio.to_thread(
                 _ingest_and_index_sync,
                 work_dir / original_name,
@@ -593,12 +681,15 @@ async def _ingest_document(file: UploadFile) -> IngestResponse:
                 Path(original_name).stem.replace("_", " "),
                 doc_vector_store,
             )
+            pipeline_ms = int((perf_counter() - pipeline_started) * 1000)
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
     element_counts = Counter(element.type.value for element in result.ingestion_request.document.elements)
     source_metadata = dict(result.ingestion_request.extensions or {})
+    summary_started = perf_counter()
     summary = await _generate_document_summary(result)
+    summary_ms = int((perf_counter() - summary_started) * 1000)
     response = IngestResponse(
         doc_id=result.doc_id,
         chunk_count=result.n_chunks,
@@ -620,6 +711,22 @@ async def _ingest_document(file: UploadFile) -> IngestResponse:
     _store.put_ingested_doc(result.doc_id, response)
     _store.put_ingestion_result(result.doc_id, result)
     _INGESTED_VECTOR_STORES[result.doc_id] = doc_vector_store
+
+    _INGEST_LOGGER.info(
+        "ingest_request_timing",
+        extra={
+            "doc_id": result.doc_id,
+            "path": "/api/ingest",
+            "method": "POST",
+            "cache_hit": cache_hit,
+            "payload_bytes": len(payload),
+            "n_elements": result.n_elements,
+            "n_chunks": result.n_chunks,
+            "pipeline_ms": pipeline_ms,
+            "summary_ms": summary_ms,
+            "total_ms": int((perf_counter() - total_started) * 1000),
+        },
+    )
     return response
 
 
@@ -707,7 +814,7 @@ def _plan_deck_response(
         ingestion_results=ingestion_results,
     )
 
-    created_at = datetime.now().isoformat(timespec="seconds")
+    created_at = _timestamp()
     draft_id = f"draft-{uuid4().hex[:10]}"
     _store.put_draft(draft_id, DraftState(
         draft_id=draft_id,
@@ -770,9 +877,10 @@ def _generate_deck_from_draft_sync(request_model: GenerateDeckRequest) -> Presen
         theme_name = request_model.theme_name or "ONAC"
         _theme_config(theme_name)
         style_tokens = _style_tokens_from_brand_kit(request_model.brand_kit, theme_name)
-        deck_id = f"deck-{draft.doc_ids[0]}-{_store.count_decks() + 1}"
+        deck_id = f"deck-{draft.doc_ids[0]}-{uuid4().hex[:10]}"
         logo_path = _persist_logo_asset(deck_id, request_model.brand_kit.logo_data_url)
 
+        llm_client = _get_optional_structured_llm_client()
         spec = generate_presentation_spec(
             draft.brief.model_copy(update={"tone": draft.tone_label, "slide_count_target": draft.slide_count}),
             outline,
@@ -781,13 +889,21 @@ def _generate_deck_from_draft_sync(request_model: GenerateDeckRequest) -> Presen
             style_tokens=style_tokens,
             theme_name=theme_name,
             language="en-US",
-            llm_client=_get_optional_structured_llm_client(),
+            llm_client=llm_client,
         )
+        if llm_client is not None:
+            spec = remediate_low_quality_slides(
+                spec,
+                draft.brief.model_copy(update={"tone": draft.tone_label, "slide_count_target": draft.slide_count}),
+                outline,
+                retrieved_chunks,
+                llm_client=llm_client,
+            )
         spec = _enforce_outline_authority(spec, outline, draft.source_ids)
         spec = _apply_global_template_default(spec, selected_template_id)
         spec = _inject_brand_logo(spec, logo_path)
 
-        created_at = datetime.now().isoformat(timespec="seconds")
+        created_at = _timestamp()
         stored_deck = StoredDeck(
             deck_id=deck_id,
             doc_ids=draft.doc_ids,
@@ -831,6 +947,7 @@ async def generate_slide_preview(request: Request, payload: SlidePreviewRequest)
         content=content_text,
     )
 
+    structured: dict[str, Any] | None = None
     try:
         structured = await _llm_structure_slide_content(
             content=content_text,
@@ -841,18 +958,37 @@ async def generate_slide_preview(request: Request, payload: SlidePreviewRequest)
             selected_template=chosen_template,
             grounding_text=grounding_text,
         )
-        slide = _build_preview_slide(
-            slide_id=payload.slide_id,
-            purpose=purpose,
-            headline=structured.get("headline", payload.title),
-            template_key=chosen_template,
-            blocks_data=structured.get("blocks", []),
-            speaker_notes=structured.get("speaker_notes", ""),
-        )
-        return _to_api_slide_spec(slide, index=1)
-    except Exception as exc:
-        logger.exception("slide preview generation failed")
-        raise HTTPException(status_code=500, detail={'code': 'preview_generation_failed', 'message': f'Preview generation failed: {exc}'}) from exc
+    except PreviewLLMUnavailableError:
+        # No LLM client configured (expected in local dev) — fall through to the
+        # deterministic path.
+        logger.warning("slide_preview_llm_unavailable", extra={"title": payload.title, "fallback": "deterministic"})
+    except PreviewStructureError as exc:
+        # LLM returned unusable/malformed output — surface as a structured 500 so
+        # callers can distinguish this from a healthy deterministic preview.
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "preview_generation_failed", "message": str(exc)},
+        ) from exc
+
+    if structured is not None:
+        blocks_data = structured.get("blocks", [])
+        headline = structured.get("headline", payload.title)
+        speaker_notes = structured.get("speaker_notes", "")
+    else:
+        # Deterministic fallback: wrap the raw content as a single text block.
+        blocks_data = [{"kind": "text", "text": content_text}] if content_text else []
+        headline = payload.title
+        speaker_notes = ""
+
+    slide = _build_preview_slide(
+        slide_id=payload.slide_id,
+        purpose=purpose,
+        headline=headline,
+        template_key=chosen_template,
+        blocks_data=blocks_data,
+        speaker_notes=speaker_notes,
+    )
+    return _to_api_slide_spec(slide, index=1)
 
 
 def _retrieve_grounding_for_preview(
@@ -1200,7 +1336,11 @@ def _generate_document_summary_sync(result: pipeline_module.IngestionIndexResult
             )
             return response.choices[0].message.content.strip()
     except Exception:
-        pass
+        logging.getLogger("pptx_gen.api").warning(
+            "llm_document_summary_failed",
+            exc_info=True,
+            extra={"title": title, "fallback": "extractive"},
+        )
 
     # Fallback: extractive summary from headings
     if headings:
@@ -1432,6 +1572,18 @@ def _derive_source_topics(
         words = text.split()
         return " ".join(words[:max_words]).rstrip(",.;:—-")
 
+    def is_stub_headline(h: str) -> bool:
+        """Reject bare numbers, bullets, arrow notation, JSON fragments, and single-word stubs."""
+        if re.search(r'--?>|=>|<--?', h):
+            return True
+        if re.search(r'[{}]', h) or re.search(r'"[^"]+"\s*:', h):
+            return True
+        alpha = sum(1 for ch in h if ch.isalpha())
+        if len(h) > 3 and alpha / len(h) < 0.4:
+            return True
+        real_words = [w for w in h.split() if re.search(r"[a-zA-Z]", w)]
+        return len(real_words) < 2
+
     candidates: list[tuple[str, str]] = []
     seen_headlines: set[str] = set()
 
@@ -1443,7 +1595,7 @@ def _derive_source_topics(
             if chunk.element_type not in {ContentElementType.TITLE, ContentElementType.HEADING}:
                 continue
             headline = trim_headline(chunk.text)
-            if not headline or is_covered(headline):
+            if not headline or is_covered(headline) or is_stub_headline(headline):
                 continue
             key = headline.lower()
             if key in seen_headlines:
@@ -1501,10 +1653,16 @@ def _style_tokens_from_brand_kit(brand_kit: BrandKitRequest, theme_name: str = "
 
 def _theme_config(theme_name: str) -> dict[str, Any]:
     canonical_theme_name = BRAND_THEME_ALIASES.get(theme_name, theme_name)
-    try:
-        return BRAND_THEMES[canonical_theme_name]
-    except KeyError as exc:
-        raise HTTPException(status_code=400, detail={'code': 'unsupported_theme', 'message': f'Unsupported theme_name: {theme_name}'}) from exc
+    theme = BRAND_THEMES.get(canonical_theme_name)
+    if theme is None:
+        # Unknown theme — fall back to default rather than crashing the export
+        logging.getLogger("pptx_gen.api").warning(
+            "llm_fallback",
+            extra={"event": "llm_fallback", "reason": "unsupported_theme",
+                   "context": theme_name, "recovery": "defaulted to ONAC"},
+        )
+        theme = BRAND_THEMES["ONAC"]
+    return theme
 
 
 def _theme_template_path(theme_name: str) -> str | None:
@@ -2069,7 +2227,7 @@ async def _llm_structure_slide_content(
     """Use the structured client to turn editor notes into one well-formed preview slide."""
     llm_client = _get_optional_structured_llm_client()
     if llm_client is None:
-        return _fallback_structure_content(content, title, selected_template, grounding_text=grounding_text)
+        raise PreviewLLMUnavailableError("Structured preview is unavailable because no LLM client is configured.")
 
     cache_key = _preview_structure_cache_key(
         "llm_preview",
@@ -2099,12 +2257,126 @@ async def _llm_structure_slide_content(
             selected_template=selected_template,
             grounding_text=grounding_text,
         )
+        _assert_preview_structure_quality(structured, title=title)
         return _set_preview_structure_cache(cache_key, structured)
     except Exception as llm_exc:
-        import logging
+        raise PreviewStructureError(str(llm_exc)) from llm_exc
 
-        logging.getLogger("pptx_gen.api").warning("LLM slide preview failed, using fallback: %s", llm_exc)
-        return _fallback_structure_content(content, title, selected_template, grounding_text=grounding_text)
+
+class PreviewStructureError(ValueError):
+    """Raised when preview generation cannot produce a trustworthy structure."""
+
+
+class PreviewLLMUnavailableError(PreviewStructureError):
+    """Raised specifically when no LLM client is configured for preview.
+    Unlike a malformed-output PreviewStructureError, this is an expected
+    operational state (local dev without API key) and warrants a silent
+    fallback to the deterministic preview path.
+    """
+
+
+def _assert_preview_structure_quality(structured: dict[str, Any], *, title: str) -> None:
+    blocks = structured.get("blocks", [])
+    if not isinstance(blocks, list) or not blocks:
+        raise PreviewStructureError("Structured preview returned no blocks.")
+
+    normalized_headline = _normalize_preview_text(structured.get("headline", title))
+    normalized_strings: list[str] = []
+    for block in blocks:
+        normalized_strings.extend(_preview_block_strings(block))
+
+    normalized_strings = [value for value in normalized_strings if value]
+    if not normalized_strings:
+        raise PreviewStructureError("Structured preview returned no meaningful content.")
+
+    unique_strings = list(dict.fromkeys(normalized_strings))
+    nontrivial_unique = [value for value in unique_strings if len(value.split()) >= 2]
+    if not nontrivial_unique:
+        raise PreviewStructureError("Structured preview returned no meaningful content.")
+
+    repeated_headline_values = [value for value in unique_strings if value == normalized_headline]
+    if normalized_headline and len(unique_strings) >= 2 and len(unique_strings) == len(repeated_headline_values):
+        raise PreviewStructureError("Structured preview repeated the headline instead of generating slide content.")
+
+    if len(unique_strings) == 1 and len(normalized_strings) >= 2:
+        raise PreviewStructureError("Structured preview collapsed to repeated duplicate content.")
+
+
+def _preview_block_strings(block: Any) -> list[str]:
+    if not isinstance(block, dict):
+        return []
+
+    kind = str(block.get("kind", "")).strip().lower()
+    values: list[str] = []
+
+    def _append(value: Any) -> None:
+        normalized = _normalize_preview_text(value)
+        if normalized:
+            values.append(normalized)
+
+    if kind in {"text", "callout", "quote", "image"}:
+        _append(block.get("text", ""))
+        _append(block.get("attribution", ""))
+    if kind in {"bullets", "kpi_cards"} and isinstance(block.get("items"), list):
+        for item in block.get("items", []):
+            if isinstance(item, dict):
+                _append(item.get("label", ""))
+                _append(item.get("value", ""))
+                _append(item.get("delta", ""))
+            else:
+                _append(item)
+    if kind == "chart" and isinstance(block.get("series"), list):
+        for item in block.get("series", []):
+            if isinstance(item, dict):
+                _append(item.get("label", ""))
+                _append(item.get("value", ""))
+    if kind == "table" and isinstance(block.get("rows"), list):
+        for row in block.get("rows", []):
+            if isinstance(row, list):
+                for cell in row:
+                    _append(cell)
+    if kind == "callout" and isinstance(block.get("cards"), list):
+        for card in block.get("cards", []):
+            if isinstance(card, dict):
+                _append(card.get("title", ""))
+                _append(card.get("text", ""))
+    if kind == "timeline" and isinstance(block.get("items"), list):
+        for item in block.get("items", []):
+            if isinstance(item, dict):
+                _append(item.get("label", ""))
+                _append(item.get("title", ""))
+                _append(item.get("description", ""))
+    if kind == "steps" and isinstance(block.get("steps"), list):
+        for step in block.get("steps", []):
+            if isinstance(step, dict):
+                _append(step.get("title", ""))
+                _append(step.get("description", ""))
+    if kind == "people_cards" and isinstance(block.get("people"), list):
+        for person in block.get("people", []):
+            if isinstance(person, dict):
+                _append(person.get("name", ""))
+                _append(person.get("title", ""))
+                _append(person.get("bio", ""))
+    if kind == "matrix" and isinstance(block.get("quadrants"), list):
+        for quadrant in block.get("quadrants", []):
+            if isinstance(quadrant, dict):
+                _append(quadrant.get("title", ""))
+                if isinstance(quadrant.get("items"), list):
+                    for item in quadrant.get("items", []):
+                        _append(item)
+    if kind == "status_cards" and isinstance(block.get("cards"), list):
+        for card in block.get("cards", []):
+            if isinstance(card, dict):
+                _append(card.get("label", ""))
+                _append(card.get("status", ""))
+                _append(card.get("note", ""))
+    return values
+
+
+def _normalize_preview_text(value: Any) -> str:
+    if not isinstance(value, (str, int, float)):
+        return ""
+    return re.sub(r"\s+", " ", str(value).strip().lower())
 
 def _preview_template_guidance(template_key: str) -> str:
     guidance = {
@@ -2477,11 +2749,11 @@ def _build_preview_slide(
         elif kind == PresentationBlockKind.TABLE:
             content = {"columns": block_data.get("columns", []), "rows": block_data.get("rows", [])}
         elif kind == PresentationBlockKind.CHART:
-            content = {"chart_type": block_data.get("chart_type", "bar"), "series": block_data.get("series", [])}
+            content = _preview_chart_content(block_data)
         elif kind == PresentationBlockKind.QUOTE:
             content = {"text": block_data.get("text", ""), "attribution": block_data.get("attribution", "")}
         elif kind == PresentationBlockKind.IMAGE:
-            content = {"text": block_data.get("text", "Image")}
+            content = _preview_image_content(block_data)
         elif kind == PresentationBlockKind.TIMELINE:
             content = {"items": block_data.get("items", [])}
         elif kind == PresentationBlockKind.STEPS:
@@ -2516,6 +2788,52 @@ def _build_preview_slide(
         speaker_notes=speaker_notes,
         blocks=blocks,
     )
+
+
+def _preview_chart_content(block_data: dict[str, Any]) -> dict[str, Any]:
+    raw_points = block_data.get("data", block_data.get("series", []))
+    points: list[dict[str, Any]] = []
+    if isinstance(raw_points, list):
+        for item in raw_points:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "")).strip()
+            value = item.get("value", 0)
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                numeric_value = 0.0
+            points.append({"label": label, "value": numeric_value})
+    if not points:
+        points = [{"label": "Point 1", "value": 1.0}]
+    return {
+        "chart_type": block_data.get("chart_type", "bar"),
+        "series": points,
+        "data": points,
+        "title": block_data.get("title", ""),
+        "x_label": block_data.get("x_label", ""),
+        "y_label": block_data.get("y_label", ""),
+        "path": block_data.get("path", ""),
+    }
+
+
+def _preview_image_content(block_data: dict[str, Any]) -> dict[str, Any]:
+    content: dict[str, Any] = {"text": block_data.get("text", "Image")}
+    for key in (
+        "path",
+        "local_path",
+        "file_path",
+        "asset_path",
+        "uri",
+        "query",
+        "search_query",
+        "image_query",
+        "url",
+    ):
+        value = block_data.get(key)
+        if isinstance(value, str) and value.strip():
+            content[key] = value.strip()
+    return content
 
 
 def _infer_best_template_for_content(content: str) -> str:
@@ -3019,6 +3337,48 @@ def _serve_frontend_path(full_path: str) -> Response:
     response = FileResponse(WEB_INDEX)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+_PREVIEW_ASSET_SAFE_ROOTS: tuple[Path, ...] = (
+    (REPO_ROOT / "out" / "runtime_assets").resolve(),
+    (REPO_ROOT / "out" / "tmp").resolve(),
+    (REPO_ROOT / "Input" / "Assets").resolve(),
+)
+
+
+def _resolve_local_preview_asset(asset_path: str) -> Path:
+    candidate = asset_path.strip()
+    if not candidate:
+        _raise_api_error(404, "asset_not_found", "Preview asset path is required.")
+
+    parsed = urlparse(candidate)
+    if parsed.scheme in {"http", "https"}:
+        _raise_api_error(400, "invalid_asset_path", "Remote asset URLs are not allowed.")
+
+    # Resolve to an absolute path. expanduser() is intentionally omitted — there
+    # is no legitimate reason for a preview path to reference a home directory.
+    raw = Path(candidate)
+    if raw.is_absolute():
+        requested = raw.resolve()
+    else:
+        requested = (REPO_ROOT / raw).resolve()
+
+    # Enforce directory boundary: the resolved path must sit inside one of the
+    # known safe roots. This blocks path-traversal attacks like
+    # GET /api/assets/local?path=../../../../.env
+    if not any(requested.is_relative_to(root) for root in _PREVIEW_ASSET_SAFE_ROOTS):
+        _raise_api_error(403, "forbidden_asset_path", "Asset path is outside the allowed directories.")
+
+    if not requested.exists() or not requested.is_file():
+        _raise_api_error(404, "asset_not_found", f"Preview asset not found: {requested.name}")
+
+    allowed_suffixes = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+    if requested.suffix.lower() not in allowed_suffixes:
+        guessed, _ = mimetypes.guess_type(str(requested))
+        if not (guessed and guessed.startswith("image/")):
+            _raise_api_error(400, "invalid_asset_type", "Only image assets can be previewed.")
+
+    return requested
 
 
 _ALIAS_BY_CANONICAL = _build_alias_index()

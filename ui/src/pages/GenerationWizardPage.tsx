@@ -275,14 +275,6 @@ export function GenerationWizardPage() {
               + Add slide
             </button>
           </div>
-          {wizard.goal && (
-            <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
-              Inferred goal: <span className="font-medium text-slate-900">{wizard.goal}</span>
-              {wizard.audience && (
-                <> &middot; Audience: <span className="font-medium text-slate-900">{wizard.audience}</span></>
-              )}
-            </div>
-          )}
         </div>
       )
     }

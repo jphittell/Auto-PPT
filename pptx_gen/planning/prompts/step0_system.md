@@ -38,7 +38,10 @@ OUTPUT FORMAT
 - additionalProperties is false on all schemas - do not add fields not in the schema.
 
 CITATIONS
-- source_citations entries require both source_id and locator.
+- CRITICAL: Every factual block (text, bullets, table, chart, quote, callout, kpi_cards) on
+  a content, summary, or closing slide MUST have a non-empty source_citations list.
+  Omitting source_citations on a factual block is a pipeline error.
+- source_citations entries require BOTH source_id AND locator — never omit either sub-field.
 - locator format: "{doc_id}:page{N}" for page references, or "{doc_id}:#{section}"
   for section anchors. Use the locator format provided in the retrieved chunks.
 - Citations must never be removed or altered once set. Downstream steps may add

@@ -28,6 +28,56 @@ interface SlideCanvasProps {
   previewLoading?: boolean
 }
 
+type PreviewChartPoint = { label: string; value: number }
+
+function previewAssetPath(block: ContentBlock): string | null {
+  const data = block.data
+  if (!data || typeof data !== 'object') return null
+  for (const key of ['local_path', 'path', 'file_path', 'asset_path', 'uri']) {
+    const value = data[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
+}
+
+function previewAssetUrl(path: string | null): string | null {
+  if (!path) return null
+  return `/api/assets/local?path=${encodeURIComponent(path)}`
+}
+
+function previewImageBlock(slide: SlideSpec): ContentBlock | null {
+  return slide.blocks.find((block) => block.kind === 'image') ?? null
+}
+
+function previewChartBlock(slide: SlideSpec): ContentBlock | null {
+  return slide.blocks.find((block) => block.kind === 'chart') ?? null
+}
+
+function previewChartPoints(block: ContentBlock | null): PreviewChartPoint[] {
+  const data = block?.data
+  if (!data || typeof data !== 'object') return []
+  const raw =
+    'data' in data && Array.isArray(data.data)
+      ? data.data
+      : 'series' in data && Array.isArray(data.series)
+        ? data.series
+        : []
+  return raw
+    .filter((item): item is { label?: unknown; value?: unknown } => typeof item === 'object' && item !== null)
+    .map((item, index) => {
+      const value = typeof item.value === 'number' ? item.value : Number(item.value ?? 0)
+      return {
+        label: typeof item.label === 'string' && item.label.trim() ? item.label.trim() : `Point ${index + 1}`,
+        value: Number.isFinite(value) ? value : 0,
+      }
+    })
+}
+
+function previewChartType(block: ContentBlock | null): string {
+  const value = block?.data && typeof block.data === 'object' ? block.data.chart_type : null
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : 'bar'
+}
+
 function previewCards(slide: SlideSpec) {
   return slide.blocks
     .flatMap((block) => {
@@ -137,6 +187,116 @@ function PreviewImagePlaceholder({ label = 'Image', tall = false }: { label?: st
   )
 }
 
+function PreviewImage({ block, label = 'Image', tall = false }: { block: ContentBlock | null; label?: string; tall?: boolean }) {
+  const assetUrl = previewAssetUrl(block ? previewAssetPath(block) : null)
+  if (!assetUrl) {
+    return <PreviewImagePlaceholder label={label} tall={tall} />
+  }
+
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl border ${tall ? 'min-h-[18rem]' : 'min-h-[12rem]'} shadow-[0_10px_24px_rgba(0,0,0,0.18)]`}
+      style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}
+    >
+      <img src={assetUrl} alt={label} className="h-full w-full object-cover" />
+    </div>
+  )
+}
+
+function PreviewChart({ block }: { block: ContentBlock | null }) {
+  const points = previewChartPoints(block)
+  const chartType = previewChartType(block)
+  if (!points.length) {
+    return <PreviewImagePlaceholder label="Chart" tall />
+  }
+
+  const maxValue = Math.max(...points.map((point) => point.value), 1)
+  const width = 560
+  const height = 300
+  const paddingLeft = 44
+  const paddingRight = 20
+  const paddingTop = 20
+  const paddingBottom = 48
+  const innerWidth = width - paddingLeft - paddingRight
+  const innerHeight = height - paddingTop - paddingBottom
+  const slotWidth = innerWidth / Math.max(points.length, 1)
+  const barWidth = Math.max(24, slotWidth * 0.56)
+
+  const linePoints = points
+    .map((point, index) => {
+      const x = paddingLeft + slotWidth * index + slotWidth / 2
+      const y = paddingTop + innerHeight - (point.value / maxValue) * innerHeight
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  return (
+    <div className="rounded-2xl border p-4 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-full min-h-[18rem] w-full">
+        <line x1={paddingLeft} y1={paddingTop} x2={paddingLeft} y2={height - paddingBottom} stroke={ONAC_PREVIEW_THEME.panelBorder} strokeWidth="1.5" />
+        <line x1={paddingLeft} y1={height - paddingBottom} x2={width - paddingRight} y2={height - paddingBottom} stroke={ONAC_PREVIEW_THEME.panelBorder} strokeWidth="1.5" />
+        {Array.from({ length: 4 }, (_, index) => {
+          const y = paddingTop + (innerHeight / 4) * index
+          return (
+            <line
+              key={`grid-${index}`}
+              x1={paddingLeft}
+              y1={y}
+              x2={width - paddingRight}
+              y2={y}
+              stroke={ONAC_PREVIEW_THEME.panelBorder}
+              strokeDasharray="4 6"
+              strokeOpacity="0.45"
+            />
+          )
+        })}
+        {chartType === 'line' ? (
+          <>
+            <polyline fill="none" stroke={ONAC_PREVIEW_THEME.accent} strokeWidth="4" points={linePoints} />
+            {points.map((point, index) => {
+              const cx = paddingLeft + slotWidth * index + slotWidth / 2
+              const cy = paddingTop + innerHeight - (point.value / maxValue) * innerHeight
+              return <circle key={point.label} cx={cx} cy={cy} r="5" fill={ONAC_PREVIEW_THEME.gold} />
+            })}
+          </>
+        ) : (
+          points.map((point, index) => {
+            const barHeight = (point.value / maxValue) * innerHeight
+            const x = paddingLeft + slotWidth * index + (slotWidth - barWidth) / 2
+            const y = paddingTop + innerHeight - barHeight
+            return (
+              <rect
+                key={point.label}
+                x={x}
+                y={y}
+                width={barWidth}
+                height={Math.max(barHeight, 4)}
+                rx="10"
+                fill={ONAC_PREVIEW_THEME.accent}
+              />
+            )
+          })
+        )}
+        {points.map((point, index) => {
+          const x = paddingLeft + slotWidth * index + slotWidth / 2
+          return (
+            <text
+              key={`label-${point.label}`}
+              x={x}
+              y={height - 18}
+              textAnchor="middle"
+              fill={ONAC_PREVIEW_THEME.muted}
+              fontSize="12"
+            >
+              {point.label}
+            </text>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 function SlidePreviewSurface({
   slide,
   deckTitle,
@@ -150,6 +310,8 @@ function SlidePreviewSurface({
   const kpis = previewKpis(slide)
   const textBlocks = previewPlainText(slide)
   const items = previewItems(slide)
+  const imageBlock = previewImageBlock(slide)
+  const chartBlock = previewChartBlock(slide)
   const lead = textBlocks[0] ?? ''
 
   if (slide.template_id === 'title.cover') {
@@ -331,7 +493,7 @@ function SlidePreviewSurface({
             {attribution}
           </div>
         </div>
-        <PreviewImagePlaceholder label="Photo" tall />
+        <PreviewImage block={imageBlock} label="Photo" tall />
       </div>
     )
   }
@@ -453,7 +615,7 @@ function SlidePreviewSurface({
             ))}
           </div>
         </div>
-        <PreviewImagePlaceholder label="Image" tall />
+        <PreviewImage block={imageBlock} label="Image" tall />
       </div>
     )
   }
@@ -468,7 +630,7 @@ function SlidePreviewSurface({
           </div>
         </div>
         <div className="p-6" style={{ backgroundColor: '#313838' }}>
-          <PreviewImagePlaceholder label="Photo" tall />
+          <PreviewImage block={imageBlock} label="Photo" tall />
         </div>
       </div>
     )
@@ -532,7 +694,7 @@ function SlidePreviewSurface({
               <div className="h-3 w-3 rounded-full" style={{ backgroundColor: ONAC_PREVIEW_THEME.teal }} />
             </div>
             <div className="flex flex-1 items-center justify-center p-6">
-              <PreviewImagePlaceholder label="Screenshot" tall />
+              <PreviewImage block={imageBlock} label="Screenshot" tall />
             </div>
           </div>
         </div>
@@ -540,7 +702,37 @@ function SlidePreviewSurface({
     )
   }
 
-  if (slide.template_id === 'headline.evidence' || slide.template_id === 'kpi.big' || slide.template_id === 'chart.takeaway') {
+  if (slide.template_id === 'chart.takeaway') {
+    const takeaway =
+      slide.blocks.find((block) => block.kind === 'callout')?.content ??
+      textBlocks.find((text) => text && text !== lead) ??
+      lead
+    return (
+      <div className="flex h-full flex-col rounded-[28px] border p-8 shadow-[0_24px_70px_rgba(0,0,0,0.24)]" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.bg }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.24em]" style={{ color: ONAC_PREVIEW_THEME.gold }}>Chart takeaway</div>
+            <h2 className="mt-3 text-4xl font-semibold tracking-[-0.02em]" style={{ color: ONAC_PREVIEW_THEME.text, fontFamily: 'Georgia, serif' }}>{slide.title}</h2>
+            {lead ? <p className="mt-4 max-w-3xl text-lg leading-relaxed" style={{ color: ONAC_PREVIEW_THEME.muted }}>{lead}</p> : null}
+          </div>
+          <div className="rounded-full px-4 py-2 text-sm font-medium capitalize" style={{ backgroundColor: ONAC_PREVIEW_THEME.teal, color: ONAC_PREVIEW_THEME.softText }}>{slide.purpose}</div>
+        </div>
+        <div className="mt-8 grid min-h-0 flex-1 grid-cols-[1.55fr_0.75fr] gap-5">
+          <div className="min-h-0">
+            <PreviewChart block={chartBlock} />
+          </div>
+          <div className="flex min-h-0 flex-col rounded-2xl border p-6 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+            <div className="text-xs uppercase tracking-[0.18em]" style={{ color: ONAC_PREVIEW_THEME.gold }}>Takeaway</div>
+            <div className="mt-4 text-lg leading-relaxed" style={{ color: ONAC_PREVIEW_THEME.text }}>
+              {takeaway || 'Add the interpretation that should sit beside the chart.'}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (slide.template_id === 'headline.evidence' || slide.template_id === 'kpi.big') {
     const isKpi = slide.template_id === 'kpi.big'
     const cols = isKpi ? 3 : cards.length > 3 ? 2 : 1
     const colsClass = cols === 3 ? 'grid-cols-3' : cols === 2 ? 'grid-cols-2' : 'grid-cols-1'
@@ -763,7 +955,11 @@ function GenericBlockPreview({ block }: { block: ContentBlock }) {
   }
 
   if (block.kind === 'image') {
-    return <PreviewImagePlaceholder label="Image" />
+    return <PreviewImage block={block} label="Image" />
+  }
+
+  if (block.kind === 'chart') {
+    return <PreviewChart block={block} />
   }
 
   if (block.kind === 'table') {

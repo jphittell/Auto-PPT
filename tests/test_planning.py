@@ -12,6 +12,9 @@ from pptx_gen.ingestion.chunker import chunk_document
 from pptx_gen.ingestion.schemas import ContentElementType, ContentObject, DocumentInfo, IngestionOptions, IngestionRequest, SourceInfo, SourceType
 from pptx_gen.layout.schemas import StyleTokens
 from pptx_gen.planning.prompt_chain import (
+    _bullets_from_chunks,
+    _callout_from_chunks,
+    _upgrade_visual_templates,
     build_retrieval_plan,
     collect_deck_brief,
     execute_retrieval_plan,
@@ -258,6 +261,22 @@ def test_generate_outline_avoids_duplicate_headlines_for_pipeline_story() -> Non
     assert len(content_and_summary) == len({headline.lower() for headline in content_and_summary})
     assert all(not headline.startswith("Implementation implications") for headline in content_and_summary)
     assert all(not headline.startswith("Design quality strategies") for headline in content_and_summary)
+
+
+def test_bullets_from_chunks_returns_fallback_without_grounded_candidates() -> None:
+    # Empty chunk list — no grounded candidates available.  Function should degrade
+    # gracefully by returning the fallback rather than raising.
+    result = _bullets_from_chunks([], fallback="Automating Slide Generation")
+    assert result == ["Automating Slide Generation"]
+
+
+def test_callout_from_chunks_returns_fallback_without_grounded_candidates() -> None:
+    # Empty chunk list — no grounded candidates available.  Function should degrade
+    # gracefully by returning the fallback rather than raising.
+    result = _callout_from_chunks([], fallback="Automating Slide Generation")
+    assert result == "Automating Slide Generation"
+
+
 
 
 def test_expand_content_messages_derives_distinct_framings_when_takeaways_are_short() -> None:

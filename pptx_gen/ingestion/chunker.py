@@ -54,8 +54,11 @@ def chunk_document(request: IngestionRequest) -> list[ChunkRecord]:
         parts = _split_text(element.text, max_chars=max_chars)
         for index, part in enumerate(parts):
             chunk_id = f"{element.doc_id}:{element.element_id}:{index}"
-            page_value = element.page or 1
             classification = _classify_chunk(part, element.type)
+            if element.page is not None:
+                locator = f"{element.doc_id}:page{element.page}"
+            else:
+                locator = f"{element.doc_id}:chunk{len(chunks)}"
             chunks.append(
                 ChunkRecord(
                     chunk_id=chunk_id,
@@ -66,7 +69,7 @@ def chunk_document(request: IngestionRequest) -> list[ChunkRecord]:
                     element_type=element.type,
                     classification=classification,
                     page=element.page,
-                    locator=f"{element.doc_id}:page{page_value}",
+                    locator=locator,
                     text=part,
                 )
             )

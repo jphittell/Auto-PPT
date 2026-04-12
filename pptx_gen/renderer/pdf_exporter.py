@@ -51,20 +51,29 @@ def _draw_text(
     size: float = 10,
     color: colors.Color = DARK,
     max_width: float | None = None,
+    bottom_limit: float | None = None,
 ) -> float:
-    """Draw text, returning the y position after the last line."""
+    """Draw text, returning the y position after the last line.
+
+    bottom_limit: if set, stop drawing lines that would fall below this y value.
+    """
+    from reportlab.pdfbase import pdfmetrics
+
     c.saveState()
     c.setFont(font, size)
     c.setFillColor(color)
     if max_width:
-        char_width = size * 0.5
-        wrap_at = max(10, int(max_width / char_width))
+        # Use actual average character width instead of a rough estimate
+        avg_char_w = pdfmetrics.stringWidth("abcdefghijklmnopqrstuvwxyz", font, size) / 26
+        wrap_at = max(10, int(max_width / avg_char_w))
         lines = textwrap.wrap(text, width=wrap_at)
     else:
         lines = [text]
     line_height = size * 1.4
     cur_y = y
     for line in lines:
+        if bottom_limit is not None and cur_y < bottom_limit:
+            break
         c.drawString(x, cur_y, line)
         cur_y -= line_height
     c.restoreState()
@@ -144,26 +153,29 @@ def _render_content_slide(c: canvas.Canvas, slide: dict[str, Any]) -> None:
             for row in row_cards:
                 card_x = MARGIN
                 for card in row:
-                    _draw_rounded_rect(c, card_x, y - card_h, card_w, card_h)
-                    _draw_text(
+                    card_bottom = y - card_h
+                    _draw_rounded_rect(c, card_x, card_bottom, card_w, card_h)
+                    title_y = _draw_text(
                         c, card.get("title", ""), card_x + 10, y - 18,
                         "Helvetica-Bold", 10, DARK, card_w - 20,
+                        bottom_limit=card_bottom + 6,
                     )
                     _draw_text(
-                        c, card.get("text", ""), card_x + 10, y - 34,
+                        c, card.get("text", ""), card_x + 10, title_y - 4,
                         "Helvetica", 9, MUTED, card_w - 20,
+                        bottom_limit=card_bottom + 6,
                     )
                     card_x += card_w + card_gap
                 y -= card_h + 10
             continue
 
-        # Bullets
+        # Bullets — use returned cur_y so wrapped lines don't overlap the next bullet
         bullets = _extract_bullets(block)
         if bullets:
             for bullet in bullets:
-                _draw_text(c, f"•  {bullet}", MARGIN + 10, y, "Helvetica", 10, DARK, CONTENT_W - 20)
-                y -= 18
-            y -= 8
+                y = _draw_text(c, f"•  {bullet}", MARGIN + 10, y, "Helvetica", 10, DARK, CONTENT_W - 20)
+                y -= 4  # small gap between bullets
+            y -= 6
             continue
 
         # Plain text

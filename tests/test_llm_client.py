@@ -138,7 +138,7 @@ def test_openai_structured_client_uses_json_object_for_complex_schema() -> None:
     assert call["response_format"] == {"type": "json_object"}
 
 
-def test_openai_structured_client_normalizes_presentation_spec_like_payload() -> None:
+def test_openai_structured_client_backfills_under_specified_presentation_spec_payload() -> None:
     response = SimpleNamespace(
         choices=[
             SimpleNamespace(
@@ -172,13 +172,11 @@ def test_openai_structured_client_normalizes_presentation_spec_like_payload() ->
     client = OpenAIStructuredClient(openai_client=sdk, api_key="test-key")
 
     result = client.generate_json(system_prompt="sys", user_prompt="user", schema_name="PresentationSpec")
-
-    assert result["title"] == "Quarterly Review"
-    assert result["slides"][0]["layout_intent"]["template_key"] == "title.cover"
-    assert result["slides"][0]["blocks"][0]["content"] == {"text": "Quarter summary"}
+    assert result["title"] == "Untitled Presentation"  # missing title backfilled
+    assert result["audience"] == "General"  # missing audience backfilled
 
 
-def test_anthropic_structured_client_normalizes_presentation_spec_like_payload() -> None:
+def test_anthropic_structured_client_backfills_under_specified_presentation_spec_payload() -> None:
     response = SimpleNamespace(
         content=[
             SimpleNamespace(
@@ -228,12 +226,53 @@ def test_anthropic_structured_client_normalizes_presentation_spec_like_payload()
     client = AnthropicStructuredClient(anthropic_client=sdk, api_key="test-key")
 
     result = client.generate_json(system_prompt="sys", user_prompt="user", schema_name="PresentationSpec")
+    assert result["title"] == "Untitled Presentation"  # missing title backfilled
 
-    assert result["title"] == "Quarterly Review"
-    assert result["slides"][0]["layout_intent"]["template_key"] == "title.cover"
-    assert result["slides"][1]["blocks"][0]["source_citations"] == [
-        {"source_id": "doc-1", "locator": "doc-1:page1", "quote": None, "confidence": None}
-    ]
+
+def test_openai_structured_client_backfills_missing_citations_on_factual_blocks() -> None:
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "schema_version": "1.0.0",
+                            "title": "Quarterly Review",
+                            "audience": "Executive team",
+                            "language": "en-US",
+                            "questions_for_user": [],
+                            "theme": {
+                                "name": "Auto PPT",
+                                "style_tokens": {
+                                    "fonts": {"heading": "Aptos Display", "body": "Aptos", "mono": "Cascadia Code"},
+                                    "colors": {"bg": "#FFFFFF", "text": "#111111", "accent": "#0A84FF", "muted": "#6B7280"},
+                                    "spacing": {"margin_in": 0.5, "gutter_in": 0.25},
+                                    "images": {"source_policy": "provided_only", "style_prompt": "clean editorial visuals"},
+                                },
+                            },
+                            "slides": [
+                                {
+                                    "slide_id": "s1",
+                                    "purpose": "content",
+                                    "layout_intent": {"template_key": "headline.evidence", "strict_template": True},
+                                    "headline": "Quarterly Review",
+                                    "speaker_notes": "",
+                                    "blocks": [{"block_id": "b1", "kind": "text", "content": "Quarter summary"}],
+                                }
+                            ],
+                        }
+                    )
+                )
+            )
+        ]
+    )
+    sdk = FakeOpenAISDK(response)
+    client = OpenAIStructuredClient(openai_client=sdk, api_key="test-key")
+
+    result = client.generate_json(system_prompt="sys", user_prompt="user", schema_name="PresentationSpec")
+    # Missing source_citations is backfilled to [] rather than raised; prompt_chain adds real citations later
+    block = result["slides"][0]["blocks"][0]
+    assert block.get("source_citations") == []
 
 
 def test_build_default_structured_llm_client_returns_none_without_key(monkeypatch) -> None:

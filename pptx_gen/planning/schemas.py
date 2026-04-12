@@ -153,7 +153,7 @@ class DeckBriefExtensions(BaseModel):
         """Dict-compatible access for backward compatibility with existing code."""
         try:
             value = getattr(self, key)
-            if value is None or value == "" or value == []:
+            if value is None:
                 return default
             return value
         except AttributeError:
@@ -319,3 +319,21 @@ class DesignRefinement(BaseModel):
     applied: bool = True
     rationale: list[str] = Field(default_factory=list)
     presentation_spec: PresentationSpec
+
+
+class RemediatedSlide(BaseModel):
+    """Improved blocks returned by the remediation LLM pass for one slide."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slide_id: str = Field(min_length=1)
+    blocks: list[PresentationBlock] = Field(min_length=1)
+
+
+class SlideRemediationSpec(BaseModel):
+    """LLM response for the quality-remediation pass — only carries the slides that were flagged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: str = Field(default="1.0.0", pattern=SCHEMA_VERSION_PATTERN)
+    remediations: list[RemediatedSlide] = Field(default_factory=list)

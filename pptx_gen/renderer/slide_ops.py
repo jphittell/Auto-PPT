@@ -368,7 +368,6 @@ def extract_local_asset_path(content: Any) -> Path | None:
         path = Path(candidate)
         if path.exists():
             return path
-        return path
     return None
 
 

@@ -27,6 +27,30 @@ REQUEST_ID_HEADER = "X-Request-ID"
 _request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "autoppt_request_id", default=None
 )
+_STANDARD_LOG_RECORD_KEYS = {
+    "args",
+    "asctime",
+    "created",
+    "exc_info",
+    "exc_text",
+    "filename",
+    "funcName",
+    "levelname",
+    "levelno",
+    "lineno",
+    "module",
+    "msecs",
+    "message",
+    "msg",
+    "name",
+    "pathname",
+    "process",
+    "processName",
+    "relativeCreated",
+    "stack_info",
+    "thread",
+    "threadName",
+}
 
 
 def current_request_id() -> str | None:
@@ -48,6 +72,10 @@ class _JsonFormatter(logging.Formatter):
             value = getattr(record, key, None)
             if value is not None:
                 payload[key] = value
+        for key, value in record.__dict__.items():
+            if key in _STANDARD_LOG_RECORD_KEYS or key in payload:
+                continue
+            payload[key] = value
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
         return json.dumps(payload, default=str)

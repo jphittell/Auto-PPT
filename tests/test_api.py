@@ -832,7 +832,7 @@ def test_api_slide_preview_caches_identical_llm_requests() -> None:
     assert fake_client.calls == 1
 
 
-def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed() -> None:
+def test_api_slide_preview_fails_when_structured_llm_payload_is_malformed() -> None:
     _reset_api_state()
 
     class FakeClient:
@@ -858,18 +858,57 @@ def test_api_slide_preview_falls_back_when_structured_llm_payload_is_malformed()
         },
     )
 
+    error = _assert_error(
+        response,
+        status_code=500,
+        code="preview_generation_failed",
+        message_fragment="Structured preview blocks must be a list",
+    )
+    assert "using fallback" not in error["message"].lower()
+
+
+def test_api_slide_preview_uses_deterministic_fallback_when_no_llm_client() -> None:
+    # When no LLM client is configured the endpoint must NOT 500 — it degrades to the
+    # deterministic preview path and returns 200 with a valid slide spec.  This is the
+    # intended local-dev behavior and is also tested implicitly by
+    # test_api_rate_limits_generation_requests_by_api_key (which uses _reset_api_state
+    # and therefore also runs with _STRUCTURED_LLM_CLIENT = False).
+    _reset_api_state()
+    api_module._STRUCTURED_LLM_CLIENT = False
+    client = TestClient(api_module.app)
+
+    response = client.post(
+        "/api/slide/preview",
+        json={
+            "slide_id": "slide-preview-no-llm",
+            "title": "Fallback Preview",
+            "purpose": "content",
+            "template_id": "compare.2col",
+            "content": "First point explains the ingestion pipeline. Second point covers the retrieval layer.",
+            "audience": "Operators",
+            "goal": "Explain the workflow",
+        },
+    )
+
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["id"] == "slide-preview-fallback"
-    assert payload["title"] == "Fallback Preview"
-    assert payload["template_id"] == "compare.2col"
-    assert payload["blocks"]
-    assert all(isinstance(block.get("data"), dict) for block in payload["blocks"])
-    # compare.2col emits 2 bullet blocks when the source has enough points
-    # to split, or 1 when there's insufficient content (no filler padding).
-    assert len(payload["blocks"]) in {1, 2}
-    assert all(block["kind"] == "bullets" for block in payload["blocks"])
-    assert all(block.get("data", {}).get("items") for block in payload["blocks"])
+    body = response.json()
+    assert body.get("id") == "slide-preview-no-llm"
+
+
+def test_preview_quality_gate_rejects_repeated_headline_content() -> None:
+    _reset_api_state()
+
+    structured = {
+        "headline": "Automating Slide Generation",
+        "blocks": [
+            {"kind": "text", "text": "Automating Slide Generation"},
+            {"kind": "text", "text": "Automating Slide Generation"},
+            {"kind": "text", "text": "Automating Slide Generation"},
+        ],
+    }
+
+    with pytest.raises(api_module.PreviewStructureError, match="repeated the headline|repeated duplicate"):
+        api_module._assert_preview_structure_quality(structured, title="Automating Slide Generation")
 
 
 def test_fallback_structure_content_caches_identical_inputs(monkeypatch) -> None:
