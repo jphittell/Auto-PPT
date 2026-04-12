@@ -20,34 +20,99 @@ from pptx_gen.layout.templates import (
 from pptx_gen.planning.schemas import PresentationSpec
 
 
-EXPECTED_TEMPLATE_KEYS = (
+# Tier 1 (core) templates — returned by list_template_keys() default
+TIER1_TEMPLATE_KEYS = (
     "title.cover",
     "section.divider",
     "exec.summary",
     "headline.evidence",
     "kpi.big",
-    "compare.2col",
     "chart.takeaway",
     "closing.actions",
+)
+
+# Tier 2 (frequent) — included in list_template_keys() default
+TIER2_TEMPLATE_KEYS = (
+    "compare.2col",
+    "impact.statement",
+    "timeline.roadmap",
+    "matrix.2x2",
+    "team.grid",
+    "process.steps",
+    "dashboard.kpi",
+)
+
+# Tier 3 (situational) — included in list_template_keys() default
+TIER3_TEMPLATE_KEYS = (
     "quote.photo",
     "quote.texture",
-    "impact.statement",
     "content.3col",
-    "content.4col",
     "icons.3",
     "icons.4",
     "content.photo",
+    "agenda.table",
+)
+
+# Tier 0 (deprecated/hidden) — excluded from default list_template_keys()
+DEPRECATED_TEMPLATE_KEYS = (
+    "content.4col",
     "bold.photo",
     "split.content",
-    "agenda.table",
     "screenshot",
 )
 
+EXPECTED_TEMPLATE_KEYS = TIER1_TEMPLATE_KEYS + TIER2_TEMPLATE_KEYS + TIER3_TEMPLATE_KEYS
+
 
 def test_all_canonical_template_keys_resolve() -> None:
-    assert list_template_keys() == EXPECTED_TEMPLATE_KEYS
+    keys = list_template_keys()
+    assert set(keys) == set(EXPECTED_TEMPLATE_KEYS), (
+        f"Missing: {set(EXPECTED_TEMPLATE_KEYS) - set(keys)}, Extra: {set(keys) - set(EXPECTED_TEMPLATE_KEYS)}"
+    )
     for key in EXPECTED_TEMPLATE_KEYS:
         assert get_template_definition(key).template_key == key
+
+
+def test_deprecated_templates_excluded_by_default() -> None:
+    keys = list_template_keys()
+    for key in DEPRECATED_TEMPLATE_KEYS:
+        assert key not in keys, f"{key} should be hidden from planner (tier 0)"
+
+
+def test_min_tier_zero_includes_all_templates() -> None:
+    all_keys = list_template_keys(min_tier=0)
+    all_expected = set(EXPECTED_TEMPLATE_KEYS) | set(DEPRECATED_TEMPLATE_KEYS)
+    assert set(all_keys) == all_expected, (
+        f"Missing: {all_expected - set(all_keys)}, Extra: {set(all_keys) - all_expected}"
+    )
+    assert len(all_keys) == 25
+
+
+def test_new_phase1_phase2_templates_exist() -> None:
+    for key in ("timeline.roadmap", "matrix.2x2", "team.grid", "process.steps", "dashboard.kpi"):
+        defn = get_template_definition(key)
+        assert defn.template_key == key
+        assert defn.planner_tier == 2
+        assert len(defn.slots) >= 2
+
+
+def test_new_template_aliases_resolve() -> None:
+    for alias, expected in [
+        ("timeline", "timeline.roadmap"),
+        ("roadmap", "timeline.roadmap"),
+        ("milestones", "timeline.roadmap"),
+        ("matrix", "matrix.2x2"),
+        ("2x2", "matrix.2x2"),
+        ("competitive", "matrix.2x2"),
+        ("team", "team.grid"),
+        ("people", "team.grid"),
+        ("process", "process.steps"),
+        ("steps", "process.steps"),
+        ("dashboard", "dashboard.kpi"),
+        ("kpi.grid", "dashboard.kpi"),
+        ("kpi.6up", "dashboard.kpi"),
+    ]:
+        assert canonical_template_key(alias) == expected, f"{alias!r} → {canonical_template_key(alias)!r}, expected {expected!r}"
 
 
 @pytest.mark.parametrize(

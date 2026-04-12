@@ -33,6 +33,11 @@ class SlideArchetype(str, Enum):
     COMPARISON = "comparison"
     METRICS = "metrics"
     CHART = "chart"
+    TIMELINE = "timeline"    # timeline.roadmap, process.steps
+    MATRIX = "matrix"        # matrix.2x2
+    TEAM = "team"            # team.grid
+    PROCESS = "process"      # process.steps
+    DASHBOARD = "dashboard"  # dashboard.kpi
 
 
 class PresentationBlockKind(str, Enum):
@@ -44,6 +49,10 @@ class PresentationBlockKind(str, Enum):
     KPI_CARDS = "kpi_cards"
     QUOTE = "quote"
     CALLOUT = "callout"
+    TIMELINE = "timeline"          # ordered milestones [{label, date?, description?}]
+    PEOPLE_CARDS = "people_cards"  # [{name, title, bio?, image_ref?}]
+    STEPS = "steps"                # numbered process steps [{number, title, description}]
+    MATRIX = "matrix"              # 2×2 quadrant [{quadrant: tl|tr|bl|br, title, items:[]}]
 
 
 class PIIFlag(str, Enum):

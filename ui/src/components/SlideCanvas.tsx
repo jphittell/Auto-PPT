@@ -666,6 +666,74 @@ function GenericBlockPreview({ block }: { block: ContentBlock }) {
     )
   }
 
+  if (block.kind === 'timeline') {
+    const items: Array<{ label?: string; title?: string; date?: string; description?: string }> =
+      (block.data as any)?.items ?? []
+    return (
+      <div className="flex gap-3 overflow-x-auto py-2">
+        {items.map((item, i) => (
+          <div key={i} className="flex-1 min-w-0 rounded-xl border p-3" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+            {item.date && <div className="text-xs font-semibold mb-1" style={{ color: ONAC_PREVIEW_THEME.accent }}>{item.date}</div>}
+            <div className="text-sm font-medium" style={{ color: ONAC_PREVIEW_THEME.text }}>{item.label ?? item.title ?? ''}</div>
+            {item.description && <div className="text-xs mt-1" style={{ color: ONAC_PREVIEW_THEME.muted }}>{item.description}</div>}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (block.kind === 'steps') {
+    const steps: Array<{ number?: number; title?: string; description?: string }> =
+      (block.data as any)?.steps ?? []
+    return (
+      <div className="flex gap-3 overflow-x-auto py-2">
+        {steps.map((step, i) => (
+          <div key={i} className="flex-1 min-w-0 rounded-xl border p-3" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+            <div className="text-xl font-bold mb-1" style={{ color: ONAC_PREVIEW_THEME.accent }}>{step.number ?? i + 1}</div>
+            <div className="text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{step.title ?? ''}</div>
+            {step.description && <div className="text-xs mt-1" style={{ color: ONAC_PREVIEW_THEME.muted }}>{step.description}</div>}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (block.kind === 'people_cards') {
+    const people: Array<{ name?: string; title?: string; bio?: string }> =
+      (block.data as any)?.people ?? []
+    return (
+      <div className="flex gap-4 flex-wrap">
+        {people.map((person, i) => (
+          <div key={i} className="flex-1 min-w-[120px] rounded-xl border p-4 text-center" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+            <div className="w-12 h-12 rounded-full mx-auto mb-2 flex items-center justify-center text-lg font-bold" style={{ backgroundColor: ONAC_PREVIEW_THEME.accent, color: '#fff' }}>
+              {(person.name ?? '?')[0]}
+            </div>
+            <div className="text-sm font-semibold" style={{ color: ONAC_PREVIEW_THEME.text }}>{person.name ?? ''}</div>
+            <div className="text-xs mt-0.5" style={{ color: ONAC_PREVIEW_THEME.muted }}>{person.title ?? ''}</div>
+            {person.bio && <div className="text-xs mt-1" style={{ color: ONAC_PREVIEW_THEME.muted }}>{person.bio}</div>}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (block.kind === 'matrix') {
+    const quadrants: Array<{ quadrant?: string; title?: string; items?: string[] }> =
+      (block.data as any)?.quadrants ?? []
+    return (
+      <div className="grid grid-cols-2 gap-2 h-full">
+        {quadrants.map((q, i) => (
+          <div key={i} className="rounded-xl border p-3" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+            <div className="text-xs font-bold mb-1" style={{ color: ONAC_PREVIEW_THEME.accent }}>{q.title ?? q.quadrant ?? ''}</div>
+            {(q.items ?? []).map((item, j) => (
+              <div key={j} className="text-xs" style={{ color: ONAC_PREVIEW_THEME.muted }}>• {item}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (block.kind === 'quote') {
     return (
       <div className="rounded-2xl border-l-4 p-5" style={{ borderColor: ONAC_PREVIEW_THEME.gold, backgroundColor: ONAC_PREVIEW_THEME.panel }}>

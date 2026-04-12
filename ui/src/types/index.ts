@@ -1,5 +1,8 @@
 export type SlidePurpose = 'title' | 'agenda' | 'section' | 'content' | 'summary' | 'appendix' | 'closing'
-export type BlockKind = 'text' | 'bullets' | 'image' | 'table' | 'chart' | 'kpi_cards' | 'quote' | 'callout'
+export type BlockKind =
+  | 'text' | 'bullets' | 'image' | 'table' | 'chart'
+  | 'kpi_cards' | 'quote' | 'callout'
+  | 'timeline' | 'people_cards' | 'steps' | 'matrix'
 
 export interface ContentBlock {
   id: string

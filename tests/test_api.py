@@ -84,15 +84,29 @@ def test_api_health_and_templates(monkeypatch, deterministic_embedder) -> None:
     templates = client.get("/api/templates")
     assert templates.status_code == 200
     payload = templates.json()
-    assert len(payload) == 20
+    # 20 original − 4 deprecated (tier 0) + 5 new (tier 2) = 21 planner-visible templates
+    assert len(payload) == 21
     template_by_id = {item["id"]: item for item in payload}
+    # Core tier-1 templates
     assert template_by_id["headline.evidence"]["deck_default_allowed"] is True
     assert template_by_id["compare.2col"]["deck_default_allowed"] is True
     assert template_by_id["kpi.big"]["deck_default_allowed"] is True
+    # New tier-2 templates surfaced in picker
+    assert template_by_id["timeline.roadmap"]["deck_default_allowed"] is True
+    assert template_by_id["matrix.2x2"]["deck_default_allowed"] is True
+    assert template_by_id["team.grid"]["deck_default_allowed"] is True
+    assert template_by_id["process.steps"]["deck_default_allowed"] is True
+    assert template_by_id["dashboard.kpi"]["deck_default_allowed"] is True
+    assert template_by_id["impact.statement"]["deck_default_allowed"] is True
+    # Specialist/structural templates not in default picker
     assert template_by_id["title.cover"]["deck_default_allowed"] is False
     assert template_by_id["exec.summary"]["deck_default_allowed"] is False
     assert template_by_id["closing.actions"]["deck_default_allowed"] is False
-    assert template_by_id["impact.statement"]["deck_default_allowed"] is False
+    # Deprecated templates hidden from planner
+    assert "bold.photo" not in template_by_id
+    assert "split.content" not in template_by_id
+    assert "content.4col" not in template_by_id
+    assert "screenshot" not in template_by_id
 
     themes = client.get("/api/themes")
     assert themes.status_code == 200

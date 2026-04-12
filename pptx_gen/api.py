@@ -281,7 +281,14 @@ WEB_INDEX = WEB_DIR / "index.html"
 RUNTIME_ASSET_DIR = REPO_ROOT / "out" / "runtime_assets"
 RUNTIME_TEMP_DIR = REPO_ROOT / "out" / "tmp"
 ONAC_TEMPLATE_PATH = REPO_ROOT / "Input" / "Assets" / "PPTs" / "ONAC Presentation Template" / "ONAC Presentation Template.pptx"
-DECK_DEFAULT_TEMPLATE_IDS = {"headline.evidence", "compare.2col", "kpi.big"}
+DECK_DEFAULT_TEMPLATE_IDS = {
+    # Tier 1 — core
+    "headline.evidence", "compare.2col", "kpi.big",
+    # Tier 2 — frequent exec templates surfaced in the picker
+    "timeline.roadmap", "matrix.2x2", "team.grid",
+    "process.steps", "dashboard.kpi",
+    "impact.statement",
+}
 SPECIALIST_TEMPLATE_IDS = {"exec.summary", "chart.takeaway", "closing.actions", "title.cover", "section.divider"}
 FONT_PAIR_MAP = {
     "Georgia/Oracle Sans Tab": ("Georgia", "Oracle Sans Tab"),
@@ -1677,6 +1684,34 @@ def _coerce_slide_for_template(slide: SlideSpec, template_key: str) -> SlideSpec
                     label = str(item.get("label", "")).strip()
                     value = str(item.get("value", "")).strip()
                     cards.append({"title": label or value, "text": value or label})
+        elif block.kind is PresentationBlockKind.TIMELINE:
+            for item in block.content.get("items", []):
+                if isinstance(item, dict):
+                    label = str(item.get("label") or item.get("title") or "").strip()
+                    desc = str(item.get("description", "")).strip()
+                    if label:
+                        text_items.append(f"{label}: {desc}" if desc else label)
+        elif block.kind is PresentationBlockKind.STEPS:
+            for step in block.content.get("steps", []):
+                if isinstance(step, dict):
+                    title = str(step.get("title", "")).strip()
+                    desc = str(step.get("description", "")).strip()
+                    if title:
+                        text_items.append(f"{title} — {desc}" if desc else title)
+        elif block.kind is PresentationBlockKind.PEOPLE_CARDS:
+            for person in block.content.get("people", []):
+                if isinstance(person, dict):
+                    name = str(person.get("name", "")).strip()
+                    title_str = str(person.get("title", "")).strip()
+                    if name:
+                        text_items.append(f"{name} · {title_str}" if title_str else name)
+        elif block.kind is PresentationBlockKind.MATRIX:
+            for quadrant in block.content.get("quadrants", []):
+                if isinstance(quadrant, dict):
+                    q_title = str(quadrant.get("title", "")).strip()
+                    items_list = quadrant.get("items", [])
+                    if q_title:
+                        text_items.append(f"{q_title}: {', '.join(str(i) for i in items_list)}" if items_list else q_title)
 
     if table_data and not text_items:
         rows = table_data.get("rows", [])
@@ -1783,6 +1818,18 @@ def _block_summary_text(block: PresentationBlock) -> str:
     if block.kind is PresentationBlockKind.CHART:
         series = [f"{item.get('label', '')}: {item.get('value', '')}" for item in content.get("series", [])]
         return "; ".join(series[:2])
+    if block.kind is PresentationBlockKind.TIMELINE:
+        items = [str(i.get("label") or i.get("title") or "") for i in content.get("items", [])]
+        return "; ".join(items[:3])
+    if block.kind is PresentationBlockKind.STEPS:
+        titles = [str(s.get("title", "")) for s in content.get("steps", [])]
+        return "; ".join(titles[:3])
+    if block.kind is PresentationBlockKind.PEOPLE_CARDS:
+        names = [str(p.get("name", "")) for p in content.get("people", [])]
+        return "; ".join(names[:3])
+    if block.kind is PresentationBlockKind.MATRIX:
+        titles = [str(q.get("title", "")) for q in content.get("quadrants", [])]
+        return "; ".join(titles[:4])
     for field in ("text", "label", "subtitle", "tagline", "footer_info"):
         value = content.get(field)
         if value:
@@ -2071,6 +2118,11 @@ def _preview_template_guidance(template_key: str) -> str:
         "split.content": "Use two contrasting text blocks, one for each side.",
         "agenda.table": "Use a concise table with row labels and descriptions.",
         "screenshot": "Use one brief intro text block and one image placeholder block.",
+        "timeline.roadmap": "Use a timeline block. Extract up to 5 milestones with label, date, and description. Return {\"blocks\": [{\"kind\": \"timeline\", \"items\": [{\"label\": \"...\", \"date\": \"...\", \"description\": \"...\"}]}]}",
+        "matrix.2x2": "Use a matrix block with four quadrants (tl, tr, bl, br). Each quadrant has a title and 1–3 bullet items. Return {\"blocks\": [{\"kind\": \"matrix\", \"quadrants\": [{\"quadrant\": \"tl\", \"title\": \"...\", \"items\": [\"...\"]}]}]}",
+        "team.grid": "Use a people_cards block. Extract up to 4 people with name, title, and optional bio. Return {\"blocks\": [{\"kind\": \"people_cards\", \"people\": [{\"name\": \"...\", \"title\": \"...\", \"bio\": \"...\"}]}]}",
+        "process.steps": "Use a steps block. Extract 3–5 numbered steps with title and description. Return {\"blocks\": [{\"kind\": \"steps\", \"steps\": [{\"number\": 1, \"title\": \"...\", \"description\": \"...\"}]}]}",
+        "dashboard.kpi": "Use kpi_cards with 4–6 metrics, each with a label, value, and optional delta. Return {\"blocks\": [{\"kind\": \"kpi_cards\", \"items\": [{\"label\": \"...\", \"value\": \"...\", \"delta\": \"...\"}]}]}",
     }
     return guidance.get(template_key, "Format the content to fit the selected layout cleanly and concisely.")
 
@@ -2282,6 +2334,46 @@ def _fallback_structure_content_uncached(
             ],
         }
 
+    if template in {"timeline.roadmap", "process.steps"}:
+        milestones = [s.strip() for s in re.split(r"[.\n]+", source_text) if s.strip()][:5]
+        if template == "timeline.roadmap":
+            items = [{"label": " ".join(s.split()[:8]).rstrip(",.;:"), "description": s} for s in milestones]
+            return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "timeline", "items": items}]}
+        steps = [{"number": i + 1, "title": " ".join(s.split()[:6]).rstrip(",.;:"), "description": s} for i, s in enumerate(milestones)]
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "steps", "steps": steps}]}
+
+    if template == "matrix.2x2":
+        quadrant_labels = [("tl", "Top Left"), ("tr", "Top Right"), ("bl", "Bottom Left"), ("br", "Bottom Right")]
+        raw = [s.strip() for s in re.split(r"[.\n]+", source_text) if s.strip()][:4]
+        quadrants = [
+            {"quadrant": label, "title": " ".join(s.split()[:6]).rstrip(",.;:") if i < len(raw) else fallback,
+             "items": [s] if i < len(raw) else []}
+            for i, (label, fallback) in enumerate(quadrant_labels)
+            for s in [raw[i] if i < len(raw) else ""]
+        ]
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "matrix", "quadrants": quadrants}]}
+
+    if template == "team.grid":
+        raw = [s.strip() for s in re.split(r"[.\n]+", source_text) if s.strip()][:4]
+        people = [{"name": " ".join(s.split()[:3]).rstrip(",.;:"), "title": " ".join(s.split()[3:6]).rstrip(",.;:") or "Team Member"} for s in raw]
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "people_cards", "people": people}]}
+
+    if template == "dashboard.kpi":
+        items: list[dict[str, str]] = []
+        seen_labels: set[str] = set()
+        for sentence in points[:6]:
+            words = sentence.split()
+            if not words:
+                continue
+            numbers = re.findall(r"\b[\d,.]+[%$MBK]?\b", sentence)
+            label = " ".join(words[:5]).rstrip(",.;:")
+            key = label.lower()
+            if key in seen_labels:
+                continue
+            seen_labels.add(key)
+            items.append({"label": label, "value": numbers[0] if numbers else "—", "delta": ""})
+        return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "kpi_cards", "items": items}]}
+
     if template in {"title.cover", "section.divider"}:
         return {
             "headline": title,
@@ -2346,6 +2438,14 @@ def _build_preview_slide(
             content = {"text": block_data.get("text", ""), "attribution": block_data.get("attribution", "")}
         elif kind == PresentationBlockKind.IMAGE:
             content = {"text": block_data.get("text", "Image")}
+        elif kind == PresentationBlockKind.TIMELINE:
+            content = {"items": block_data.get("items", [])}
+        elif kind == PresentationBlockKind.STEPS:
+            content = {"steps": block_data.get("steps", [])}
+        elif kind == PresentationBlockKind.PEOPLE_CARDS:
+            content = {"people": block_data.get("people", [])}
+        elif kind == PresentationBlockKind.MATRIX:
+            content = {"quadrants": block_data.get("quadrants", [])}
         else:
             content = {"text": block_data.get("text", "")}
 
@@ -2513,6 +2613,26 @@ def _stringify_block_content(kind: PresentationBlockKind, content: dict[str, Any
         text = "\n".join(f"{item.get('label', '')}: {item.get('value', '')}" for item in content.get("series", []))
     elif kind is PresentationBlockKind.CALLOUT and isinstance(content.get("cards"), list):
         text = "\n".join(f"{card.get('title', '')}: {card.get('text', '')}" for card in content["cards"])
+    elif kind is PresentationBlockKind.TIMELINE:
+        text = "\n".join(
+            f"{item.get('date', '')}: {item.get('label') or item.get('title', '')}".strip(": ")
+            for item in content.get("items", [])
+        )
+    elif kind is PresentationBlockKind.STEPS:
+        text = "\n".join(
+            f"{step.get('number', i + 1)}. {step.get('title', '')} — {step.get('description', '')}".rstrip(" —")
+            for i, step in enumerate(content.get("steps", []))
+        )
+    elif kind is PresentationBlockKind.PEOPLE_CARDS:
+        text = "\n".join(
+            f"{p.get('name', '')} · {p.get('title', '')}"
+            for p in content.get("people", [])
+        )
+    elif kind is PresentationBlockKind.MATRIX:
+        text = "\n".join(
+            f"[{q.get('quadrant', '').upper()}] {q.get('title', '')}: {', '.join(str(i) for i in q.get('items', []))}"
+            for q in content.get("quadrants", [])
+        )
     else:
         text = ""
         for field in ("text", "label", "subtitle", "tagline", "footer_info", "logo"):

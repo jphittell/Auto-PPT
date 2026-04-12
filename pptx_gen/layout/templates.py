@@ -54,6 +54,7 @@ class TemplateDefinition:
     strict_default: bool
     layout_index: int | None
     slots: tuple[TemplateSlot, ...]
+    planner_tier: int = 1  # 1=core, 2=frequent, 3=situational, 0=deprecated/hidden
 
 
 def _slot(
@@ -89,6 +90,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("title",),
         strict_default=True,
         layout_index=0,
+        planner_tier=1,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.87, 2.35, 7.0, 1.4, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.87, 3.85, 7.0, 0.37, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=33),
@@ -103,6 +105,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("section",),
         strict_default=True,
         layout_index=12,
+        planner_tier=1,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 2.56, 7.0, 1.4, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("tagline", ResolvedElementKind.TEXTBOX, 0.85, 4.52, 7.0, 0.75, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="tagline"), placeholder_idx=33),
@@ -115,6 +118,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=32,
+        planner_tier=1,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 0.75, 11.67, 0.35, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("key_points", ResolvedElementKind.TEXTBOX, 0.75, 1.70, 5.20, 2.50, 0, "body", SlotBinding(source="block", block_index=0)),
@@ -130,6 +134,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=55,
+        planner_tier=1,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -144,6 +149,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=21,
+        planner_tier=1,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 0.76, 8.96, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.84, 1.10, 8.96, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -158,6 +164,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content",),
         strict_default=True,
         layout_index=57,
+        planner_tier=2,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -171,6 +178,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=62,
+        planner_tier=1,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 7.43, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 7.43, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -185,6 +193,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary", "closing"),
         strict_default=True,
         layout_index=23,
+        planner_tier=1,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 4.18, 5.50, 0.53, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("action_items", ResolvedElementKind.TEXTBOX, 0.83, 5.29, 5.50, 0.22, 0, "body", SlotBinding(source="block", block_index=0), placeholder_idx=37),
@@ -198,6 +207,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=19,
+        planner_tier=3,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 2.00, 6.86, 2.22, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("quote", ResolvedElementKind.TEXTBOX, 0.83, 5.33, 5.83, 0.98, 0, "body", SlotBinding(source="block_field", block_index=0, field="text"), placeholder_idx=36),
@@ -211,6 +221,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=17,
+        planner_tier=3,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 2.61, 9.57, 1.60, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("quote", ResolvedElementKind.TEXTBOX, 0.83, 1.25, 3.16, 0.50, 0, "body", SlotBinding(source="block_field", block_index=0, field="text"), placeholder_idx=45),
@@ -223,6 +234,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=14,
+        planner_tier=2,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 3.30, 6.68, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
         ),
@@ -233,6 +245,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=59,
+        planner_tier=3,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -243,10 +256,11 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
     ),
     "content.4col": TemplateDefinition(
         template_key="content.4col",
-        description="Four-column content layout.",
+        description="Four-column content layout — too dense for exec; prefer icons.4.",
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=60,
+        planner_tier=0,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -262,6 +276,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=68,
+        planner_tier=3,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=45),
@@ -279,6 +294,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=70,
+        planner_tier=3,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.84, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.84, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -298,6 +314,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=62,
+        planner_tier=3,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 7.43, 0.34, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 7.43, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle"), placeholder_idx=41),
@@ -307,10 +324,11 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
     ),
     "bold.photo": TemplateDefinition(
         template_key="bold.photo",
-        description="Bold statement with half-slide photo.",
+        description="Bold statement with half-slide photo — deprecated; use impact.statement.",
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=80,
+        planner_tier=0,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 3.30, 5.03, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("image", ResolvedElementKind.IMAGE, 6.67, 0.00, 6.66, 7.50, 0, "image", SlotBinding(source="block_field", block_index=1, field="path"), placeholder_idx=34),
@@ -318,10 +336,11 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
     ),
     "split.content": TemplateDefinition(
         template_key="split.content",
-        description="Split content layout with line divider.",
+        description="Split content layout with line divider — deprecated; use compare.2col.",
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=73,
+        planner_tier=0,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 3.30, 3.43, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("body_left", ResolvedElementKind.TEXTBOX, 0.84, 1.75, 5.56, 4.93, 0, "body", SlotBinding(source="block", block_index=0)),
@@ -334,6 +353,7 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=35,
+        planner_tier=3,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.84, 0.75, 8.20, 0.35, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("table_lead", ResolvedElementKind.TEXTBOX, 0.84, 1.41, 0.48, 4.06, 0, "body", SlotBinding(source="static"), placeholder_idx=14),
@@ -342,14 +362,82 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
     ),
     "screenshot": TemplateDefinition(
         template_key="screenshot",
-        description="Screenshot showcase with explanatory text.",
+        description="Screenshot showcase with explanatory text — low exec relevance.",
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=82,
+        planner_tier=0,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 2.70, 4.11, 0.90, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("body", ResolvedElementKind.TEXTBOX, 0.83, 3.90, 4.11, 1.34, 0, "body", SlotBinding(source="block", block_index=0), placeholder_idx=24),
             _slot("image", ResolvedElementKind.IMAGE, 5.87, 1.85, 6.83, 4.12, 0, "image", SlotBinding(source="block_field", block_index=1, field="path"), placeholder_idx=38),
+        ),
+    ),
+    # --- Phase 1 & 2 new templates (Tier 2) ---
+    "timeline.roadmap": TemplateDefinition(
+        template_key="timeline.roadmap",
+        description="Horizontal milestone timeline with 3–5 steps.",
+        allowed_purposes=("content",),
+        strict_default=True,
+        layout_index=None,
+        planner_tier=2,
+        slots=(
+            _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
+            _slot("subtitle", ResolvedElementKind.TEXTBOX, 0.83, 1.10, 11.67, 0.36, 0, "subtitle", SlotBinding(source="block_field", block_index=0, field="subtitle")),
+            _slot("timeline", ResolvedElementKind.SHAPE, 0.83, 1.70, 11.67, 4.93, 0, "body", SlotBinding(source="block", block_index=0)),
+        ),
+    ),
+    "matrix.2x2": TemplateDefinition(
+        template_key="matrix.2x2",
+        description="2×2 analytical matrix with axis labels and four quadrant cards.",
+        allowed_purposes=("content",),
+        strict_default=True,
+        layout_index=None,
+        planner_tier=2,
+        slots=(
+            _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
+            _slot("x_axis_label", ResolvedElementKind.TEXTBOX, 3.50, 6.90, 6.33, 0.30, 0, "meta", SlotBinding(source="block_field", block_index=0, field="x_axis_label")),
+            _slot("y_axis_label", ResolvedElementKind.TEXTBOX, 0.20, 2.00, 1.00, 3.50, 0, "meta", SlotBinding(source="block_field", block_index=0, field="y_axis_label")),
+            _slot("quadrant_tl", ResolvedElementKind.SHAPE, 1.33, 1.50, 5.50, 2.50, 0, "card", SlotBinding(source="block", block_index=0)),
+            _slot("quadrant_tr", ResolvedElementKind.SHAPE, 7.00, 1.50, 5.50, 2.50, 0, "card", SlotBinding(source="block", block_index=1)),
+            _slot("quadrant_bl", ResolvedElementKind.SHAPE, 1.33, 4.20, 5.50, 2.50, 0, "card", SlotBinding(source="block", block_index=2)),
+            _slot("quadrant_br", ResolvedElementKind.SHAPE, 7.00, 4.20, 5.50, 2.50, 0, "card", SlotBinding(source="block", block_index=3)),
+        ),
+    ),
+    "team.grid": TemplateDefinition(
+        template_key="team.grid",
+        description="Team slide with 3–4 person cards (image placeholder + name + title + bio).",
+        allowed_purposes=("content",),
+        strict_default=True,
+        layout_index=None,
+        planner_tier=2,
+        slots=(
+            _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
+            _slot("team_cards", ResolvedElementKind.SHAPE, 0.83, 1.50, 11.67, 5.25, 0, "body", SlotBinding(source="block", block_index=0)),
+        ),
+    ),
+    "process.steps": TemplateDefinition(
+        template_key="process.steps",
+        description="Numbered 3–5 step process flow with connecting arrows.",
+        allowed_purposes=("content",),
+        strict_default=True,
+        layout_index=None,
+        planner_tier=2,
+        slots=(
+            _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
+            _slot("steps", ResolvedElementKind.SHAPE, 0.83, 1.70, 11.67, 4.93, 0, "body", SlotBinding(source="block", block_index=0)),
+        ),
+    ),
+    "dashboard.kpi": TemplateDefinition(
+        template_key="dashboard.kpi",
+        description="Dashboard with 4–6 KPI metric tiles in a 2×2 or 2×3 grid.",
+        allowed_purposes=("content", "summary"),
+        strict_default=True,
+        layout_index=None,
+        planner_tier=2,
+        slots=(
+            _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
+            _slot("kpi_grid", ResolvedElementKind.SHAPE, 0.83, 1.50, 11.67, 5.25, 0, "body", SlotBinding(source="block", block_index=0)),
         ),
     ),
 }
@@ -418,6 +506,25 @@ TEMPLATE_ALIASES: Final[dict[str, str]] = {
     "split.content": "split.content",
     "agenda.table": "agenda.table",
     "screenshot": "screenshot",
+    # Phase 1 & 2 new templates
+    "timeline.roadmap": "timeline.roadmap",
+    "timeline": "timeline.roadmap",
+    "roadmap": "timeline.roadmap",
+    "milestones": "timeline.roadmap",
+    "matrix.2x2": "matrix.2x2",
+    "matrix": "matrix.2x2",
+    "2x2": "matrix.2x2",
+    "competitive": "matrix.2x2",
+    "team.grid": "team.grid",
+    "team": "team.grid",
+    "people": "team.grid",
+    "process.steps": "process.steps",
+    "process": "process.steps",
+    "steps": "process.steps",
+    "dashboard.kpi": "dashboard.kpi",
+    "dashboard": "dashboard.kpi",
+    "kpi.grid": "dashboard.kpi",
+    "kpi.6up": "dashboard.kpi",
 }
 
 
@@ -434,5 +541,5 @@ def get_template_definition(template_key: str) -> TemplateDefinition:
         raise ValueError(f"unknown template_key: {template_key}") from exc
 
 
-def list_template_keys() -> tuple[str, ...]:
-    return tuple(TEMPLATE_REGISTRY.keys())
+def list_template_keys(*, min_tier: int = 1) -> tuple[str, ...]:
+    return tuple(key for key, defn in TEMPLATE_REGISTRY.items() if defn.planner_tier >= min_tier)
