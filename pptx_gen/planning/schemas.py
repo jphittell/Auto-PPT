@@ -38,6 +38,8 @@ class SlideArchetype(str, Enum):
     TEAM = "team"            # team.grid
     PROCESS = "process"      # process.steps
     DASHBOARD = "dashboard"  # dashboard.kpi
+    FINANCIAL = "financial"  # financial.table
+    STATUS = "status"        # status.rag
 
 
 class PresentationBlockKind(str, Enum):
@@ -53,6 +55,7 @@ class PresentationBlockKind(str, Enum):
     PEOPLE_CARDS = "people_cards"  # [{name, title, bio?, image_ref?}]
     STEPS = "steps"                # numbered process steps [{number, title, description}]
     MATRIX = "matrix"              # 2×2 quadrant [{quadrant: tl|tr|bl|br, title, items:[]}]
+    STATUS_CARDS = "status_cards"  # RAG status rows [{label, status: red|amber|green, note?}]
 
 
 class PIIFlag(str, Enum):

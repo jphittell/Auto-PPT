@@ -45,12 +45,13 @@ TIER2_TEMPLATE_KEYS = (
 # Tier 3 (situational) — included in list_template_keys() default
 TIER3_TEMPLATE_KEYS = (
     "quote.photo",
-    "quote.texture",
     "content.3col",
     "icons.3",
     "icons.4",
     "content.photo",
     "agenda.table",
+    "financial.table",
+    "status.rag",
 )
 
 # Tier 0 (deprecated/hidden) — excluded from default list_template_keys()
@@ -59,6 +60,7 @@ DEPRECATED_TEMPLATE_KEYS = (
     "bold.photo",
     "split.content",
     "screenshot",
+    "quote.texture",  # merged into quote.photo
 )
 
 EXPECTED_TEMPLATE_KEYS = TIER1_TEMPLATE_KEYS + TIER2_TEMPLATE_KEYS + TIER3_TEMPLATE_KEYS
@@ -85,7 +87,8 @@ def test_min_tier_zero_includes_all_templates() -> None:
     assert set(all_keys) == all_expected, (
         f"Missing: {all_expected - set(all_keys)}, Extra: {set(all_keys) - all_expected}"
     )
-    assert len(all_keys) == 25
+    # 20 original + 5 Phase 1&2 + 2 Phase 3 = 27 total
+    assert len(all_keys) == 27
 
 
 def test_new_phase1_phase2_templates_exist() -> None:
@@ -94,6 +97,39 @@ def test_new_phase1_phase2_templates_exist() -> None:
         assert defn.template_key == key
         assert defn.planner_tier == 2
         assert len(defn.slots) >= 2
+
+
+def test_new_phase3_templates_exist() -> None:
+    for key in ("financial.table", "status.rag"):
+        defn = get_template_definition(key)
+        assert defn.template_key == key
+        assert defn.planner_tier == 3
+        assert len(defn.slots) >= 2
+
+
+def test_consolidation_aliases_redirect() -> None:
+    # quote default → quote.photo (quote.texture deprecated)
+    assert canonical_template_key("quote") == "quote.photo"
+    # bold.photo → impact.statement
+    assert canonical_template_key("bold.photo") == "impact.statement"
+    # split.content → compare.2col
+    assert canonical_template_key("split.content") == "compare.2col"
+    # quote.texture still resolves its own registry entry (backward compat)
+    assert canonical_template_key("quote.texture") == "quote.texture"
+
+
+def test_phase3_aliases_resolve() -> None:
+    for alias, expected in [
+        ("financial.table", "financial.table"),
+        ("financial", "financial.table"),
+        ("p&l", "financial.table"),
+        ("budget", "financial.table"),
+        ("status.rag", "status.rag"),
+        ("status", "status.rag"),
+        ("rag", "status.rag"),
+        ("project.status", "status.rag"),
+    ]:
+        assert canonical_template_key(alias) == expected, f"{alias!r} → {canonical_template_key(alias)!r}"
 
 
 def test_new_template_aliases_resolve() -> None:
@@ -336,9 +372,10 @@ def test_specialized_template_bindings_match_export_contract(
     assert chart_elements["takeaway"].kind.value == "shape"
     assert chart_elements["takeaway"].payload["content"] == "Automation compounds over time."
 
+    # split.content now redirects to compare.2col — slots renamed accordingly
     split_payloads = {element.element_id.split(":")[1]: element.payload for element in slides_by_id["split-content"].elements}
-    assert split_payloads["body_left"]["content"] == {"text": "Current state"}
-    assert split_payloads["body_right"]["content"] == {"text": "Target state"}
+    assert split_payloads["col_left"]["content"] == {"text": "Current state"}
+    assert split_payloads["col_right"]["content"] == {"text": "Target state"}
 
     icons_three_payloads = {element.element_id.split(":")[1]: element.payload for element in slides_by_id["icons-three"].elements}
     assert icons_three_payloads["card_1_title"]["content"]["title"] == "Discover"

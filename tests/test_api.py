@@ -84,8 +84,8 @@ def test_api_health_and_templates(monkeypatch, deterministic_embedder) -> None:
     templates = client.get("/api/templates")
     assert templates.status_code == 200
     payload = templates.json()
-    # 20 original − 4 deprecated (tier 0) + 5 new (tier 2) = 21 planner-visible templates
-    assert len(payload) == 21
+    # 20 original − 5 deprecated (tier 0) + 5 Phase 1&2 (tier 2) + 2 Phase 3 (tier 3) = 22 planner-visible
+    assert len(payload) == 22
     template_by_id = {item["id"]: item for item in payload}
     # Core tier-1 templates
     assert template_by_id["headline.evidence"]["deck_default_allowed"] is True
@@ -107,6 +107,7 @@ def test_api_health_and_templates(monkeypatch, deterministic_embedder) -> None:
     assert "split.content" not in template_by_id
     assert "content.4col" not in template_by_id
     assert "screenshot" not in template_by_id
+    assert "quote.texture" not in template_by_id  # merged into quote.photo
 
     themes = client.get("/api/themes")
     assert themes.status_code == 200

@@ -734,6 +734,24 @@ function GenericBlockPreview({ block }: { block: ContentBlock }) {
     )
   }
 
+  if (block.kind === 'status_cards') {
+    const cards: Array<{ label?: string; status?: string; note?: string }> =
+      (block.data as any)?.cards ?? []
+    const statusColor = (s: string) =>
+      s === 'green' ? '#22c55e' : s === 'amber' ? '#f59e0b' : s === 'red' ? '#ef4444' : '#6b7280'
+    return (
+      <div className="flex flex-col gap-2">
+        {cards.map((card, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border px-4 py-2" style={{ borderColor: ONAC_PREVIEW_THEME.panelBorder, backgroundColor: ONAC_PREVIEW_THEME.panel }}>
+            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor(card.status ?? '') }} />
+            <div className="flex-1 text-sm font-medium" style={{ color: ONAC_PREVIEW_THEME.text }}>{card.label ?? ''}</div>
+            {card.note && <div className="text-xs" style={{ color: ONAC_PREVIEW_THEME.muted }}>{card.note}</div>}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (block.kind === 'quote') {
     return (
       <div className="rounded-2xl border-l-4 p-5" style={{ borderColor: ONAC_PREVIEW_THEME.gold, backgroundColor: ONAC_PREVIEW_THEME.panel }}>

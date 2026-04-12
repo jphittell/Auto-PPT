@@ -217,11 +217,11 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
     ),
     "quote.texture": TemplateDefinition(
         template_key="quote.texture",
-        description="Standalone quote on a textured background.",
+        description="Standalone quote on textured background — deprecated; use quote.photo.",
         allowed_purposes=("content", "summary"),
         strict_default=True,
         layout_index=17,
-        planner_tier=3,
+        planner_tier=0,
         slots=(
             _slot("headline", ResolvedElementKind.TEXTBOX, 0.83, 2.61, 9.57, 1.60, 0, "headline", SlotBinding(source="headline"), placeholder_idx=0),
             _slot("quote", ResolvedElementKind.TEXTBOX, 0.83, 1.25, 3.16, 0.50, 0, "body", SlotBinding(source="block_field", block_index=0, field="text"), placeholder_idx=45),
@@ -440,6 +440,32 @@ TEMPLATE_REGISTRY: Final[dict[str, TemplateDefinition]] = {
             _slot("kpi_grid", ResolvedElementKind.SHAPE, 0.83, 1.50, 11.67, 5.25, 0, "body", SlotBinding(source="block", block_index=0)),
         ),
     ),
+    # --- Phase 3 new templates (Tier 3 — situational) ---
+    "financial.table": TemplateDefinition(
+        template_key="financial.table",
+        description="Structured financial table with headline, full-width data, and footnote.",
+        allowed_purposes=("content", "summary"),
+        strict_default=True,
+        layout_index=None,
+        planner_tier=3,
+        slots=(
+            _slot("headline",   ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
+            _slot("table_main", ResolvedElementKind.TABLE,   0.83, 1.30, 11.67, 5.50, 0, "table",    SlotBinding(source="block", block_index=0)),
+            _slot("footnote",   ResolvedElementKind.TEXTBOX, 0.83, 7.00, 11.67, 0.28, 0, "citation", SlotBinding(source="block_field", block_index=1, field="text")),
+        ),
+    ),
+    "status.rag": TemplateDefinition(
+        template_key="status.rag",
+        description="RAG status dashboard with per-initiative colored status cards.",
+        allowed_purposes=("content", "summary"),
+        strict_default=True,
+        layout_index=None,
+        planner_tier=3,
+        slots=(
+            _slot("headline",     ResolvedElementKind.TEXTBOX, 0.83, 0.76, 11.67, 0.34, 0, "headline", SlotBinding(source="headline")),
+            _slot("status_cards", ResolvedElementKind.SHAPE,   0.83, 1.30, 11.67, 5.70, 0, "body",     SlotBinding(source="block", block_index=0)),
+        ),
+    ),
 }
 
 
@@ -490,9 +516,9 @@ TEMPLATE_ALIASES: Final[dict[str, str]] = {
     "closing": "closing.actions",
     "agenda": "closing.actions",
     "agenda.list": "closing.actions",
-    "quote": "quote.texture",
+    "quote": "quote.photo",        # consolidated: quote.texture deprecated
     "quote.photo": "quote.photo",
-    "quote.texture": "quote.texture",
+    "quote.texture": "quote.texture",  # kept for backward compat (tier 0)
     "impact": "impact.statement",
     "impact.statement": "impact.statement",
     "content.3col": "content.3col",
@@ -502,8 +528,8 @@ TEMPLATE_ALIASES: Final[dict[str, str]] = {
     "icons.3": "icons.3",
     "icons.4": "icons.4",
     "content.photo": "content.photo",
-    "bold.photo": "bold.photo",
-    "split.content": "split.content",
+    "bold.photo": "impact.statement",   # consolidated: bold.photo deprecated
+    "split.content": "compare.2col",    # consolidated: split.content deprecated
     "agenda.table": "agenda.table",
     "screenshot": "screenshot",
     # Phase 1 & 2 new templates
@@ -525,6 +551,15 @@ TEMPLATE_ALIASES: Final[dict[str, str]] = {
     "dashboard": "dashboard.kpi",
     "kpi.grid": "dashboard.kpi",
     "kpi.6up": "dashboard.kpi",
+    # Phase 3
+    "financial.table": "financial.table",
+    "financial": "financial.table",
+    "p&l": "financial.table",
+    "budget": "financial.table",
+    "status.rag": "status.rag",
+    "status": "status.rag",
+    "rag": "status.rag",
+    "project.status": "status.rag",
 }
 
 

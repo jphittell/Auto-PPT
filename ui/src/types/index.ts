@@ -3,6 +3,7 @@ export type BlockKind =
   | 'text' | 'bullets' | 'image' | 'table' | 'chart'
   | 'kpi_cards' | 'quote' | 'callout'
   | 'timeline' | 'people_cards' | 'steps' | 'matrix'
+  | 'status_cards'
 
 export interface ContentBlock {
   id: string

@@ -1712,6 +1712,13 @@ def _coerce_slide_for_template(slide: SlideSpec, template_key: str) -> SlideSpec
                     items_list = quadrant.get("items", [])
                     if q_title:
                         text_items.append(f"{q_title}: {', '.join(str(i) for i in items_list)}" if items_list else q_title)
+        elif block.kind is PresentationBlockKind.STATUS_CARDS:
+            for card in block.content.get("cards", []):
+                if isinstance(card, dict):
+                    label = str(card.get("label", "")).strip()
+                    status = str(card.get("status", "")).strip()
+                    if label:
+                        text_items.append(f"[{status.upper()}] {label}" if status else label)
 
     if table_data and not text_items:
         rows = table_data.get("rows", [])
@@ -1830,6 +1837,9 @@ def _block_summary_text(block: PresentationBlock) -> str:
     if block.kind is PresentationBlockKind.MATRIX:
         titles = [str(q.get("title", "")) for q in content.get("quadrants", [])]
         return "; ".join(titles[:4])
+    if block.kind is PresentationBlockKind.STATUS_CARDS:
+        labels = [f"[{c.get('status','?').upper()}] {c.get('label','')}" for c in content.get("cards", [])]
+        return "; ".join(labels[:4])
     for field in ("text", "label", "subtitle", "tagline", "footer_info"):
         value = content.get(field)
         if value:
@@ -2123,6 +2133,8 @@ def _preview_template_guidance(template_key: str) -> str:
         "team.grid": "Use a people_cards block. Extract up to 4 people with name, title, and optional bio. Return {\"blocks\": [{\"kind\": \"people_cards\", \"people\": [{\"name\": \"...\", \"title\": \"...\", \"bio\": \"...\"}]}]}",
         "process.steps": "Use a steps block. Extract 3–5 numbered steps with title and description. Return {\"blocks\": [{\"kind\": \"steps\", \"steps\": [{\"number\": 1, \"title\": \"...\", \"description\": \"...\"}]}]}",
         "dashboard.kpi": "Use kpi_cards with 4–6 metrics, each with a label, value, and optional delta. Return {\"blocks\": [{\"kind\": \"kpi_cards\", \"items\": [{\"label\": \"...\", \"value\": \"...\", \"delta\": \"...\"}]}]}",
+        "financial.table": "Use a table block with column headers and financial row data. Include a footnote text block for source/disclaimer. Return {\"blocks\": [{\"kind\": \"table\", \"columns\": [\"...\"], \"rows\": [[\"...\"]]}, {\"kind\": \"text\", \"text\": \"Source: ...\"}]}",
+        "status.rag": "Use a status_cards block. Each card has a label (initiative name), status (red/amber/green), and optional note. Return {\"blocks\": [{\"kind\": \"status_cards\", \"cards\": [{\"label\": \"...\", \"status\": \"green\", \"note\": \"...\"}]}]}",
     }
     return guidance.get(template_key, "Format the content to fit the selected layout cleanly and concisely.")
 
@@ -2358,6 +2370,38 @@ def _fallback_structure_content_uncached(
         people = [{"name": " ".join(s.split()[:3]).rstrip(",.;:"), "title": " ".join(s.split()[3:6]).rstrip(",.;:") or "Team Member"} for s in raw]
         return {"headline": title, "template_id": template, "speaker_notes": "", "blocks": [{"kind": "people_cards", "people": people}]}
 
+    if template == "financial.table":
+        rows = [[f"Item {i + 1}", " ".join(point.split()[:10])] for i, point in enumerate(points[:8])]
+        numbers_found = [re.search(r"[\d,.]+[%$MBK]?", p) for p in points[:8]]
+        if any(numbers_found):
+            rows = [
+                [" ".join(point.split()[:6]).rstrip(",.;:"), m.group(0) if m else "—"]
+                for point, m in zip(points[:8], numbers_found)
+            ]
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [
+                {"kind": "table", "columns": ["Item", "Value"], "rows": rows},
+                {"kind": "text", "text": "Source: see attached"},
+            ],
+        }
+
+    if template == "status.rag":
+        raw = [s.strip() for s in re.split(r"[.\n]+", source_text) if s.strip()][:8]
+        status_cycle = ["green", "amber", "red"]
+        cards = [
+            {"label": " ".join(s.split()[:8]).rstrip(",.;:"), "status": status_cycle[i % 3], "note": ""}
+            for i, s in enumerate(raw)
+        ]
+        return {
+            "headline": title,
+            "template_id": template,
+            "speaker_notes": "",
+            "blocks": [{"kind": "status_cards", "cards": cards}],
+        }
+
     if template == "dashboard.kpi":
         items: list[dict[str, str]] = []
         seen_labels: set[str] = set()
@@ -2446,6 +2490,8 @@ def _build_preview_slide(
             content = {"people": block_data.get("people", [])}
         elif kind == PresentationBlockKind.MATRIX:
             content = {"quadrants": block_data.get("quadrants", [])}
+        elif kind == PresentationBlockKind.STATUS_CARDS:
+            content = {"cards": block_data.get("cards", [])}
         else:
             content = {"text": block_data.get("text", "")}
 
@@ -2633,6 +2679,12 @@ def _stringify_block_content(kind: PresentationBlockKind, content: dict[str, Any
             f"[{q.get('quadrant', '').upper()}] {q.get('title', '')}: {', '.join(str(i) for i in q.get('items', []))}"
             for q in content.get("quadrants", [])
         )
+    elif kind is PresentationBlockKind.STATUS_CARDS:
+        text = "\n".join(
+            f"[{c.get('status', '?').upper()}] {c.get('label', '')}"
+            + (f" — {c['note']}" if c.get("note") else "")
+            for c in content.get("cards", [])
+        )
     else:
         text = ""
         for field in ("text", "label", "subtitle", "tagline", "footer_info", "logo"):
@@ -2663,7 +2715,8 @@ def _ui_slide_to_planning_slide(
     existing_slide: SlideSpec | None,
     fallback_source_id: str,
 ) -> SlideSpec:
-    template_key = canonical_template_key(ui_slide.template_id)
+    raw_template_id = ui_slide.template_id.strip()
+    template_key = canonical_template_key(raw_template_id)
     try:
         purpose = SlidePurpose(ui_slide.purpose)
     except ValueError:
@@ -2690,7 +2743,7 @@ def _ui_slide_to_planning_slide(
             )
         ]
 
-    headline, blocks = _canonicalize_export_slide(template_key, ui_slide.title, blocks)
+    headline, blocks = _canonicalize_export_slide(template_key, ui_slide.title, blocks, raw_template_id=raw_template_id)
 
     return SlideSpec(
         slide_id=ui_slide.id,
@@ -2818,6 +2871,8 @@ def _canonicalize_export_slide(
     template_key: str,
     headline: str,
     blocks: list[PresentationBlock],
+    *,
+    raw_template_id: str = "",
 ) -> tuple[str, list[PresentationBlock]]:
     canonical_blocks = blocks
     canonical_headline = headline
@@ -2825,7 +2880,9 @@ def _canonicalize_export_slide(
     if template_key in {"content.3col", "content.4col"}:
         target_count = 3 if template_key == "content.3col" else 4
         canonical_blocks = _expand_card_blocks(blocks, target_count)
-    elif template_key == "bold.photo":
+    elif raw_template_id == "bold.photo" or template_key == "bold.photo":
+        # bold.photo now redirects to impact.statement; retain the headline-extraction
+        # behaviour so existing exports that used bold.photo still work correctly.
         statement = next((_extract_block_text(block) for block in blocks if block.kind is not PresentationBlockKind.IMAGE), "")
         if statement:
             canonical_headline = statement
