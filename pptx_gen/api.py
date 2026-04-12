@@ -980,6 +980,8 @@ async def generate_slide_preview(request: Request, payload: SlidePreviewRequest)
         headline = payload.title
         speaker_notes = ""
 
+    blocks_data = _sanitize_preview_blocks(blocks_data, headline)
+
     slide = _build_preview_slide(
         slide_id=payload.slide_id,
         purpose=purpose,
@@ -2149,8 +2151,9 @@ def _generate_structured_preview_with_llm(
     system = (
         "You are a professional presentation writer. "
         "Given raw editor notes, produce a polished slide with a clear headline, speaker notes, and structured blocks. "
-        "CRITICAL: Do NOT copy-paste the raw notes. Synthesize, summarize, and rewrite them into concise, "
-        "audience-facing language with an executive tone. Each bullet should be 10-20 words of original phrasing. "
+        "CRITICAL: Do NOT copy-paste the raw notes. Synthesize, summarize, and rewrite them into concise, audience-facing language with an executive tone. "
+        "CRITICAL: Do NOT repeat or echo the headline in any block. Every block must contain content that is completely distinct from the headline. "
+        "Each bullet should be 10-20 words of original phrasing. "
         "Respect the selected template key and format blocks to fit that layout. "
         "When source-document passages are provided, ground every factual claim in them; "
         "prefer source-document content over editor notes when the two diverge."
@@ -2294,12 +2297,50 @@ def _assert_preview_structure_quality(structured: dict[str, Any], *, title: str)
     if not nontrivial_unique:
         raise PreviewStructureError("Structured preview returned no meaningful content.")
 
-    repeated_headline_values = [value for value in unique_strings if value == normalized_headline]
-    if normalized_headline and len(unique_strings) >= 2 and len(unique_strings) == len(repeated_headline_values):
-        raise PreviewStructureError("Structured preview repeated the headline instead of generating slide content.")
+    # Only reject when ALL non-empty blocks collapse to the headline.
+    # If some blocks are contaminated and others are not, let _sanitize_preview_blocks
+    # drop the bad ones and serve the good ones — a 500 is not warranted.
+    if normalized_headline:
+        non_empty_blocks = [b for b in blocks if [s for s in _preview_block_strings(b) if s]]
+        if non_empty_blocks and all(
+            all(s == normalized_headline for s in [v for v in _preview_block_strings(b) if v])
+            for b in non_empty_blocks
+        ):
+            raise PreviewStructureError("Structured preview repeated the headline instead of generating slide content.")
 
     if len(unique_strings) == 1 and len(normalized_strings) >= 2:
         raise PreviewStructureError("Structured preview collapsed to repeated duplicate content.")
+
+
+def _sanitize_preview_blocks(
+    blocks_data: list[dict[str, Any]],
+    headline: str,
+) -> list[dict[str, Any]]:
+    """Drop preview blocks whose entire content collapses to the headline.
+
+    Mirrors the generation-path block/headline authority check so preview output
+    does not reintroduce headline echoes that generation already strips.
+    """
+    if not headline:
+        return blocks_data
+
+    headline_norm = _normalize_preview_text(headline)
+    clean_blocks: list[dict[str, Any]] = []
+    dropped_blocks = 0
+    for block in blocks_data:
+        block_strings = [value for value in _preview_block_strings(block) if value]
+        if block_strings and all(value == headline_norm for value in block_strings):
+            dropped_blocks += 1
+            continue
+        clean_blocks.append(block)
+
+    if dropped_blocks:
+        logging.getLogger("pptx_gen.api").warning(
+            "preview_structure_quality_block_equals_headline",
+            extra={"headline": headline, "dropped_blocks": dropped_blocks},
+        )
+
+    return clean_blocks if clean_blocks else blocks_data
 
 
 def _preview_block_strings(block: Any) -> list[str]:

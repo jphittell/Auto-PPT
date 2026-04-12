@@ -911,6 +911,96 @@ def test_preview_quality_gate_rejects_repeated_headline_content() -> None:
         api_module._assert_preview_structure_quality(structured, title="Automating Slide Generation")
 
 
+def test_preview_quality_gate_rejects_two_blocks_matching_headline() -> None:
+    _reset_api_state()
+
+    structured = {
+        "headline": "Automating Slide Generation",
+        "blocks": [
+            {"kind": "text", "text": "Automating Slide Generation"},
+            {"kind": "callout", "text": "Automating Slide Generation"},
+        ],
+    }
+
+    with pytest.raises(api_module.PreviewStructureError, match="repeated the headline"):
+        api_module._assert_preview_structure_quality(structured, title="Automating Slide Generation")
+
+
+def test_preview_quality_gate_allows_one_good_block_despite_one_headline_repeat() -> None:
+    """Gate should not 500 when some blocks are good — sanitizer handles the bad one."""
+    _reset_api_state()
+
+    structured = {
+        "headline": "Automating Slide Generation",
+        "blocks": [
+            {"kind": "text", "text": "Automating Slide Generation"},
+            {"kind": "text", "text": "Structured retrieval indexes source docs before layout decisions are made."},
+        ],
+    }
+
+    # Should not raise — the sanitizer will drop the first block at serve time
+    api_module._assert_preview_structure_quality(structured, title="Automating Slide Generation")
+
+
+def test_preview_quality_gate_allows_blocks_distinct_from_headline() -> None:
+    _reset_api_state()
+
+    structured = {
+        "headline": "Automating Slide Generation",
+        "blocks": [
+            {"kind": "text", "text": "Cuts analyst prep time by standardizing retrieval and layout decisions."},
+            {"kind": "bullets", "items": ["Ground claims in indexed source material", "Render consistent executive-ready slides"]},
+        ],
+    }
+
+    api_module._assert_preview_structure_quality(structured, title="Automating Slide Generation")
+
+
+def test_preview_quality_gate_allows_mixed_bullet_block() -> None:
+    _reset_api_state()
+
+    structured = {
+        "headline": "Automating Slide Generation",
+        "blocks": [
+            {
+                "kind": "bullets",
+                "items": [
+                    "Automating Slide Generation",
+                    "Structured retrieval indexes source docs before layout decisions are made",
+                ],
+            },
+        ],
+    }
+
+    api_module._assert_preview_structure_quality(structured, title="Automating Slide Generation")
+
+
+def test_sanitize_preview_blocks_drops_headline_repeats() -> None:
+    _reset_api_state()
+
+    blocks = [
+        {"kind": "text", "text": "Automating Slide Generation"},
+        {"kind": "text", "text": "Standardizes sourcing, planning, and rendering into one repeatable workflow."},
+    ]
+
+    sanitized = api_module._sanitize_preview_blocks(blocks, "Automating Slide Generation")
+
+    assert sanitized == [blocks[1]]
+
+
+def test_sanitize_preview_blocks_never_returns_empty() -> None:
+    _reset_api_state()
+
+    blocks = [
+        {"kind": "text", "text": "Automating Slide Generation"},
+        {"kind": "callout", "text": "Automating Slide Generation"},
+    ]
+
+    sanitized = api_module._sanitize_preview_blocks(blocks, "Automating Slide Generation")
+
+    assert sanitized == blocks
+
+
 def test_fallback_structure_content_caches_identical_inputs(monkeypatch) -> None:
     _reset_api_state()
 
